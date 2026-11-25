@@ -1,177 +1,174 @@
-//! # BitchX status bar
+//! # BitchX status lines
 //!
-//! Pure builder for the `[nick@host/channel +modes] topic` line.
-use ratatui::style::{Modifier, Style};
-use ratatui::text::{Line, Span};
-use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
+//! The two blue status lines BitchX draws above the input line
+//! (`DOUBLE_STATUS_LINE`), built from the "default bx" STATUS_FORMAT1 and
+//! STATUS_FORMAT2 in BitchX1.3 `include/color.h`, with the expandos of
+//! `source/status.c`.
+use crate::bitchx::view::sp;
+use crate::prelude::*;
 
-/// The contents of the BitchX status bar.
+/// The status bar background (`ESC[44m`).
+pub fn status_bg() -> Style {
+    Style::default().bg(Color::Blue).fg(Color::Gray)
+}
+
+/// `ESC[0;44;36m`: cyan brackets on blue.
+fn st_punct() -> Style {
+    status_bg().fg(Color::Cyan)
+}
+
+/// `ESC[1;37m`: bold bright white on blue.
+fn st_bright() -> Style {
+    status_bg().fg(Color::White).add_modifier(StyleModifier::BOLD)
+}
+
+/// `ESC[0;44;37m`: white on blue.
+fn st_text() -> Style {
+    status_bg().fg(Color::Gray)
+}
+
+/// Member counts for `%!` (STATUS_USERS): `[O/n N/n I/n V/n F/n]`.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct UserCounts {
+    pub ops: usize,
+    pub nonops: usize,
+    pub voice: usize,
+}
+
+/// Everything shown on the two status lines.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct StatusBar {
+pub struct BxStatus {
+    /// `%T`
+    pub time: String,
+    /// `%N`
     pub nick: String,
-    pub host: String,
-    pub channel: String,
-    /// Single-letter mode flags, e.g. `["e"]` for an encrypted room.
-    pub modes: Vec<String>,
-    pub topic: String,
+    /// `%#`, without the `+`.
+    pub umodes: String,
+    /// `%A`
+    pub away: bool,
+    /// `%@`
+    pub chanop: bool,
+    /// `%=`
+    pub voice: bool,
+    /// `%C`; `None` in the status window.
+    pub channel: Option<String>,
+    /// `%+`, without the `+`.
+    pub modes: String,
+    /// `%F`: refnums of other windows with unread activity.
+    pub act: Vec<usize>,
+    /// `%R`: this window's refnum.
+    pub window: usize,
+    /// `%!`; `None` outside of channels.
+    pub users: Option<UserCounts>,
 }
 
-impl StatusBar {
-    /// `"[nick@host/channel +modes] topic"`; the ` +modes` and ` topic`
-    /// parts are omitted when empty.
-    pub fn format(&self) -> String {
-        let modes: String = self.modes.iter().map(|m| m.trim()).collect();
-        let topic = self.topic.trim();
+impl BxStatus {
+    /// STATUS_FORMAT1: ` [%T][%@%=%N%#%A] [%C%+] %F`.
+    pub fn line1(&self) -> Line<'static> {
+        let mut s = vec![
+            sp(" ", st_text()),
+            sp("[", st_punct()),
+            sp(self.time.clone(), st_bright()),
+            sp("][", st_punct()),
+        ];
 
-        let mut out = format!("[{}@{}/{}", self.nick, self.host, self.channel);
-
-        if !modes.is_empty() {
-            out.push_str(" +");
-            out.push_str(&modes);
+        if self.chanop {
+            s.push(sp("@", st_bright()));
+        } else if self.voice {
+            s.push(sp("+", st_bright()));
         }
 
-        out.push(']');
+        s.push(sp(self.nick.clone(), st_text()));
 
-        if !topic.is_empty() {
-            out.push(' ');
-            out.push_str(topic);
+        if !self.umodes.is_empty() {
+            s.push(sp("(", st_bright()));
+            s.push(sp("+", st_punct()));
+            s.push(sp(self.umodes.clone(), st_text()));
+            s.push(sp(")", st_bright()));
         }
 
-        out
-    }
-
-    /// Render the status bar truncated to at most `width` terminal cells.
-    ///
-    /// Truncation happens on grapheme boundaries, so a wide character that
-    /// would straddle the edge is dropped rather than split. Control
-    /// characters (which could smuggle terminal escape sequences in from a
-    /// room topic or display name) are replaced with spaces.
-    pub fn render(&self, width: u16) -> Line<'static> {
-        let text = truncate(&sanitize(&self.format()), width as usize);
-        let style = Style::default().add_modifier(Modifier::REVERSED);
-
-        Line::from(Span::styled(text, style))
-    }
-}
-
-/// Replace control characters (newlines, ESC, ...) with spaces.
-fn sanitize(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
-}
-
-/// Take whole graphemes from `s` while they fit into `width` cells.
-fn truncate(s: &str, width: usize) -> String {
-    let mut used = 0;
-    let mut out = String::new();
-
-    for g in s.graphemes(true) {
-        let w = UnicodeWidthStr::width(g);
-
-        if used + w > width {
-            break;
+        if self.away {
+            s.push(sp(" (zZzZ)", st_text()));
         }
 
-        used += w;
-        out.push_str(g);
-    }
+        s.push(sp("]", st_punct()));
 
-    out
-}
+        match &self.channel {
+            Some(chan) => {
+                s.push(sp(" [", st_punct()));
+                s.push(sp(chan.clone(), st_text()));
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+                if !self.modes.is_empty() {
+                    s.push(sp("(", st_bright()));
+                    s.push(sp("+", st_punct()));
+                    s.push(sp(self.modes.clone(), st_text()));
+                    s.push(sp(")", st_bright()));
+                }
 
-    fn bar(modes: &[&str], topic: &str) -> StatusBar {
-        StatusBar {
-            nick: "alice".into(),
-            host: "matrix.org".into(),
-            channel: "#rust".into(),
-            modes: modes.iter().map(|m| m.to_string()).collect(),
-            topic: topic.into(),
+                s.push(sp("]", st_punct()));
+            },
+            None => {
+                // STATUS_USER, shown in the status window.
+                s.push(sp("  * type /help for help", st_text()));
+            },
         }
-    }
 
-    fn rendered(line: &Line<'_>) -> String {
-        line.spans.iter().map(|s| s.content.as_ref()).collect()
-    }
-
-    #[test]
-    fn test_bitchx_status_format_full() {
-        assert_eq!(bar(&["e"], "Rust talk").format(), "[alice@matrix.org/#rust +e] Rust talk");
-        assert_eq!(bar(&["e", "p"], "t").format(), "[alice@matrix.org/#rust +ep] t");
-    }
-
-    #[test]
-    fn test_bitchx_status_format_no_topic() {
-        assert_eq!(bar(&["e"], "").format(), "[alice@matrix.org/#rust +e]");
-        assert_eq!(bar(&["e"], "   ").format(), "[alice@matrix.org/#rust +e]");
-    }
-
-    #[test]
-    fn test_bitchx_status_format_no_modes() {
-        assert_eq!(bar(&[], "hi").format(), "[alice@matrix.org/#rust] hi");
-        assert_eq!(bar(&[""], "hi").format(), "[alice@matrix.org/#rust] hi");
-        assert_eq!(bar(&[], "").format(), "[alice@matrix.org/#rust]");
-    }
-
-    #[test]
-    fn test_bitchx_status_render_fits() {
-        let b = bar(&["e"], "Rust talk");
-        assert_eq!(rendered(&b.render(200)), b.format());
-        assert_eq!(rendered(&b.render(10)), "[alice@mat");
-        assert_eq!(b.render(10).width(), 10);
-    }
-
-    #[test]
-    fn test_bitchx_status_render_width_zero() {
-        let b = bar(&["e"], "topic");
-        let line = b.render(0);
-        assert_eq!(rendered(&line), "");
-        assert_eq!(line.width(), 0);
-
-        let empty = StatusBar::default();
-        assert_eq!(rendered(&empty.render(0)), "");
-        assert_eq!(rendered(&empty.render(5)), "[@/]");
-    }
-
-    #[test]
-    fn test_bitchx_status_render_wide_chars() {
-        let b = StatusBar {
-            nick: "日本".into(),
-            host: "h".into(),
-            channel: "c".into(),
-            modes: vec![],
-            topic: "🎉🎉".into(),
-        };
-        // "[日本@h/c] 🎉🎉" → widths: 1 + 4 + 4 + 1 + 1 + 4 = 15
-        assert_eq!(rendered(&b.render(15)), "[日本@h/c] 🎉🎉");
-        // Cutting in the middle of a wide char drops it rather than splitting.
-        assert_eq!(rendered(&b.render(2)), "[");
-        assert_eq!(rendered(&b.render(3)), "[日");
-        assert_eq!(rendered(&b.render(14)), "[日本@h/c] 🎉");
-        for w in 0..20 {
-            assert!(b.render(w).width() <= w as usize, "width {w}");
+        if !self.act.is_empty() {
+            let act: Vec<String> = self.act.iter().map(usize::to_string).collect();
+            s.push(sp(" [", st_punct()));
+            s.push(sp("Act: ", st_text()));
+            s.push(sp(act.join(","), st_bright()));
+            s.push(sp("]", st_punct()));
         }
+
+        Line::from(s).style(status_bg())
     }
 
-    #[test]
-    fn test_bitchx_status_render_graphemes() {
-        // "e" + combining acute accent must stay together.
-        let b = StatusBar {
-            nick: "e\u{301}e\u{301}".into(),
-            ..Default::default()
-        };
-        assert_eq!(rendered(&b.render(2)), "[e\u{301}");
-        assert_eq!(rendered(&b.render(3)), "[e\u{301}e\u{301}");
+    /// STATUS_FORMAT2, left part: ` %L %!` (`[Lag 0] [O/1 N/2 I/0 V/0 F/0]`).
+    pub fn line2(&self) -> Line<'static> {
+        let mut s = vec![
+            sp(" ", st_text()),
+            sp("[", st_punct()),
+            sp("Lag ", st_text()),
+            sp("0", st_bright()),
+            sp("]", st_punct()),
+        ];
+
+        if let Some(u) = self.users {
+            s.push(sp(" [", st_punct()));
+
+            for (i, (label, count)) in [
+                ("O", u.ops),
+                ("N", u.nonops),
+                ("I", 0),
+                ("V", u.voice),
+                ("F", 0),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                if i > 0 {
+                    s.push(sp(" ", st_text()));
+                }
+                s.push(sp(label, st_text()));
+                s.push(sp("/", st_punct()));
+                s.push(sp(count.to_string(), st_bright()));
+            }
+
+            s.push(sp("]", st_punct()));
+        }
+
+        Line::from(s).style(status_bg())
     }
 
-    #[test]
-    fn test_bitchx_status_render_sanitizes_control_chars() {
-        let b = bar(&[], "evil\u{1b}[2Jtopic\nline2");
-        let out = rendered(&b.render(200));
-        assert!(!out.chars().any(char::is_control), "{out:?}");
-        assert!(out.ends_with("evil [2Jtopic line2"), "{out:?}");
+    /// STATUS_FORMAT2, right-justified part (after `%>`): the window refnum.
+    pub fn line2_right(&self) -> Line<'static> {
+        Line::from(vec![
+            sp("[", st_punct()),
+            sp("Win ", st_text()),
+            sp(self.window.to_string(), st_bright()),
+            sp("] ", st_punct()),
+        ])
+        .style(status_bg())
     }
 }

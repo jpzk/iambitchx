@@ -23,7 +23,7 @@ use crate::windows::room::message::{MessageState, MessageWidget};
 use crate::windows::room::not_joined::NotJoined;
 use crate::windows::room::space::{Space, SpaceState};
 
-pub use crate::windows::room::chat::{Chat, ChatState};
+pub use crate::windows::room::chat::ChatState;
 pub use crate::windows::room::not_joined::NotJoinedState;
 
 mod chat;

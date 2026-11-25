@@ -615,6 +615,11 @@ impl ChatState {
         &self.room_id
     }
 
+    /// The message bar, for the BitchX frontend to draw on its input line.
+    pub fn tbox_mut(&mut self) -> &mut TextBoxState<IambInfo> {
+        &mut self.tbox
+    }
+
     pub fn current_message(&self, store: &mut ProgramStore) -> Option<MessageId> {
         let info = store.application.rooms.get_or_default(self.room_id.clone());
         self.scrollback.get_key(info).map(|key| key.id)

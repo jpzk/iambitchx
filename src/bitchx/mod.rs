@@ -8,6 +8,7 @@ pub mod commands;
 pub mod dispatch;
 pub mod screen;
 pub mod status;
+pub mod view;
 
 /// Which user interface to draw.
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]

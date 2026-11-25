@@ -61,13 +61,11 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::base::{HomeserverAction, KeysAction};
 use crate::bitchx::Frontend;
-use crate::bitchx::screen::BitchxScreen;
 use crate::completions::IambCompleter;
 use crate::config::{CursorShape, Iamb};
 use crate::prelude::*;
 use crate::util::{restore_tty, setup_tty};
 use crate::windows::IambWindow;
-use crate::windows::room::Chat;
 use crate::worker::{ClientWorker, LoginStyle, create_room};
 
 mod base;
@@ -335,8 +333,8 @@ impl Application {
         }
 
         let theme = store.application.settings.theme.clone();
-        let bx_active = store.application.settings.tunables.frontend == Frontend::Bitchx &&
-            !self.cmdbar_focused;
+        let bx_active = store.application.settings.tunables.frontend == Frontend::Bitchx;
+        let cmdbar_focused = self.cmdbar_focused;
         let bx_notice = self.bx_notice.clone();
 
         term.draw(|f| {
@@ -351,20 +349,19 @@ impl Application {
 
             store.application.draw_curr = Some(Instant::now());
 
-            // BitchX frontend: a joined room gets the status bar + chat + input
-            // line layout. Anything else (room lists, members, dialogs, the
-            // command bar) falls back to the classic screen.
-            let bx_chat = if bx_active && !hide_cursor {
-                sstate.current_window_mut().ok().and_then(bitchx::screen::bitchx_chat)
-            } else {
-                None
-            };
-
-            if let Some(chat) = bx_chat {
-                let status = bitchx::screen::room_status(&*chat, store);
-                let body = Chat::new(store).focus(focused);
-                let screen = BitchxScreen::new(status, body).notice(bx_notice);
-                f.render_stateful_widget(screen, area, chat);
+            // BitchX frontend: always the full-screen BitchX layout, whatever
+            // window is focused; never the classic tabs, borders or `:` bar.
+            if bx_active {
+                let buf = f.buffer_mut();
+                bitchx::screen::draw(
+                    area,
+                    buf,
+                    sstate,
+                    store,
+                    cmdbar_focused,
+                    bx_notice,
+                    &dialogstr,
+                );
             } else {
                 let screen = Screen::new(store)
                     .show_dialog(dialogstr)
