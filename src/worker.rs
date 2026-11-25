@@ -107,8 +107,8 @@ const DEFAULT_ENCRYPTION_SETTINGS: EncryptionSettings = EncryptionSettings {
     backup_download_strategy: BackupDownloadStrategy::AfterDecryptionFailure,
 };
 
-const IAMB_DEVICE_NAME: &str = "iamb";
-const IAMB_USER_AGENT: &str = "iamb";
+const IAMB_DEVICE_NAME: &str = "iambitchx";
+const IAMB_USER_AGENT: &str = "iambitchx";
 const MIN_MSG_LOAD: u16 = 50;
 
 /// How long to wait before retrying receipts that we failed to send.
