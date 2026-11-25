@@ -342,6 +342,17 @@ impl App {
                     return self.switch(idx);
                 }
             },
+            MxEvent::Synched { room_id, millis } => {
+                if let Some(idx) = self.window_of(&room_id) {
+                    self.names_in(idx);
+                    let chan = self.windows[idx].room.name.clone();
+                    let secs = millis as f64 / 1000.0;
+                    let line =
+                        Line::Error(format!("Join to {chan} was synched in {secs:.3} secs!!"));
+                    self.windows[idx].push(None, line);
+                    return self.switch(idx);
+                }
+            },
             MxEvent::Info { room_id, line } => {
                 let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
                 self.windows[idx].push(None, line);
@@ -895,31 +906,39 @@ impl App {
         }
     }
 
-    /// NAMES: `[Users(#chan:n)]` then the nicks, `@` for ops, `+` for voice.
+    /// NAMES: ` [Users(#chan:n/m)]` then a grid of `[@nick ]` cells (capture 25).
     fn names(&mut self, target: Option<String>) {
         let Some(idx) = self.target_window(target) else {
             return;
         };
+        self.names_in(idx);
+    }
+
+    fn names_in(&mut self, idx: usize) {
         let room = &self.windows[idx].room;
         let mut members = room.members.clone();
         members.sort_by(|a, b| b.power.cmp(&a.power).then(a.nick.cmp(&b.nick)));
-        let header = format!("[Users({}:{})]", room.name, members.len());
-        self.info(header);
+        let total = members.len();
+        let width = members.iter().map(|m| m.nick.chars().count()).max().unwrap_or(0);
+        let mut lines = vec![Line::Users { chan: room.name.clone(), shown: total, total }];
         for chunk in members.chunks(5) {
-            let row: Vec<String> = chunk
+            let cells = chunk
                 .iter()
                 .map(|m| {
                     let flag = if m.is_op() {
-                        "@"
+                        '@'
                     } else if m.is_voice() {
-                        "+"
+                        '+'
                     } else {
-                        " "
+                        ' '
                     };
-                    format!("[{flag}{:<10}]", m.nick)
+                    (flag, m.nick.clone())
                 })
                 .collect();
-            self.info(row.join(" "));
+            lines.push(Line::Names { cells, width });
+        }
+        for l in lines {
+            self.windows[idx].push(None, l);
         }
     }
 
@@ -1214,11 +1233,44 @@ pub mod tests {
     }
 
     #[test]
+    fn test_join_synched() {
+        let mut app = app();
+        assert_eq!(app.refnum(), 1);
+        app.handle_mx(MxEvent::Synched {
+            room_id: OwnedRoomId::try_from("!b:example.org").unwrap(),
+            millis: 319,
+        });
+        assert_eq!(app.cur().room.name, "#other");
+        let n = app.cur().lines.len();
+        assert!(matches!(&app.cur().lines[n - 3], Line::Users { shown: 3, .. }));
+        assert!(matches!(&app.cur().lines[n - 2], Line::Names { .. }));
+        assert_eq!(
+            app.cur().lines[n - 1],
+            Line::Error("Join to #other was synched in 0.319 secs!!".into())
+        );
+    }
+
+    #[test]
     fn test_local_commands() {
         let mut app = app();
         app.handle_key(alt('2'));
         typed(&mut app, "/names");
-        assert!(app.cur().lines.iter().any(|l| *l == Line::Info("[Users(#room:3)]".into())));
+        assert!(
+            app.cur()
+                .lines
+                .iter()
+                .any(|l| { *l == Line::Users { chan: "#room".into(), shown: 3, total: 3 } })
+        );
+        assert!(app.cur().lines.iter().any(|l| {
+            *l == Line::Names {
+                cells: vec![
+                    ('@', "carla".into()),
+                    ('+', "bob".into()),
+                    (' ', "armin".into()),
+                ],
+                width: 5,
+            }
+        }));
         typed(&mut app, "/who");
         assert!(
             app.cur()

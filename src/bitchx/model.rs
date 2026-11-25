@@ -46,6 +46,17 @@ pub enum Line {
     Raw(String),
     /// One row of the startup logo: no prefix, bold blue.
     Logo(String),
+    /// NAMES header: ` [Users(#chan:n/m)]`.
+    Users { chan: String, shown: usize, total: usize },
+    /// One NAMES grid row: `[@nick ] [ nick ]`, nicks padded to `width`.
+    Names { cells: Vec<(char, String)>, width: usize },
+    /// The WHOIS ruler `------------- --  -`.
+    WhoisRule,
+    /// WHOIS first row: `| nick (mxid) (info)`.
+    WhoisNick { nick: String, mxid: String, info: String },
+    /// WHOIS field row n (1-based): `{lead}{key:<8} : value`, the lead
+    /// alternating ` `/`|` and fading green to grey, `:` on the last row.
+    WhoisRow { row: u8, last: bool, key: String, value: String },
 }
 
 /// A room member as the UI needs it.
@@ -97,6 +108,9 @@ pub enum MxEvent {
     Left(OwnedRoomId),
     /// Switch to this room's window (after /join, /query).
     Focus(OwnedRoomId),
+    /// Our /join of this room completed in `millis`: focus it, print NAMES
+    /// and ` BitchX: Join to #chan was synched in X secs!!`.
+    Synched { room_id: OwnedRoomId, millis: u64 },
     /// A `-:-` line for a room window, or the status window.
     Info { room_id: Option<OwnedRoomId>, line: Line },
     /// Our own nick changed.

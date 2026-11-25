@@ -226,6 +226,80 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
         },
         Line::Raw(text) => vec![TLine::from(sp(text.clone(), n()))],
         Line::Logo(text) => vec![TLine::from(sp(text.clone(), bold(Color::Blue)))],
+        // ` [Users(#chan:n/m)]` (capture 25).
+        Line::Users { chan, shown, total } => {
+            let gr = fg(Color::Green);
+            vec![g_line(vec![
+                sp("[", k()),
+                sp("Users", bold(Color::Green)),
+                sp("(", k()),
+                sp(chan.clone(), gr),
+                sp(":", k()),
+                sp(shown.to_string(), gr),
+                sp("/", k()),
+                sp(total.to_string(), gr),
+                sp(")]", k()),
+            ])]
+        },
+        // `[@op ] [ nick ]`: no leading glyph, ops bold white, others bold blue.
+        Line::Names { cells, width } => {
+            let mut spans = vec![];
+            for (i, (flag, nick)) in cells.iter().enumerate() {
+                if i > 0 {
+                    spans.push(sp(" ", n()));
+                }
+                let (fs, ns) = match flag {
+                    '@' => (bold(Color::Cyan), w()),
+                    '+' => (bold(Color::Green), bold(Color::Blue)),
+                    _ => (k(), bold(Color::Blue)),
+                };
+                spans.push(sp("[", k()));
+                spans.push(sp(flag.to_string(), fs));
+                spans.push(sp(format!("{nick:<width$} "), ns));
+                spans.push(sp("]", k()));
+            }
+            vec![TLine::from(spans)]
+        },
+        // The fading green/grey ruler that opens a WHOIS (capture 26).
+        Line::WhoisRule => {
+            vec![TLine::from(vec![
+                sp("------", bold(Color::Green)),
+                sp("------", fg(Color::Green)),
+                sp("--- --  -", k()),
+            ])]
+        },
+        Line::WhoisNick { nick, mxid, info } => {
+            vec![TLine::from(vec![
+                sp("| ", bold(Color::Green)),
+                sp(nick.clone(), w()),
+                sp(" (", k()),
+                sp(mxid.clone(), n()),
+                sp(") (", k()),
+                sp(info.clone(), w()),
+                sp(")", k()),
+            ])]
+        },
+        Line::WhoisRow { row, last, key, value } => {
+            let lead = match (last, row % 2) {
+                (true, _) => ": ",
+                (false, 1) => " ",
+                _ => "| ",
+            };
+            let ls = match row {
+                0 | 1 => bold(Color::Green),
+                2 => fg(Color::Green),
+                _ => k(),
+            };
+            let mut chars = key.chars();
+            let first = chars.next().map(String::from).unwrap_or_default();
+            let rest: String = chars.collect();
+            let pad = 8usize.saturating_sub(key.chars().count());
+            vec![TLine::from(vec![
+                sp(lead, ls),
+                sp(first, w()),
+                sp(format!("{rest}{} : {value}", " ".repeat(pad)), n()),
+            ])]
+        },
     }
 }
 
@@ -428,5 +502,52 @@ mod tests {
             text: "x\u{1b}[2Jy".into(),
         };
         assert_eq!(text(&l), "<a> x [2Jy");
+    }
+
+    #[test]
+    fn test_names_layout() {
+        let h = Line::Users { chan: "#r".into(), shown: 2, total: 2 };
+        assert_eq!(text(&h), " [Users(#r:2/2)]");
+        let h = format_line(&h, "#r");
+        assert_eq!(style_of(&h, "Users"), bold(Color::Green));
+        assert_eq!(style_of(&h, ")]"), k());
+        let row = Line::Names {
+            cells: vec![('@', "op".into()), (' ', "armin".into())],
+            width: 5,
+        };
+        assert_eq!(text(&row), "[@op    ] [ armin ]");
+        let r = format_line(&row, "#r");
+        assert_eq!(style_of(&r, "@"), bold(Color::Cyan));
+        assert_eq!(style_of(&r, "op    "), w());
+        assert_eq!(style_of(&r, "armin "), bold(Color::Blue));
+    }
+
+    #[test]
+    fn test_whois_layout() {
+        assert_eq!(text(&Line::WhoisRule), "--------------- --  -");
+        let l = Line::WhoisNick {
+            nick: "armin".into(),
+            mxid: "@armin:x".into(),
+            info: "unknown".into(),
+        };
+        assert_eq!(text(&l), "| armin (@armin:x) (unknown)");
+        let row = |row, last, key: &str| {
+            text(&Line::WhoisRow { row, last, key: key.into(), value: "v".into() })
+        };
+        assert_eq!(row(1, false, "ircname"), " ircname  : v");
+        assert_eq!(row(2, false, "channels"), "| channels : v");
+        assert_eq!(row(3, false, "server"), " server   : v");
+        assert_eq!(row(4, true, "devices"), ": devices  : v");
+        let r = format_line(
+            &Line::WhoisRow {
+                row: 1,
+                last: false,
+                key: "ircname".into(),
+                value: "v".into(),
+            },
+            "#r",
+        );
+        assert_eq!(r[0].spans[1].content, "i");
+        assert_eq!(r[0].spans[1].style, w());
     }
 }

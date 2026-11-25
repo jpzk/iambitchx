@@ -425,9 +425,11 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             };
             let id = OwnedRoomOrAliasId::try_from(target.as_str())
                 .map_err(|e| anyhow::anyhow!("{target}: {e}"))?;
+            let t0 = std::time::Instant::now();
             let room = client.join_room_by_id_or_alias(&id, &[]).await?;
             let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
-            let _ = tx.send(MxEvent::Focus(room.room_id().to_owned()));
+            let millis = t0.elapsed().as_millis() as u64;
+            let _ = tx.send(MxEvent::Synched { room_id: room.room_id().to_owned(), millis });
         },
         Effect::Part { room_id, .. } => {
             room_of(client, &room_id)?.leave().await?;
@@ -494,13 +496,41 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                     chans.push(format!("{flag}{}", channel_name(&room, &me, None)));
                 }
             }
-            let info = |s: String| MxEvent::Info { room_id: None, line: Line::Info(s) };
-            let _ = tx.send(info(format!("{name} [{user}]")));
-            let _ = tx.send(info(format!(" server   : {}", user.server_name())));
+            let devices = client
+                .encryption()
+                .get_user_devices(&user)
+                .await
+                .map(|d| d.devices().count())
+                .unwrap_or(0);
+            let ident = match client.encryption().get_user_identity(&user).await {
+                Ok(Some(i)) if i.is_verified() => "verified",
+                Ok(Some(_)) => "unverified",
+                _ => "unknown",
+            };
+            let send = |line: Line| tx.send(MxEvent::Info { room_id: None, line });
+            let _ = send(Line::WhoisRule);
+            let _ = send(Line::WhoisNick {
+                nick: name.clone(),
+                mxid: user.to_string(),
+                info: ident.to_string(),
+            });
+            let mut rows = vec![
+                ("ircname", name),
+                ("server", user.server_name().to_string()),
+            ];
             if !chans.is_empty() {
-                let _ = tx.send(info(format!(" channels : {}", chans.join(" "))));
+                rows.insert(1, ("channels", chans.join(" ")));
             }
-            let _ = tx.send(info(format!("End of /WHOIS for {user}")));
+            rows.push(("devices", devices.to_string()));
+            let len = rows.len();
+            for (i, (key, value)) in rows.into_iter().enumerate() {
+                let _ = send(Line::WhoisRow {
+                    row: (i + 1) as u8,
+                    last: i + 1 == len,
+                    key: key.to_string(),
+                    value,
+                });
+            }
         },
         Effect::Backfill(room_id) => {
             let room = room_of(client, &room_id)?;

@@ -87,3 +87,34 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
     splash and no placeholder.
 21. **--smoke window 1.** The 24-row render cut off the top of the banner. **Fixed:** smoke
     now renders window 1 tall enough to show the whole banner and room list.
+22. **/names header.** v2 printed `-:- [Users(#chan:n)]` as plain info. BitchX prints
+    ` [Users(#chan:n/m)]`: "Users" bold green, the channel and counts green, punctuation
+    dark grey (capture 25). **Fixed:** this is now `Line::Users`. Matrix has no
+    invisible/visible split, so n = m = the number of joined members. Test:
+    `format::tests::test_names_layout`.
+23. **/names grid.** v2 printed `[@nick      ]` cells padded to 10. BitchX prints
+    `[@bxrecon23 ] [ bxrecon77 ]`, with no leading glyph, the brackets dark grey, `@`
+    bold cyan, op nicks bold white, other nicks bold blue, and one space before `]`.
+    **Fixed:** this is now `Line::Names`, 5 cells per row. **Justified:** nicks are
+    padded to the longest nick in the list so the columns line up; the capture can't
+    show BitchX's own padding, because both of its nicks are 9 characters. `+` (voice,
+    power 1..49) is shown as bold green. Tests: `format::tests::test_names_layout`,
+    `app::tests::test_local_commands`.
+24. **Post-join lines.** v2 only focused the window after `/join`. BitchX prints the NAMES
+    header and grid, then ` BitchX: Join to #chan was synched in 0.319 secs!!` (capture 22).
+    **Fixed:** the new `MxEvent::Synched { room_id, millis }` carries the time the join
+    request took, then the window gets NAMES and the synched line before it is focused.
+    **Justified:** ` Channel #chan was created at <date>` is left out, because it would
+    need an extra state fetch for the m.room.create event on every join. Test:
+    `app::tests::test_join_synched`.
+25. **/whois layout.** v2 printed `name [mxid]`, ` server : x` and `End of /WHOIS`.
+    BitchX prints a green-to-grey ruler `--------------- --  -`, then
+    `| nick (user@host) (unknown)`, then rows whose leads alternate ` ` and `| ` and end
+    with `: ` on the last row. The leads fade from bold green to green to dark grey, the
+    keys are padded to 8 with their first letter bold white, and there is no "End of"
+    line (capture 26). **Fixed:** this is now `Line::WhoisRule`, `WhoisNick` and
+    `WhoisRow`. The Matrix mapping (recon 8) is: user@host becomes the mxid, `(unknown)`
+    becomes the cross-signing state (verified, unverified or unknown), ircname is the
+    displayname, channels are the rooms in common (`@` for PL>=50), server is the
+    homeserver, and `devices` (the device count) replaces `idle`/`actually`, which
+    Matrix doesn't expose. Test: `format::tests::test_whois_layout`.
