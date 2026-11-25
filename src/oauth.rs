@@ -1,5 +1,7 @@
 use std::net::{Ipv4Addr, Ipv6Addr};
 
+use anyhow::anyhow;
+use matrix_sdk::Client;
 use matrix_sdk::authentication::oauth::OAuthAuthorizationData;
 use matrix_sdk::authentication::oauth::registration::{
     ApplicationType,
@@ -14,9 +16,9 @@ use matrix_sdk::utils::UrlOrQuery;
 use matrix_sdk::utils::local_server::{LocalServerBuilder, LocalServerRedirectHandle};
 use tokio::io::AsyncBufReadExt;
 use tokio::task::JoinHandle;
+use url::Url;
 
 use crate::config::SavedDevice;
-use crate::prelude::*;
 
 enum OAuthRedirectResponse {
     Server(UrlOrQuery),
@@ -27,7 +29,7 @@ pub async fn oauth_login(
     client: Client,
     user_hint: &UserId,
     saved_device: Option<SavedDevice>,
-) -> IambResult<()> {
+) -> anyhow::Result<()> {
     let oauth = client.oauth();
 
     match oauth.server_metadata().await {
@@ -50,8 +52,7 @@ pub async fn oauth_login(
                 .login(redirect_uri, device, Some(client_metadata().into()), None)
                 .user_id_hint(user_hint)
                 .build()
-                .await
-                .map_err(IambError::from)?;
+                .await?;
 
             let opened =
                 format!("The following URL should have been opened in your browser:\n    {url}");
@@ -65,7 +66,7 @@ pub async fn oauth_login(
             );
 
             let url_or_query = wait_auth_code(server_handle).await?;
-            oauth.finish_login(url_or_query).await.map_err(IambError::from)?;
+            oauth.finish_login(url_or_query).await?;
             Ok(())
         },
         Err(error) => {
@@ -74,7 +75,7 @@ pub async fn oauth_login(
             } else {
                 tracing::warn!("Error fetching OAuth 2.0 metadata : {error:?}");
             }
-            Err(UIError::Failure(
+            Err(anyhow!(
                 "Error fetching homeserver OAuth 2.0 metadata. \
                     Homeserver needs to support native OAuth 2.0 for oauth login to work"
                     .to_string(),
@@ -83,7 +84,7 @@ pub async fn oauth_login(
     }
 }
 
-async fn wait_auth_code(server_handle: LocalServerRedirectHandle) -> IambResult<UrlOrQuery> {
+async fn wait_auth_code(server_handle: LocalServerRedirectHandle) -> anyhow::Result<UrlOrQuery> {
     let (tx, mut rx) = tokio::sync::mpsc::channel(1);
 
     let server_tx = tx.clone();
@@ -142,9 +143,7 @@ async fn wait_auth_code(server_handle: LocalServerRedirectHandle) -> IambResult<
             println!("Using redirect from stdin. Localhost listener will be ignored.");
             Ok(url)
         },
-        None => {
-            Err(UIError::Failure("Failed to receive redirect from stdin or browser".to_string()))
-        },
+        None => Err(anyhow!("Failed to receive redirect from stdin or browser".to_string())),
     }
 }
 

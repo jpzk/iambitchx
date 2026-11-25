@@ -16,6 +16,8 @@
 //! so they can't end up in a `println!` or a tracing line by accident.
 use std::time::Duration;
 
+use anyhow::anyhow;
+use matrix_sdk::Client;
 use matrix_sdk::SessionMeta;
 use matrix_sdk::SessionTokens;
 use matrix_sdk::authentication::oauth::ClientId;
@@ -28,11 +30,10 @@ use matrix_sdk::ruma::OwnedUserId;
 use matrix_sdk::ruma::UserId;
 use matrix_sdk::store::RoomLoadSettings;
 use serde::Deserialize;
-use url::form_urlencoded;
+use url::{Url, form_urlencoded};
 
 use crate::config::SavedDevice;
 use crate::oauth::client_metadata;
-use crate::prelude::*;
 
 /// Scope granting full access to the client-server API (MSC2967).
 pub const SCOPE_API_FULL_ACCESS: &str = "urn:matrix:org.matrix.msc2967.client:api:*";
@@ -272,8 +273,8 @@ fn device_client_metadata() -> Result<serde_json::Value, String> {
     Ok(metadata)
 }
 
-fn fail(msg: impl Into<String>) -> UIError<IambInfo> {
-    UIError::Failure(msg.into())
+fn fail(msg: impl Into<String>) -> anyhow::Error {
+    anyhow!(msg.into())
 }
 
 fn form_body(fields: &[(&str, &str)]) -> String {
@@ -427,7 +428,7 @@ pub async fn device_link_login(
     client: Client,
     user_hint: &UserId,
     saved_device: Option<SavedDevice>,
-) -> IambResult<OAuthSession> {
+) -> anyhow::Result<OAuthSession> {
     let oauth = client.oauth();
 
     let metadata = oauth.server_metadata().await.map_err(|error| {
@@ -552,11 +553,8 @@ pub async fn device_link_login(
         },
     };
 
-    oauth
-        .restore_session(session, RoomLoadSettings::default())
-        .await
-        .map_err(IambError::from)?;
-    client.whoami().await.map_err(IambError::from)?;
+    oauth.restore_session(session, RoomLoadSettings::default()).await?;
+    client.whoami().await?;
 
     println!("Device link approved, logged in as {user_hint}.");
 

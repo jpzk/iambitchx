@@ -21,6 +21,8 @@ pub enum BitchxCommand {
     Clear,
     Close,
     Who { target: Option<String> },
+    Whois { target: String },
+    Rooms,
     Names { target: Option<String> },
     List,
     Mode { target: String, modes: Option<String> },
@@ -67,7 +69,8 @@ impl std::error::Error for BitchxError {}
 pub const COMMAND_NAMES: &[&str] = &[
     "action", "away", "back", "clear", "close", "ctcp", "deop", "exit", "help", "ignore", "invite",
     "j", "join", "kick", "leave", "list", "me", "mode", "msg", "names", "next", "nick", "op",
-    "part", "prev", "previous", "query", "quit", "topic", "unignore", "version", "who", "window",
+    "part", "prev", "previous", "query", "quit", "rooms", "topic", "unignore", "version", "who",
+    "whois", "window",
 ];
 
 /// Split off the first whitespace-delimited word, returning it and the rest
@@ -210,6 +213,12 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Names { target }
         },
         "list" => args.none(BitchxCommand::List)?,
+        "rooms" => args.none(BitchxCommand::Rooms)?,
+        "whois" => {
+            let target = args.required_word("nick")?;
+            args.finish()?;
+            BitchxCommand::Whois { target }
+        },
         "mode" => {
             let target = args.required_word("target")?;
             let modes = args.rest();

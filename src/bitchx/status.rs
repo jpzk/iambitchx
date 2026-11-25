@@ -4,8 +4,10 @@
 //! (`DOUBLE_STATUS_LINE`), built from the "default bx" STATUS_FORMAT1 and
 //! STATUS_FORMAT2 in BitchX1.3 `include/color.h`, with the expandos of
 //! `source/status.c`.
-use crate::bitchx::view::sp;
-use crate::prelude::*;
+use ratatui::style::{Color, Modifier as StyleModifier, Style};
+use ratatui::text::Line;
+
+use crate::bitchx::format::sp;
 
 /// The status bar background (`ESC[44m`).
 pub fn status_bg() -> Style {
@@ -60,6 +62,8 @@ pub struct BxStatus {
     pub window: usize,
     /// `%!`; `None` outside of channels.
     pub users: Option<UserCounts>,
+    /// `%L`: lag to the homeserver in seconds.
+    pub lag: u64,
 }
 
 impl BxStatus {
@@ -130,7 +134,7 @@ impl BxStatus {
             sp(" ", st_text()),
             sp("[", st_punct()),
             sp("Lag ", st_text()),
-            sp("0", st_bright()),
+            sp(self.lag.to_string(), st_bright()),
             sp("]", st_punct()),
         ];
 

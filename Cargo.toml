@@ -6,10 +6,10 @@ authors = ["Ulyssa <git@ulyssa.dev>"]
 repository = "https://github.com/ulyssa/iamb"
 homepage = "https://iamb.chat"
 readme = "README.md"
-description = "A Matrix chat client that uses Vim keybindings"
+description = "A BitchX-style Matrix chat client"
 license = "Apache-2.0"
 exclude = [".github", "CONTRIBUTING.md"]
-keywords = ["matrix", "chat", "tui", "vim"]
+keywords = ["matrix", "chat", "tui", "irc", "bitchx"]
 categories = ["command-line-utilities"]
 rust-version = "1.96"
 build = "build.rs"
@@ -19,14 +19,11 @@ name = "iambitchx"
 path = "src/main.rs"
 
 [features]
-default = ["bundled", "desktop"]
+default = ["bundled"]
 bundled = ["matrix-sdk/bundled-sqlite"]
-desktop = ["dep:notify-rust", "modalkit/clipboard"]
 max_level_warn = ["tracing/max_level_warn"]
 max_level_error = ["tracing/max_level_error"]
 max_level_off = ["tracing/max_level_off"]
-chafa-dyn = ["ratatui-image/chafa-dyn"]
-chafa-static = ["ratatui-image/chafa-static"]
 
 [build-dependencies.vergen-gitcl]
 version = "10.0"
@@ -35,91 +32,34 @@ features = ["build"]
 
 [dependencies]
 anyhow = "1.0"
-bitflags = "2.3"
 chrono = "0.4"
 clap = { version = "^4.6", features = ["derive", "string"] }
-clap_complete = "^4.6"
-css-color-parser = "0.1.2"
+crossterm = { version = "0.29", features = ["event-stream"] }
 dirs = "7.0"
-edit = "0.1.4"
-emojis = "0.9"
-palette = "0.7.7"
-feruca = "0.12"
 futures = "0.3"
 gethostname = "1.1"
-html5ever = "0.39.0"
-http-serde = "2.1.1"
-humansize = "2.0.0"
-image = {version = "0.25.6", features = ["serde"], default-features = false}
-indexmap = {version = "2.14", features = ["serde"]}
-lazy_static = "1.4.0"
 libc = "0.2"
-linkify = "0.11.0"
-markup5ever_rcdom = "0.39"
-mime = "0.3.16"
-mime_guess = "2.0.4"
-nom = "8.0"
 open = "5.0.0"
-ratatui = { version = "0.30.2", features = ["palette", "serde"] }
-regex = "1.5"
+ratatui = "0.30.2"
 rpassword = "7.2"
-serde = "1.0"
+serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 shellexpand = "3.1"
-thiserror = "2.0"
-tokio-stream = "0.1.19"
 toml = "1.1"
 tracing = "0.1.36"
 tracing-appender = "0.2.2"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
-unicode-segmentation = "1.7"
 unicode-width = "0.2"
 url = {version = "2.5.8", features = ["serde"]}
-percent-encoding = "2.3.2"
-xdg = "3.0.0"
-
-[dependencies.comrak]
-version = "0.55.0"
-default-features = false
-features = ["shortcodes"]
-
-[dependencies.notify-rust]
-version = "4.12"
-optional = true
-
-[dependencies.modalkit]
-version = "0.0.32"
-default-features = false
-#git = "https://github.com/ulyssa/modalkit"
-#rev = "31158b7b759ef6f4b3c0d56305fa8a68365d8a96"
-
-[dependencies.modalkit-ratatui]
-version = "0.0.32"
-#git = "https://github.com/ulyssa/modalkit"
-#rev = "31158b7b759ef6f4b3c0d56305fa8a68365d8a96"
-
-[dependencies.matrix-sdk-base]
-version = "0.19.0"
 
 [dependencies.matrix-sdk]
 version = "0.19.0"
 default-features = false
 features = ["e2e-encryption", "socks", "sqlite", "sso-login", "qrcode", "rustls-aws-lc-rs"]
 
-[dependencies.matrix-sdk-crypto]
-version = "0.19.0"
-
 [dependencies.tokio]
 version = "1.24.1"
 features = ["io-std", "macros", "net", "rt-multi-thread", "sync", "time"]
-
-[dependencies.ratatui-image]
-version = "11.0.8"
-default-features = false
-features = ["serde", "crossterm", "image-defaults"]
-
-[dev-dependencies]
-pretty_assertions = "1.4.0"
 
 [profile.release-lto]
 inherits = "release"

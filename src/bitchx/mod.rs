@@ -1,26 +1,11 @@
-//! # BitchX-style frontend
+//! # The BitchX client UI
 //!
-//! An optional, IRC-flavoured view over the same store the classic UI
-//! uses. See `docs/bitchx-frontend.md` for the design.
-use serde::{Deserialize, Serialize};
-
+//! A from-scratch BitchX 1.x clone: numbered windows, two blue status lines,
+//! an IRC input line. See `docs/v2-design.md` and `docs/bitchx-formats.md`.
+pub mod app;
 pub mod commands;
-pub mod dispatch;
-pub mod screen;
+pub mod format;
+pub mod input;
+pub mod model;
 pub mod status;
-pub mod view;
-
-/// Which user interface to draw.
-#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Frontend {
-    /// The classic modal, tabbed, windowed interface inherited from upstream.
-    ///
-    /// Configured as `"classic"`; the legacy value `"iamb"` is still accepted.
-    #[default]
-    #[serde(rename = "classic", alias = "iamb")]
-    Iamb,
-
-    /// A BitchX-style status bar + full-screen chat + input line.
-    Bitchx,
-}
+pub mod ui;
