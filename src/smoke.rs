@@ -69,8 +69,10 @@ pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
         );
     }
 
+    // Tall enough to show all of window 1: banner and room list.
+    let status_height = (app.windows[0].lines.len() + 3).clamp(HEIGHT as usize, 200) as u16;
     println!("=== window 1 (status) ===");
-    for row in render_text(&mut app, WIDTH, HEIGHT)? {
+    for row in render_text(&mut app, WIDTH, status_height)? {
         println!("{row}");
     }
 

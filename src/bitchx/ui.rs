@@ -187,22 +187,32 @@ mod tests {
     #[test]
     fn test_status_window_layout() {
         let mut app = app();
-        let buf = render(&mut app, 60, 16);
+        let buf = render(&mut app, 60, 30);
         let r = rows(&buf);
 
         assert_no_box_glyphs(&buf);
-        assert!(r[0].starts_with(" ____  _ _"), "{:?}", r[0]);
-        assert!(r.iter().any(|l| l.starts_with(" Window 2: #room")));
+        // Recon 00/01: version header first, then the logo.
+        assert!(r[0].starts_with("BitchX - Based on EPIC"), "{:?}", r[0]);
+        assert!(r[1].starts_with("Version (iambitchx-"), "{:?}", r[1]);
+        assert!(r[2].starts_with("Process ["), "{:?}", r[2]);
+        assert!(r[3].starts_with("Using terminal type ["), "{:?}", r[3]);
+        assert!(r[5].starts_with("     ____  _ _"), "{:?}", r[5]);
+        assert_eq!(buf[(5, 5)].fg, Color::Blue);
+        assert!(r[10].starts_with("    [ iambitchx-"), "{:?}", r[10]);
+        assert!(r.iter().any(|l| l.starts_with(" BitchX: Auto Response is set to - carla")));
+        // Room list numbered by window, server-list style.
+        assert!(r.iter().any(|l| l.starts_with("      2) #room [")), "{r:?}");
         assert!(
             r.iter()
-                .any(|l| l.contains("Window 4: armin [query with @armin:remote.tld]"))
+                .any(|l| l.starts_with("      4) armin [query with @armin:remote.tld]"))
         );
-        assert_blue_row(&buf, 13);
-        assert_blue_row(&buf, 14);
-        assert!(r[13].starts_with(" [09:24pm][carla] []"), "{:?}", r[13]);
-        assert!(r[14].starts_with(" [Lag ??]"), "{:?}", r[14]);
-        assert!(r[14].trim_end().ends_with("[::::]"), "{:?}", r[14]);
-        assert!(r[15].starts_with("[status] "));
+        assert_blue_row(&buf, 27);
+        assert_blue_row(&buf, 28);
+        assert!(r[27].starts_with(" [09:24pm][carla] []"), "{:?}", r[27]);
+        assert!(r[28].starts_with(" [Lag ??]"), "{:?}", r[28]);
+        assert!(r[28].trim_end().ends_with("[::::]"), "{:?}", r[28]);
+        // Recon 02: the idle prompt is `[0]`.
+        assert!(r[29].starts_with("[0] "), "{:?}", r[29]);
     }
 
     /// `%T` is a 12-hour `hh:mmam`/`hh:mmpm` clock (recon 02, 22).

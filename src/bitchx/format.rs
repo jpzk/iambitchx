@@ -224,7 +224,8 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
                 sp(name.clone(), w()),
             ])]
         },
-        Line::Raw(text) => vec![TLine::from(sp(text.clone(), bold(Color::LightBlue)))],
+        Line::Raw(text) => vec![TLine::from(sp(text.clone(), n()))],
+        Line::Logo(text) => vec![TLine::from(sp(text.clone(), bold(Color::Blue)))],
     }
 }
 

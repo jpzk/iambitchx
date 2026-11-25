@@ -42,8 +42,10 @@ pub enum Line {
     Undecryptable { nick: String, reason: String },
     /// One SAS emoji: ` SAS n/7  🐶  Dog`.
     Sas { n: usize, emoji: String, name: String },
-    /// A raw line without prefix (banner).
+    /// A raw line without prefix (startup header), default colours.
     Raw(String),
+    /// One row of the startup logo: no prefix, bold blue.
+    Logo(String),
 }
 
 /// A room member as the UI needs it.

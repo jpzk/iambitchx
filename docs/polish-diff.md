@@ -62,3 +62,28 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
     and 30, apart from the glyph (#8). **Fixed** by #8. Test: `format::tests::test_membership_lines`.
     **Justified:** `ServerMode/#chan` (bold red) has no Matrix equivalent, since every Matrix
     state change has a sender, so it isn't rendered.
+16. **Startup header.** v2 opened window 1 with the logo straight away. BitchX starts with
+    `BitchX - Based on EPIC Software Labs epic ircII (1998).`, `Version (...) -- Date (...).`,
+    `Process [pid]` and `Using terminal type [$TERM]` (captures 00/01). **Fixed:** those four
+    lines now come first, in default colours (`app::startup_lines`). **Justified:** the
+    `Date (yyyymmdd)` field shows the git commit instead (`Commit (sha)`), because no build
+    date is embedded and adding one would need build.rs or crate changes.
+17. **Logo.** BitchX prints about 20 rows of CP437 ANSI art, which turns into mojibake in a
+    UTF-8 terminal (recon 7, "DO NOT"). **Justified:** we keep the ASCII figlet logo in bold
+    blue, indented, followed by the `[ iambitchx-ver]` credit row like `[ BitchX-1.3-git]`.
+    Block glyphs were left out on purpose, because `ui::assert_no_box_glyphs` bans
+    U+2500..U+259F everywhere.
+18. **BitchX: lines.** v2 printed `iambitchx x -- BitchX for Matrix. Type /help`. BitchX
+    prints ` BitchX: Auto Response is set to - nick`, with "BitchX" in bold. **Fixed:** both
+    lines now use that form.
+19. **Room list.** v2 printed `Window N: #room [n users]`. BitchX prints a numbered server
+    list grouped by network: ` [efnet]`, then `      0) host port`. **Fixed** (recon 8 maps
+    this to a homeserver line plus rooms): ` Current homeserver: url`, ` Room list:`,
+    ` [server_name]`, then `      N) #room [n users]`, where N is the window number,
+    right-aligned so that `10)` lines up with `2)`. Test: `ui::tests::test_status_window_layout`.
+20. **Idle prompt.** v2 showed `[status]` in window 1. BitchX shows `[0]` (capture 02).
+    **Fixed.** Tests: `app::tests` (prompt) and `ui::tests::test_status_window_layout`.
+    The idle screen is otherwise just scrollback plus the 2 status lines, as captured: no
+    splash and no placeholder.
+21. **--smoke window 1.** The 24-row render cut off the top of the banner. **Fixed:** smoke
+    now renders window 1 tall enough to show the whole banner and room list.

@@ -24,7 +24,8 @@ use crate::bitchx::status::{BxStatus, UserCounts};
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
 
-/// The BitchX banner shown in the status window.
+/// The BitchX logo shown in the status window. ASCII rather than the
+/// original's CP437 art, which is mojibake in a UTF-8 terminal (recon 7).
 pub const BANNER: [&str; 5] = [
     r" ____  _ _       _     __  __",
     r"| __ )(_) |_ ___| |__  \ \/ /",
@@ -32,6 +33,27 @@ pub const BANNER: [&str; 5] = [
     r"| |_) | | || (__| | | | /  \ ",
     r"|____/|_|\__\___|_| |_|/_/\_\",
 ];
+
+/// The startup lines of window 1, as in recon captures 00/01: version
+/// header, logo with its `[ version]` credit, then ` BitchX:` lines.
+pub fn startup_lines(nick: &str) -> Vec<Line> {
+    let ver = env!("CARGO_PKG_VERSION");
+    let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
+    let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
+    let mut v = vec![
+        Line::Raw("BitchX - Based on EPIC Software Labs epic ircII (1998).".into()),
+        Line::Raw(format!("Version (iambitchx-{ver}) -- Commit ({sha}).")),
+        Line::Raw(format!("Process [{}]", std::process::id())),
+        Line::Raw(format!("Using terminal type [{term}]")),
+        Line::Raw(String::new()),
+    ];
+    v.extend(BANNER.iter().map(|b| Line::Logo(format!("    {b}"))));
+    v.push(Line::Logo(format!("    [ iambitchx-{ver}]           Matrix edition")));
+    v.push(Line::Raw(String::new()));
+    v.push(Line::Error(format!("Auto Response is set to - {nick}")));
+    v.push(Line::Error("Type /help for help".into()));
+    v
+}
 
 const MAX_LINES: usize = 2000;
 
@@ -141,13 +163,7 @@ pub struct App {
 impl App {
     pub fn new(me: OwnedUserId) -> Self {
         let mut status = Window::default();
-        for b in BANNER {
-            status.lines.push(Line::Raw(b.to_string()));
-        }
-        status.lines.push(Line::Info(format!(
-            "iambitchx {} -- BitchX for Matrix. Type /help for help",
-            env!("CARGO_PKG_VERSION")
-        )));
+        status.lines.extend(startup_lines(me.localpart()));
 
         App {
             nick: me.localpart().to_string(),
@@ -285,7 +301,7 @@ impl App {
     pub fn prompt(&self) -> String {
         match self.cur().channel() {
             Some(c) => format!("[{c}] "),
-            None => "[status] ".to_string(),
+            None => "[0] ".to_string(),
         }
     }
 
@@ -371,7 +387,7 @@ impl App {
             Some(peer) => format!("query with {peer}"),
             None => format!("{} users", snap.members.len()),
         };
-        self.status_info(format!("Window {refnum}: {} [{what}]", snap.name));
+        self.status_info(format!("{refnum:>6}) {} [{what}]", snap.name));
 
         let mut win = Window { room: snap, ..Default::default() };
         if let Some(peer) = win.room.dm_peer.clone() {
@@ -1025,7 +1041,7 @@ pub mod tests {
         assert_eq!(app.refnum(), STATUS_REFNUM);
         assert_eq!(app.windows[1].channel(), Some("#room"));
         assert_eq!(app.cur().channel(), None);
-        assert_eq!(app.prompt(), "[status] ");
+        assert_eq!(app.prompt(), "[0] ");
     }
 
     #[test]
