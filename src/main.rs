@@ -31,7 +31,14 @@ use matrix_sdk::ruma::events::invite_permission_config::{
     InvitePermissionAction,
     InvitePermissionConfigEventContent,
 };
-use modalkit::actions::{Commandable, TabAction, TabContainer, TabCount, WindowContainer};
+use modalkit::actions::{
+    CommandBarAction,
+    Commandable,
+    TabAction,
+    TabContainer,
+    TabCount,
+    WindowContainer,
+};
 use modalkit::crossterm;
 use modalkit::crossterm::cursor::SetCursorStyle;
 use modalkit::crossterm::event::{Event, KeyEventKind, MouseEventKind, poll, read};
@@ -52,11 +59,14 @@ use tracing::level_filters::LevelFilter;
 use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::base::{HomeserverAction, KeysAction};
+use crate::bitchx::Frontend;
+use crate::bitchx::screen::BitchxScreen;
 use crate::completions::IambCompleter;
 use crate::config::{CursorShape, Iamb};
 use crate::prelude::*;
 use crate::util::{restore_tty, setup_tty};
 use crate::windows::IambWindow;
+use crate::windows::room::Chat;
 use crate::worker::{ClientWorker, LoginStyle, create_room};
 
 mod base;
@@ -256,6 +266,12 @@ struct Application {
 
     /// Whether we need to do a full redraw (e.g., after running a subprocess).
     dirty: bool,
+
+    /// Whether the `:` command bar (or a search prompt) has focus.
+    cmdbar_focused: bool,
+
+    /// The last error or info message, shown as a `-:-` notice by the BitchX screen.
+    bx_notice: Option<(String, Style)>,
 }
 
 impl Application {
@@ -292,6 +308,8 @@ impl Application {
             focused: true,
             last_layout: None,
             dirty: true,
+            cmdbar_focused: false,
+            bx_notice: None,
         })
     }
 
@@ -306,6 +324,7 @@ impl Application {
         }
 
         if let Some(err) = store.application.draw_error.take() {
+            self.bx_notice = Some((err.to_string(), Style::default().fg(Color::Red)));
             sstate.push_error(err);
         }
 
@@ -314,6 +333,9 @@ impl Application {
         }
 
         let theme = store.application.settings.theme.clone();
+        let bx_active = store.application.settings.tunables.frontend == Frontend::Bitchx &&
+            !self.cmdbar_focused;
+        let bx_notice = self.bx_notice.clone();
 
         term.draw(|f| {
             let area = f.area();
@@ -326,23 +348,40 @@ impl Application {
             let hide_cursor = !dialogstr.is_empty();
 
             store.application.draw_curr = Some(Instant::now());
-            let screen = Screen::new(store)
-                .show_dialog(dialogstr)
-                .show_mode(modestr)
-                .borders(true)
-                .border_style(theme.windows.border)
-                .border_style_focused(theme.windows.border_focused)
-                .border_type(theme.windows.border_line)
-                .border_type_focused(theme.windows.border_focused_line)
-                .cmdbar_style(theme.cmdbar.default)
-                .cmdbar_completions_style(theme.cmdbar.completions)
-                .cmdbar_prompt_style(theme.cmdbar.prompt)
-                .tab_style(theme.tabs.title)
-                .tab_style_focused(theme.tabs.title_focused)
-                .completion_style(theme.completion.default)
-                .completion_style_selected(theme.completion.selected)
-                .focus(focused);
-            f.render_stateful_widget(screen, area, sstate);
+
+            // BitchX frontend: a joined room gets the status bar + chat + input
+            // line layout. Anything else (room lists, members, dialogs, the
+            // command bar) falls back to the normal iamb screen.
+            let bx_chat = if bx_active && !hide_cursor {
+                sstate.current_window_mut().ok().and_then(bitchx::screen::bitchx_chat)
+            } else {
+                None
+            };
+
+            if let Some(chat) = bx_chat {
+                let status = bitchx::screen::room_status(&*chat, store);
+                let body = Chat::new(store).focus(focused);
+                let screen = BitchxScreen::new(status, body).notice(bx_notice);
+                f.render_stateful_widget(screen, area, chat);
+            } else {
+                let screen = Screen::new(store)
+                    .show_dialog(dialogstr)
+                    .show_mode(modestr)
+                    .borders(true)
+                    .border_style(theme.windows.border)
+                    .border_style_focused(theme.windows.border_focused)
+                    .border_type(theme.windows.border_line)
+                    .border_type_focused(theme.windows.border_focused_line)
+                    .cmdbar_style(theme.cmdbar.default)
+                    .cmdbar_completions_style(theme.cmdbar.completions)
+                    .cmdbar_prompt_style(theme.cmdbar.prompt)
+                    .tab_style(theme.tabs.title)
+                    .tab_style_focused(theme.tabs.title_focused)
+                    .completion_style(theme.completion.default)
+                    .completion_style_selected(theme.completion.selected)
+                    .focus(focused);
+                f.render_stateful_widget(screen, area, sstate);
+            }
 
             if hide_cursor {
                 return;
@@ -504,7 +543,10 @@ impl Application {
 
             // Simple delegations.
             Action::Application(act) => self.iamb_run(act, ctx, store).await?,
-            Action::CommandBar(act) => self.screen.command_bar(&act, &ctx)?,
+            Action::CommandBar(act) => {
+                self.cmdbar_focused = matches!(act, CommandBarAction::Focus(..));
+                self.screen.command_bar(&act, &ctx)?
+            },
             Action::Macro(act) => self.bindings.macro_command(&act, &ctx, store)?,
             Action::Scroll(style) => self.screen.scroll(&style, &ctx, store)?,
             Action::ShowInfoMessage(info) => Some(info),
@@ -948,9 +990,57 @@ impl Application {
         }
     }
 
+    /// BitchX frontend: whether the key manager must be put back into Insert
+    /// mode. True when a joined room is focused and the keys are in plain
+    /// Normal mode (no pending Visual/Insert/dialog/command bar).
+    fn bitchx_wants_insert(&mut self, store: &ProgramStore) -> bool {
+        store.application.settings.tunables.frontend == Frontend::Bitchx &&
+            !self.cmdbar_focused &&
+            self.bindings.show_mode().is_none() &&
+            self.bindings.show_dialog(1, 1).is_empty() &&
+            self.screen
+                .current_window_mut()
+                .ok()
+                .and_then(bitchx::screen::bitchx_chat)
+                .is_some()
+    }
+
+    /// BitchX frontend: force the key manager into Insert mode (spec §4.4), so
+    /// typing always goes straight into the input line. Returns whether it did.
+    fn bitchx_insert(&mut self, store: &ProgramStore) -> bool {
+        if !self.bitchx_wants_insert(store) {
+            return false;
+        }
+
+        self.bindings.input_key(crate::keybindings::bitchx_insert_key());
+        true
+    }
+
+    /// [Self::action_pop], but once the queue is drained, re-enter Insert mode
+    /// in the BitchX frontend (at most once per key) and keep going.
+    fn action_pop_bitchx(
+        &mut self,
+        keyskip: bool,
+        injected: &mut bool,
+        store: &ProgramStore,
+    ) -> Option<(ProgramAction, ProgramContext)> {
+        if let res @ Some(_) = self.action_pop(keyskip) {
+            return res;
+        }
+
+        if *injected || !self.bitchx_insert(store) {
+            return None;
+        }
+
+        // After an error the rest of the queue waits for the next key, as usual.
+        *injected = true;
+        self.action_pop(keyskip)
+    }
+
     fn handle_info(&mut self, info: InfoMessage) {
         match info {
             InfoMessage::Message(info) => {
+                self.bx_notice = Some((info.clone(), self.theme.cmdbar.info));
                 self.screen.push_message(info, self.theme.cmdbar.info);
             },
             InfoMessage::Pager(text) => {
@@ -961,6 +1051,7 @@ impl Application {
     }
 
     fn handle_error(&mut self, err: impl ToString) {
+        self.bx_notice = Some((err.to_string(), self.theme.cmdbar.error));
         self.screen.push_message(err, self.theme.cmdbar.error);
     }
 
@@ -970,15 +1061,21 @@ impl Application {
         let store = self.store.clone();
 
         tracing::info!("starting main loop");
+        self.bitchx_insert(store.lock().await.deref());
+
         while self.screen.tabs() != 0 {
             let key = self.step().await?;
 
             self.bindings.input_key(key);
+            self.bx_notice = None;
 
             let mut locked = store.lock().await;
             let mut keyskip = false;
+            let mut injected = false;
 
-            while let Some((action, ctx)) = self.action_pop(keyskip) {
+            while let Some((action, ctx)) =
+                self.action_pop_bitchx(keyskip, &mut injected, locked.deref())
+            {
                 match self.action_run(action, ctx, locked.deref_mut()).await {
                     Ok(None) => {
                         // Continue processing.
