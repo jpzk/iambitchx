@@ -34,6 +34,8 @@ use ratatui::prelude::Stylize;
 use regex::Regex;
 
 use crate::base::{DownloadFlags, EchoLocation};
+use crate::bitchx::Frontend;
+use crate::bitchx::dispatch::{BxOutcome, handle_input};
 use crate::config::EncryptionIndicatorLocation;
 use crate::message::{MessageId, text_to_message, text_to_text_message_event_content};
 use crate::prelude::*;
@@ -374,9 +376,9 @@ impl ChatState {
     pub async fn send_command(
         &mut self,
         act: SendAction,
-        _: ProgramContext,
+        ctx: ProgramContext,
         store: &mut ProgramStore,
-    ) -> IambResult<EditInfo> {
+    ) -> IambResult<Vec<(ProgramAction, ProgramContext)>> {
         let settings = &store.application.settings;
         let tunables = &settings.tunables;
         let room = get_joined(self.id(), &store.application.worker)?;
@@ -398,13 +400,27 @@ impl ChatState {
                             .to_string();
                     if edited_msg.is_empty() {
                         self.tbox.reset();
-                        return Ok(None);
+                        return Ok(vec![]);
                     }
                     edited_msg
                 } else if msg.is_blank() {
-                    return Ok(None);
+                    return Ok(vec![]);
                 } else {
                     msg.trim_end().to_string()
+                };
+
+                // BitchX frontend: `/command` lines are dispatched, not sent.
+                let msg = if tunables.frontend == Frontend::Bitchx && msg.starts_with('/') {
+                    match handle_input(&msg) {
+                        BxOutcome::Send(text) => text,
+                        BxOutcome::Fail(err) => return Err(UIError::Failure(err)),
+                        BxOutcome::Run(acts) => {
+                            self.reset();
+                            return Ok(acts.into_iter().map(|act| (act, ctx.clone())).collect());
+                        },
+                    }
+                } else {
+                    msg
                 };
 
                 let mut msg = text_to_message(msg.into(), tunables.default_markup);
@@ -444,7 +460,7 @@ impl ChatState {
                                     }
 
                                     self.reset();
-                                    return Ok(None);
+                                    return Ok(vec![]);
                                 },
                                 None => {
                                     let msg = "local echo not found in store";
@@ -481,6 +497,18 @@ impl ChatState {
 
                 // Reset message bar state now that it's been sent.
                 self.reset();
+            },
+            SendAction::SubmitText(text) => {
+                // Text supplied by another window (BitchX `/msg`): leave this
+                // window's message bar, reply and edit state untouched.
+                let mut msg = text_to_message(text.into(), tunables.default_markup);
+
+                if let MessageType::Text(content) = &msg.msgtype {
+                    let mentions = extract_mentions(content);
+                    msg = msg.add_mentions(mentions);
+                }
+
+                room.send_queue().send(msg.into()).await.map_err(IambError::from)?;
             },
             SendAction::Upload(file, add_caption) => {
                 let caption = self.tbox.get();
@@ -572,7 +600,7 @@ impl ChatState {
             );
         }
 
-        Ok(None)
+        Ok(vec![])
     }
 
     pub fn focus_toggle(&mut self) {

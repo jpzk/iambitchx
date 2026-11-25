@@ -4,10 +4,11 @@
 //! uses. See `docs/bitchx-frontend.md` for the design.
 use serde::{Deserialize, Serialize};
 
-// Not wired into the UI yet: dispatch (chat.rs) and screen rendering land in
-// follow-up changes. Until then only the tests exercise these modules.
+// Screen rendering lands in a follow-up change; until then only the tests
+// exercise the status bar.
 #[allow(dead_code)]
 pub mod commands;
+pub mod dispatch;
 #[allow(dead_code)]
 pub mod status;
 
