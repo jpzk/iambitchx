@@ -970,8 +970,14 @@ pub mod tests {
             user: owned_user_id!("@x:y")
         }]);
         assert_eq!(typed(&mut app, "/whois armin"), vec![Effect::Whois(armin.clone())]);
-        assert_eq!(typed(&mut app, "/msg armin yo"), vec![Effect::Msg {
-            user: armin.clone(),
+        // An open DM window takes the message; unknown users get a new DM.
+        assert_eq!(typed(&mut app, "/msg armin yo"), vec![Effect::Send {
+            room_id: owned_room_id!("!c:example.org"),
+            text: "yo".into(),
+            emote: false
+        }]);
+        assert_eq!(typed(&mut app, "/msg bob yo"), vec![Effect::Msg {
+            user: owned_user_id!("@bob:example.org"),
             text: "yo".into()
         }]);
         assert_eq!(typed(&mut app, "/nick neo"), vec![Effect::Nick("neo".into())]);
@@ -981,7 +987,9 @@ pub mod tests {
         assert!(typed(&mut app, "/kick nobody").is_empty());
         assert_eq!(last(&app), Line::Error("nobody: No such nick".into()));
         // An existing DM window is reused by /query.
-        assert!(typed(&mut app, "/query armin").is_empty());
+        assert_eq!(typed(&mut app, "/query armin"), vec![Effect::Backfill(owned_room_id!(
+            "!c:example.org"
+        ))]);
         assert_eq!(app.refnum(), 4);
         assert_eq!(typed(&mut app, "/query @new:x"), vec![Effect::Query(owned_user_id!("@new:x"))]);
         assert_eq!(typed(&mut app, "/quit"), vec![Effect::Quit]);
