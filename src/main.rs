@@ -53,7 +53,7 @@ use modalkit_ratatui::screen::{Screen, ScreenState, TabbedLayoutDescription};
 use modalkit_ratatui::windows::{WindowLayoutDescription, WindowLayoutState};
 use modalkit_ratatui::{TerminalExtOps, Window};
 use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
+use ratatui::backend::{Backend, ClearType, CrosstermBackend};
 use tokio::sync::Mutex as AsyncMutex;
 use tracing::Level;
 use tracing::level_filters::LevelFilter;
@@ -331,7 +331,7 @@ impl Application {
         }
 
         if full {
-            term.clear()?;
+            clear_full(term)?;
         }
 
         let theme = store.application.settings.theme.clone();
@@ -1069,7 +1069,7 @@ impl Application {
     }
 
     pub async fn run(&mut self) -> Result<(), std::io::Error> {
-        self.terminal.clear()?;
+        clear_full(&mut self.terminal)?;
 
         let store = self.store.clone();
 
@@ -1397,4 +1397,18 @@ fn main() {
     }
 
     drop(guard);
+}
+
+/// Clear the whole screen and force a full redraw on the next draw.
+///
+/// ratatui's `Terminal::clear` asks the terminal for the cursor position first
+/// (a `CSI 6n` round trip). That query times out under some terminals and
+/// multiplexers ("The cursor position could not be read within a normal
+/// duration") and kills the client at startup. A fullscreen viewport doesn't
+/// need the cursor position, so clear without it.
+fn clear_full(term: &mut Terminal<CrosstermBackend<Stdout>>) -> std::io::Result<()> {
+    term.backend_mut().clear_region(ClearType::All)?;
+    term.current_buffer_mut().reset();
+    term.swap_buffers();
+    Ok(())
 }
