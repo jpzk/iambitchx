@@ -171,7 +171,7 @@ mod tests {
         // Two blue status rows directly above the last row.
         assert_blue_row(&buf, 9);
         assert_blue_row(&buf, 10);
-        assert!(r[9].starts_with(" [12:34][@carla] [#room]"), "{:?}", r[9]);
+        assert!(r[9].starts_with(" [09:24pm][@carla] [#room]"), "{:?}", r[9]);
         assert!(r[10].contains("[Lag 0] [O/1 N/2 I/0 V/1 F/0]"), "{:?}", r[10]);
         assert!(r[10].trim_end().ends_with("[Win 2]"), "{:?}", r[10]);
         // The prompt on the last row, not blue.
@@ -197,9 +197,67 @@ mod tests {
         );
         assert_blue_row(&buf, 13);
         assert_blue_row(&buf, 14);
-        assert!(r[13].contains("type /help for help"));
+        assert!(r[13].starts_with(" [09:24pm][carla] []"), "{:?}", r[13]);
         assert!(r[14].trim_end().ends_with("[Win 1]"));
         assert!(r[15].starts_with("[status] "));
+    }
+
+    /// `%T` is a 12-hour `hh:mmam`/`hh:mmpm` clock (recon 02, 22).
+    fn is_bx_clock(s: &str) -> bool {
+        let b = s.as_bytes();
+        b.len() == 7 &&
+            b[..2].iter().all(u8::is_ascii_digit) &&
+            b[2] == b':' &&
+            b[3..5].iter().all(u8::is_ascii_digit) &&
+            (s.ends_with("am") || s.ends_with("pm"))
+    }
+
+    #[test]
+    fn test_status_clock_is_12h_am_pm() {
+        let mut app = room_app();
+        app.clock = None;
+        let buf = render(&mut app, 60, 12);
+        let r = row(&buf, 9);
+        assert!(is_bx_clock(&r[2..9]), "{r:?}");
+        assert_eq!(&r[..2], " [");
+        assert_eq!(&r[9..11], "][");
+
+        use chrono::NaiveTime;
+        let t = |h, m| crate::bitchx::status::clock(NaiveTime::from_hms_opt(h, m, 0).unwrap());
+        assert_eq!(t(21, 24), "09:24pm");
+        assert_eq!(t(9, 5), "09:05am");
+        assert_eq!(t(0, 0), "12:00am");
+        assert_eq!(t(12, 30), "12:30pm");
+    }
+
+    #[test]
+    fn test_status_field_order() {
+        // Line 1: ` [time][@nick] [#chan(+modes)]`, line 2: ` [Lag n] [O/ N/ I/ V/ F/]`.
+        let mut app = room_app();
+        let mut snap = crate::bitchx::app::tests::room("!a:example.org", "#bxrecon-0122");
+        snap.invite_only = true;
+        app.handle_mx(MxEvent::Room(snap));
+        let buf = render(&mut app, 80, 12);
+        let l1 = row(&buf, 9);
+        let l2 = row(&buf, 10);
+        assert!(l1.starts_with(" [09:24pm][@carla] [#bxrecon-0(+i)]"), "{l1:?}");
+        let pos = |s: &str, n: &str| s.find(n).unwrap_or_else(|| panic!("{n} not in {s:?}"));
+        assert!(pos(&l1, "pm]") < pos(&l1, "carla") && pos(&l1, "carla") < pos(&l1, "#bxrecon"));
+        assert!(pos(&l2, "[Lag") < pos(&l2, "[O/"), "{l2:?}");
+        // Per-field colours from 22-channel-join.ansi.
+        let st = |x: u16| buf[(x, 9)].clone();
+        assert_eq!(st(1).fg, Color::Cyan); // [
+        assert_eq!(st(2).fg, Color::White); // clock, bold
+        assert!(st(2).modifier.contains(ratatui::style::Modifier::BOLD));
+        assert_eq!(st(11).fg, Color::White); // @ bold
+        assert_eq!(st(12).fg, Color::Gray); // nick, plain white
+        assert!(!st(12).modifier.contains(ratatui::style::Modifier::BOLD));
+
+        // A DM window: `[]` for the channel, then `[Query: nick]`.
+        app.handle_key(alt('4'));
+        let buf = render(&mut app, 80, 12);
+        let l1 = row(&buf, 9);
+        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
     }
 
     #[test]

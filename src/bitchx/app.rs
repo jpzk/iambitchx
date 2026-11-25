@@ -266,13 +266,14 @@ impl App {
             time: self
                 .clock
                 .clone()
-                .unwrap_or_else(|| chrono::Local::now().format("%H:%M").to_string()),
+                .unwrap_or_else(|| crate::bitchx::status::clock(chrono::Local::now())),
             nick: self.nick.clone(),
             umodes: String::new(),
             away: self.away.is_some(),
             chanop: me.is_some_and(Member::is_op),
             voice: me.is_some_and(Member::is_voice),
-            channel: win.channel().map(str::to_string),
+            channel: win.channel().filter(|_| win.room.dm_peer.is_none()).map(str::to_string),
+            query: win.room.dm_peer.as_ref().map(|_| win.room.name.clone()),
             modes,
             act: self.act(),
             window: self.refnum(),
@@ -998,7 +999,7 @@ pub mod tests {
     /// An app with the status window and three rooms.
     pub fn app() -> App {
         let mut app = App::new(owned_user_id!("@carla:example.org"));
-        app.clock = Some("12:34".into());
+        app.clock = Some("09:24pm".into());
         app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
         app.handle_mx(MxEvent::Room(room("!b:example.org", "#other")));
         let mut dm = room("!c:example.org", "armin");
