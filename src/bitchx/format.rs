@@ -45,14 +45,10 @@ pub fn sp(text: impl Into<String>, style: Style) -> Span<'static> {
     Span::styled(sanitize(&text.into()), style)
 }
 
-/// `$G` (SHOW_NUMERICS_STR, ASCII build): bold red `-`, bold white `:`, bold red `-`.
+/// The leading glyph of every client/event line: a single (dark-grey) space,
+/// as captured from BitchX (recon §3).
 pub fn g() -> Vec<Span<'static>> {
-    vec![
-        Span::styled("-", bold(Color::LightRed)),
-        Span::styled(":", w()),
-        Span::styled("-", bold(Color::LightRed)),
-        Span::raw(" "),
-    ]
+    vec![Span::styled(" ", k())]
 }
 
 fn g_line(rest: Vec<Span<'static>>) -> TLine<'static> {
@@ -79,65 +75,76 @@ fn body_lines(prefix: Vec<Span<'static>>, text: &str, style: Style) -> Vec<TLine
 }
 
 /// Format one line for the window whose channel name is `chan`.
+/// Formats and colours follow the BitchX recon captures 22-32.
 pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
     match line {
-        // PUBLIC `<nick> text` (bold cyan brackets); SEND_PUBLIC highlights
-        // our own nick: bold white nick between magenta brackets.
+        // `<nick> text`: only the brackets are coloured, bold magenta for
+        // our own lines and bold blue for everyone else.
         Line::Public { nick, own, text } => {
-            let (bracket, nick_style) = if *own {
-                (bold(Color::LightMagenta), w())
+            let bracket = if *own {
+                bold(Color::Magenta)
             } else {
-                (bold(Color::Cyan), n())
+                bold(Color::Blue)
             };
             let prefix = vec![
                 sp("<", bracket),
-                sp(nick.clone(), nick_style),
+                sp(nick.clone(), n()),
                 sp(">", bracket),
                 sp(" ", n()),
             ];
             body_lines(prefix, text, n())
         },
-        // ACTION `%K* %W$nick %n$text`
-        Line::Action { nick, text, .. } => {
-            body_lines(vec![sp("* ", k()), sp(nick.clone(), w()), sp(" ", n())], text, n())
+        // Own: ` nick text` (nick bold white). Others: ` nick/#chan text`
+        // (nick and channel bold yellow).
+        Line::Action { nick, own, text } => {
+            let who = if *own {
+                sp(format!("{nick} "), w())
+            } else {
+                sp(format!("{nick}/{chan} "), bold(Color::Yellow))
+            };
+            body_lines(vec![sp(" ", k()), who], text, n())
         },
-        // PUBLIC_NOTICE `%K-%P$nick%K:%p$chan%K-%n text`
-        Line::Notice { nick, text } => {
+        // `-nick(mxid)- text`: punctuation dark grey, nick and host magenta.
+        Line::Notice { nick, mxid, text } => {
             let prefix = vec![
                 sp("-", k()),
-                sp(nick.clone(), fg(Color::LightMagenta)),
-                sp(":", k()),
-                sp(chan, fg(Color::Magenta)),
-                sp("-", k()),
+                sp(nick.clone(), fg(Color::Magenta)),
+                sp("(", k()),
+                sp(mxid.clone(), fg(Color::Magenta)),
+                sp(")-", k()),
                 sp(" ", n()),
             ];
             body_lines(prefix, text, n())
         },
-        // JOIN `$G %C$nick %K[%c$userhost%K]%n has joined $chan`
+        // ` nick [mxid] has joined #chan`: nick bold cyan, host cyan.
         Line::Join { nick, mxid } => {
             vec![g_line(vec![
-                sp(nick.clone(), bold(Color::LightCyan)),
-                sp(" [", k()),
+                sp(format!("{nick} "), bold(Color::Cyan)),
+                sp("[", k()),
                 sp(mxid.clone(), c()),
                 sp("]", k()),
                 sp(format!(" has joined {chan}"), n()),
             ])]
         },
-        // LEAVE `$G $nick %K[%w$userhost%K]%n has left $chan %K[%W$reason%K]`
+        // ` nick [mxid] has left #chan [reason]`: the reason brackets are
+        // always printed, `[]` when there is none.
         Line::Part { nick, mxid, reason } => {
             let mut s = vec![
-                sp(nick.clone(), n()),
-                sp(" [", k()),
-                sp(mxid.clone(), fg(Color::Gray)),
+                sp(format!("{nick} "), n()),
+                sp("[", k()),
+                sp(mxid.clone(), n()),
                 sp("]", k()),
-                sp(format!(" has left {chan}"), n()),
+                sp(format!(" has left {chan} "), n()),
             ];
-            if let Some(r) = reason {
-                s.extend([sp(" [", k()), sp(r.clone(), w()), sp("]", k())]);
+            match reason {
+                Some(r) if !r.is_empty() => {
+                    s.extend([sp("[", k()), sp(r.clone(), n()), sp("]", k())])
+                },
+                _ => s.push(sp("[]", k())),
             }
             vec![g_line(s)]
         },
-        // KICK `$G %n$victim was kicked off $chan by %c$kicker %K(%n$reason%K)`
+        // ` victim was kicked off #chan by kicker (reason)`: kicker cyan.
         Line::Kick { victim, kicker, reason } => {
             let mut s = vec![
                 sp(format!("{victim} was kicked off {chan} by "), n()),
@@ -148,15 +155,15 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             }
             vec![g_line(s)]
         },
-        // NICKNAME `$G %W$old %nis now known as %c$new`
+        // ` old is now known as new`: old bold white, new cyan.
         Line::Nick { old, new } => {
             vec![g_line(vec![
-                sp(old.clone(), w()),
-                sp(" is now known as ", n()),
+                sp(format!("{old} "), w()),
+                sp("is now known as ", n()),
                 sp(new.clone(), c()),
             ])]
         },
-        // TOPIC / TOPIC_CHANGE
+        // ` Topic (#chan): changed by nick: topic`
         Line::Topic { nick, topic } => {
             let mut s = vec![
                 sp("Topic ", n()),
@@ -170,13 +177,13 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             s.push(sp(format!(" {topic}"), n()));
             vec![g_line(s)]
         },
-        // MODE `$G %nmode%K/%c$chan %K[%W$modes%K]%n by %W$nick`
+        // ` mode/#chan [modes] by nick`
         Line::Mode { modes, nick } => {
             vec![g_line(vec![
                 sp("mode", n()),
                 sp("/", k()),
-                sp(chan, c()),
-                sp(" [", k()),
+                sp(format!("{chan} "), c()),
+                sp("[", k()),
                 sp(modes.clone(), w()),
                 sp("]", k()),
                 sp(" by ", n()),
@@ -190,9 +197,15 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             ])]
         },
         Line::Info(text) => text.split('\n').map(|t| g_line(vec![sp(t, n())])).collect(),
+        // ` BitchX: text` ("BitchX" bold), as for client errors.
         Line::Error(text) => {
             text.split('\n')
-                .map(|t| g_line(vec![sp(t, fg(Color::LightRed))]))
+                .map(|t| {
+                    g_line(vec![
+                        sp("BitchX", n().add_modifier(Modifier::BOLD)),
+                        sp(format!(": {t}"), n()),
+                    ])
+                })
                 .collect()
         },
         Line::Undecryptable { nick, reason } => {
@@ -273,6 +286,16 @@ mod tests {
         plain(&format_line(line, "#room")).join("\n")
     }
 
+    /// The style of the span containing `needle` in the first rendered line.
+    fn style_of(lines: &[TLine<'_>], needle: &str) -> Style {
+        lines[0]
+            .spans
+            .iter()
+            .find(|s| s.content.contains(needle))
+            .unwrap_or_else(|| panic!("no span {needle:?}"))
+            .style
+    }
+
     #[test]
     fn test_public_and_action() {
         let l = Line::Public {
@@ -281,47 +304,102 @@ mod tests {
             text: "hi".into(),
         };
         assert_eq!(text(&l), "<armin> hi");
-        let l = Line::Action {
+        // Capture 24: own action ` nick text`, other's ` nick/#chan text`.
+        let own = Line::Action {
             nick: "carla".into(),
             own: true,
             text: "waves".into(),
         };
-        assert_eq!(text(&l), "* carla waves");
+        assert_eq!(text(&own), " carla waves");
+        assert_eq!(style_of(&format_line(&own, "#room"), "carla"), w());
+        let other = Line::Action {
+            nick: "armin".into(),
+            own: false,
+            text: "waves back".into(),
+        };
+        assert_eq!(text(&other), " armin/#room waves back");
+        assert_eq!(style_of(&format_line(&other, "#room"), "armin/#room"), bold(Color::Yellow));
     }
 
     #[test]
-    fn test_own_nick_highlighted() {
+    fn test_public_bracket_colors() {
+        // Capture 23: own `<`/`>` bold magenta, others bold blue, nick plain.
         let own =
             format_line(&Line::Public { nick: "me".into(), own: true, text: "x".into() }, "#r");
         let other =
             format_line(&Line::Public { nick: "me".into(), own: false, text: "x".into() }, "#r");
-        assert_ne!(own[0].spans[1].style, other[0].spans[1].style);
-        assert!(own[0].spans[1].style.add_modifier.contains(Modifier::BOLD));
+        assert_eq!(own[0].spans[0].style, bold(Color::Magenta));
+        assert_eq!(own[0].spans[2].style, bold(Color::Magenta));
+        assert_eq!(other[0].spans[0].style, bold(Color::Blue));
+        assert_eq!(own[0].spans[1].style, n());
+        assert_eq!(other[0].spans[1].style, n());
     }
 
     #[test]
-    fn test_membership_lines() {
+    fn test_join_line_format() {
+        // Capture 22: ` bxrecon23 [~node@host] has joined #chan`, nick bold
+        // cyan, brackets dark grey, host cyan, the rest plain.
         let j = Line::Join {
             nick: "armin".into(),
             mxid: "@armin:remote.tld".into(),
         };
-        assert_eq!(text(&j), "-:- armin [@armin:remote.tld] has joined #room");
+        assert_eq!(text(&j), " armin [@armin:remote.tld] has joined #room");
+        let l = format_line(&j, "#room");
+        assert_eq!(style_of(&l, "armin "), bold(Color::Cyan));
+        assert_eq!(style_of(&l, "["), k());
+        assert_eq!(style_of(&l, "@armin:remote.tld"), c());
+        assert_eq!(style_of(&l, "]"), k());
+        assert_eq!(style_of(&l, "has joined"), n());
+        assert!(!text(&j).contains("-:-"));
+    }
+
+    #[test]
+    fn test_membership_lines() {
         let p = Line::Part {
             nick: "a".into(),
             mxid: "@a:b".into(),
             reason: Some("bye".into()),
         };
-        assert_eq!(text(&p), "-:- a [@a:b] has left #room [bye]");
+        assert_eq!(text(&p), " a [@a:b] has left #room [bye]");
+        // Capture 32: the reason brackets are printed even when empty.
+        let p = Line::Part {
+            nick: "a".into(),
+            mxid: "@a:b".into(),
+            reason: None,
+        };
+        assert_eq!(text(&p), " a [@a:b] has left #room []");
         let k = Line::Kick {
             victim: "a".into(),
             kicker: "op".into(),
-            reason: None,
+            reason: Some("recon kick test".into()),
         };
-        assert_eq!(text(&k), "-:- a was kicked off #room by op");
+        assert_eq!(text(&k), " a was kicked off #room by op (recon kick test)");
         let n = Line::Nick { old: "a".into(), new: "b".into() };
-        assert_eq!(text(&n), "-:- a is now known as b");
+        assert_eq!(text(&n), " a is now known as b");
         let t = Line::Topic { nick: Some("op".into()), topic: "hello".into() };
-        assert_eq!(text(&t), "-:- Topic (#room): changed by op: hello");
+        assert_eq!(text(&t), " Topic (#room): changed by op: hello");
+        let m = Line::Mode { modes: "+o b".into(), nick: "op".into() };
+        assert_eq!(text(&m), " mode/#room [+o b] by op");
+    }
+
+    #[test]
+    fn test_notice_and_error() {
+        // Capture 27: `-nick(host)- text`.
+        let l = Line::Notice {
+            nick: "bob".into(),
+            mxid: "@bob:x.org".into(),
+            text: "test notice".into(),
+        };
+        assert_eq!(text(&l), "-bob(@bob:x.org)- test notice");
+        assert_eq!(style_of(&format_line(&l, "#r"), "bob"), fg(Color::Magenta));
+        // Capture 30: ` BitchX: Unknown command: FOO`, "BitchX" bold.
+        let e = Line::Error("Unknown command: FOO".into());
+        assert_eq!(text(&e), " BitchX: Unknown command: FOO");
+        assert!(
+            style_of(&format_line(&e, "#r"), "BitchX")
+                .add_modifier
+                .contains(Modifier::BOLD)
+        );
     }
 
     #[test]
@@ -338,7 +416,7 @@ mod tests {
     fn test_wrap() {
         let l = format_line(&Line::Info("abcdefghij".into()), "#r");
         let w = plain(&wrap(l, 8));
-        assert_eq!(w, vec!["-:- abcd", "efghij"]);
+        assert_eq!(w, vec![" abcdefg", "hij"]);
     }
 
     #[test]

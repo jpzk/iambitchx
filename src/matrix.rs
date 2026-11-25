@@ -255,6 +255,7 @@ pub async fn convert_raw(
     };
     let id = Some(ev.event_id().to_string());
     let own = ev.sender() == me;
+    let sender = ev.sender().to_string();
     let nick = nick_of(room, ev.sender()).await;
 
     let lines = match ev {
@@ -264,7 +265,7 @@ pub async fn convert_raw(
             let line = match m.content.msgtype {
                 MessageType::Text(t) => Line::Public { nick, own, text: t.body },
                 MessageType::Emote(e) => Line::Action { nick, own, text: e.body },
-                MessageType::Notice(n) => Line::Notice { nick, text: n.body },
+                MessageType::Notice(n) => Line::Notice { nick, mxid: sender.clone(), text: n.body },
                 MessageType::VerificationRequest(_) => {
                     Line::Info(verification_event_text(&nick, "request"))
                 },

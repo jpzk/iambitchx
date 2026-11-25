@@ -1137,7 +1137,7 @@ pub mod tests {
     fn test_unknown_command_is_error_line() {
         let mut app = app();
         assert!(typed(&mut app, "/frob").is_empty());
-        assert_eq!(last(&app), Line::Error("Unknown command: /frob".into()));
+        assert_eq!(last(&app), Line::Error("Unknown command: FROB".into()));
     }
 
     #[test]
@@ -1353,7 +1353,7 @@ pub mod tests {
             flow_id: None,
             action: VerifyAction::Start { device: Some("DEV1".into()) },
         }]);
-        // An incoming to-device request shows a -:- line in the status window.
+        // An incoming to-device request shows an info line in the status window.
         app.handle_mx(MxEvent::Verify {
             user: armin.clone(),
             update: VerifyUpdate::Requested {

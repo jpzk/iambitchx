@@ -163,11 +163,11 @@ mod tests {
 
         assert_no_box_glyphs(&buf);
         // Scrollback starts at row 0.
-        assert!(r[0].starts_with("-:- armin [@armin:remote.tld] has joined #room"), "{r:?}");
+        assert!(r[0].starts_with(" armin [@armin:remote.tld] has joined #room"), "{r:?}");
         assert!(r[1].starts_with("<armin> sup"));
         assert!(r[2].starts_with("<carla> hello"));
-        assert!(r[3].starts_with("* armin waves"));
-        assert!(r[4].starts_with("-:- bob [@bob:example.org] has left #room"));
+        assert!(r[3].starts_with(" armin/#room waves"));
+        assert!(r[4].starts_with(" bob [@bob:example.org] has left #room []"));
         // Two blue status rows directly above the last row.
         assert_blue_row(&buf, 9);
         assert_blue_row(&buf, 10);
@@ -177,9 +177,11 @@ mod tests {
         // The prompt on the last row, not blue.
         assert!(r[11].starts_with("[#room] "), "{:?}", r[11]);
         assert_ne!(buf[(0, 11)].bg, Color::Blue);
-        // Brackets of others' nicks are cyan; our own nick is highlighted.
-        assert_eq!(buf[(0, 1)].fg, Color::Cyan);
-        assert_ne!(buf[(1, 2)].fg, buf[(1, 1)].fg);
+        // Capture 23: others' brackets bold blue, our own bold magenta.
+        assert_eq!(buf[(0, 1)].fg, Color::Blue);
+        assert_eq!(buf[(0, 2)].fg, Color::Magenta);
+        // Join line: no `-:-`, nick bold cyan from column 1.
+        assert_eq!(buf[(1, 0)].fg, Color::Cyan);
     }
 
     #[test]
@@ -190,7 +192,7 @@ mod tests {
 
         assert_no_box_glyphs(&buf);
         assert!(r[0].starts_with(" ____  _ _"), "{:?}", r[0]);
-        assert!(r.iter().any(|l| l.starts_with("-:- Window 2: #room")));
+        assert!(r.iter().any(|l| l.starts_with(" Window 2: #room")));
         assert!(
             r.iter()
                 .any(|l| l.contains("Window 4: armin [query with @armin:remote.tld]"))
@@ -317,14 +319,14 @@ mod tests {
             });
         }
         let buf = render(&mut app, 40, 8);
-        assert!(row(&buf, 4).starts_with("-:- line 29"));
+        assert!(row(&buf, 4).starts_with(" line 29"));
         app.handle_key(crate::bitchx::app::tests::key(crossterm::event::KeyCode::PageUp));
         let buf = render(&mut app, 40, 8);
-        assert!(row(&buf, 4).starts_with("-:- line 25"), "{:?}", row(&buf, 4));
+        assert!(row(&buf, 4).starts_with(" line 25"), "{:?}", row(&buf, 4));
         // Scrolling far past the top clamps.
         app.cur_scroll_for_test(1000);
         let buf = render(&mut app, 40, 8);
-        assert!(row(&buf, 0).starts_with("-:- armin"), "{:?}", row(&buf, 0));
+        assert!(row(&buf, 0).starts_with(" armin"), "{:?}", row(&buf, 0));
 
         // A long input line keeps the cursor visible.
         app.input.set_text(&"x".repeat(100));

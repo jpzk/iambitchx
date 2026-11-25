@@ -12,35 +12,35 @@ pub use crate::bitchx::commands::Secret;
 pub enum Line {
     /// PUBLIC / SEND_PUBLIC: `<nick> text`.
     Public { nick: String, own: bool, text: String },
-    /// ACTION / SEND_ACTION: `* nick text`.
+    /// ACTION / SEND_ACTION: ` nick text` / ` nick/#chan text`.
     Action { nick: String, own: bool, text: String },
-    /// PUBLIC_NOTICE: `-nick:#chan- text`.
-    Notice { nick: String, text: String },
-    /// JOIN: `-:- nick [mxid] has joined #chan`.
+    /// NOTICE: `-nick(mxid)- text`.
+    Notice { nick: String, mxid: String, text: String },
+    /// JOIN: ` nick [mxid] has joined #chan`.
     Join { nick: String, mxid: String },
-    /// LEAVE: `-:- nick [mxid] has left #chan [reason]`.
+    /// LEAVE: ` nick [mxid] has left #chan [reason]`.
     Part { nick: String, mxid: String, reason: Option<String> },
-    /// KICK: `-:- victim was kicked off #chan by kicker (reason)`.
+    /// KICK: ` victim was kicked off #chan by kicker (reason)`.
     Kick {
         victim: String,
         kicker: String,
         reason: Option<String>,
     },
-    /// NICKNAME: `-:- old is now known as new`.
+    /// NICKNAME: ` old is now known as new`.
     Nick { old: String, new: String },
-    /// TOPIC / TOPIC_CHANGE: `-:- Topic (#chan): [changed by nick:] topic`.
+    /// TOPIC / TOPIC_CHANGE: ` Topic (#chan): [changed by nick:] topic`.
     Topic { nick: Option<String>, topic: String },
-    /// MODE: `-:- mode/#chan [modes] by nick`.
+    /// MODE: ` mode/#chan [modes] by nick`.
     Mode { modes: String, nick: String },
-    /// INVITE: `-:- nick invited target to #chan`.
+    /// INVITE: ` nick invited target to #chan`.
     Invite { nick: String, target: String },
-    /// Any other `-:- text` line (server/login info, command output).
+    /// Any other ` text` line (server/login info, command output).
     Info(String),
-    /// A `-:- text` error line.
+    /// An error line: ` BitchX: text`.
     Error(String),
-    /// An event we could not decrypt: `-:- [unable to decrypt: reason]`.
+    /// An event we could not decrypt: ` [unable to decrypt: reason]`.
     Undecryptable { nick: String, reason: String },
-    /// One SAS emoji: `-:- SAS n/7  🐶  Dog`.
+    /// One SAS emoji: ` SAS n/7  🐶  Dog`.
     Sas { n: usize, emoji: String, name: String },
     /// A raw line without prefix (banner).
     Raw(String),

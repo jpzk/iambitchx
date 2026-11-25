@@ -31,3 +31,34 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
    **Justified:** these IRC flags mean nothing in Matrix, so they aren't wired to any state.
    The window number is already in the `[#room]` prompt and the `/window list` output.
    Test: `ui::tests::test_status_line2_lag_and_flags`.
+
+## Message formats
+
+8. **Leading glyph.** v2 opened every event and info line with a red/white `-:-` (`$G` from
+   the source tree). In the captured client these lines start with a single space
+   (` bxrecon23 [~node@host] has joined #chan`). **Fixed:** `format::g()` is now a single
+   dark-grey space. Tests: `format::tests::test_join_line_format`, `test_membership_lines`.
+9. **Join line colours.** Nick bold cyan (`1;36`), `[ ]` dark grey, user@host cyan, the
+   rest plain. v2 used bright cyan. **Fixed:** Matrix maps the mxid to user@host.
+   Test: `format::tests::test_join_line_format` (text + per-span colours) and
+   `ui::tests::test_room_window_layout`.
+10. **Public message brackets.** In v2 other people's `<`/`>` were cyan and your own nick was bold white.
+    In BitchX the others' brackets are bold blue, your own are bold magenta, and the nick is
+    always plain (capture 23). **Fixed.** Test: `format::tests::test_public_bracket_colors`.
+11. **/me.** v2 rendered `* nick text`. BitchX has no `*`. Your own action is ` nick text`
+    with the nick in bold white. Someone else's is ` nick/#chan text` in bold yellow (capture 24).
+    **Fixed.** Test: `format::tests::test_public_and_action`.
+12. **Part reason.** v2 left out `[reason]` when there was none. BitchX always prints it, as `[]`
+    when empty. user@host is plain, not grey (capture 32). **Fixed.**
+    Test: `format::tests::test_membership_lines`.
+13. **Notice.** v2 showed `-nick:#chan- text`. BitchX shows `-nick(user@host)- text`
+    (`- ( ) -` dark grey, nick and host magenta, capture 27). **Fixed:** `Line::Notice` now
+    carries the sender mxid. Test: `format::tests::test_notice_and_error`.
+14. **Errors.** v2 printed `-:- text` in red and `Unknown command: /frob`. BitchX prints
+    ` BitchX: Unknown command: FROB` with "BitchX" in bold and the command upper-cased
+    (capture 30). **Fixed** for every client error line. Test:
+    `format::tests::test_notice_and_error`, `app::tests::test_unknown_command_is_error_line`.
+15. **Kick / nick / topic / mode.** The layout and colours already matched captures 24, 27
+    and 30, apart from the glyph (#8). **Fixed** by #8. Test: `format::tests::test_membership_lines`.
+    **Justified:** `ServerMode/#chan` (bold red) has no Matrix equivalent, since every Matrix
+    state change has a sender, so it isn't rendered.

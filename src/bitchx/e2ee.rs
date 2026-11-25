@@ -100,13 +100,13 @@ mod tests {
         assert_eq!(lines[7], Line::Sas { n: 7, emoji: "🔒".into(), name: "Lock".into() });
         let rendered: Vec<String> =
             lines.iter().flat_map(|l| format_line(l, "#r")).map(|l| text(&l)).collect();
-        assert_eq!(rendered[1], "-:- SAS 1/7  🐶  Dog");
-        assert_eq!(rendered[4], "-:- SAS 4/7  🌍  Globe");
-        assert_eq!(rendered[7], "-:- SAS 7/7  🔒  Lock");
-        assert!(rendered[0].starts_with("-:- Verification with armin"));
+        assert_eq!(rendered[1], " SAS 1/7  🐶  Dog");
+        assert_eq!(rendered[4], " SAS 4/7  🌍  Globe");
+        assert_eq!(rendered[7], " SAS 7/7  🔒  Lock");
+        assert!(rendered[0].starts_with(" Verification with armin"));
         assert!(rendered[8].contains("/verify confirm armin"));
         assert!(rendered[8].contains("/verify mismatch armin"));
-        assert!(rendered.iter().all(|l| l.starts_with("-:- ")));
+        assert!(rendered.iter().all(|l| l.starts_with(" ")));
     }
 
     #[test]
@@ -122,7 +122,7 @@ mod tests {
             reason: "missing room key".into(),
         };
         let r = format_line(&l, "#r");
-        assert_eq!(text(&r[0]), "-:- [unable to decrypt: missing room key] from armin");
+        assert_eq!(text(&r[0]), " [unable to decrypt: missing room key] from armin");
     }
 
     #[test]
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(verification_event_text("bob", "cancel"), "bob cancelled key verification");
         assert_eq!(verification_event_text("bob", "zzz"), "bob sent m.key.verification.zzz");
         let r = format_line(&Line::Info(verification_event_text("bob", "done")), "#r");
-        assert_eq!(text(&r[0]), "-:- bob finished key verification");
+        assert_eq!(text(&r[0]), " bob finished key verification");
     }
 
     #[test]

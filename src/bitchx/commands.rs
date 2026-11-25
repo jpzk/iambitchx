@@ -195,7 +195,9 @@ pub enum BitchxError {
 impl fmt::Display for BitchxError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BitchxError::UnknownCommand(cmd) => write!(f, "Unknown command: /{cmd}"),
+            BitchxError::UnknownCommand(cmd) => {
+                write!(f, "Unknown command: {}", cmd.to_uppercase())
+            },
             BitchxError::MissingArgument { command, argument } => {
                 write!(f, "/{command}: missing argument <{argument}>")
             },
@@ -712,7 +714,7 @@ mod tests {
 
     #[test]
     fn test_bitchx_error_display() {
-        assert_eq!(BitchxError::UnknownCommand(s("foo")).to_string(), "Unknown command: /foo");
+        assert_eq!(BitchxError::UnknownCommand(s("foo")).to_string(), "Unknown command: FOO");
         assert_eq!(missing("msg", "text").to_string(), "/msg: missing argument <text>");
         assert_eq!(invalid("back", "now").to_string(), "/back: invalid argument \"now\"");
     }
