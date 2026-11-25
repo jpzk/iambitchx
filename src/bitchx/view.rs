@@ -90,7 +90,7 @@ impl FmtCtx<'_> {
 /// Format one timeline event as BitchX lines.
 pub fn format_message(msg: &Message, ctx: &FmtCtx<'_>) -> Vec<Line<'static>> {
     if let MessageEvent::State(ev) = &msg.event {
-        return vec![state_line(ev, ctx)];
+        return state_lines(ev, ctx);
     }
 
     let nick = ctx.nick(&msg.sender);
@@ -153,6 +153,45 @@ pub fn format_message(msg: &Message, ctx: &FmtCtx<'_>) -> Vec<Line<'static>> {
     lines
 }
 
+fn state_lines(ev: &AnySyncStateEvent, ctx: &FmtCtx<'_>) -> Vec<Line<'static>> {
+    if let AnyStateEventContentChange::RoomMember(StateEventContentChange::Original {
+        content,
+        prev_content,
+    }) = ev.content_change() &&
+        let Ok(target) = UserId::parse(ev.state_key())
+    {
+        let prev = prev_content.as_ref().map(|p| p.details());
+        if let MembershipChange::KickedAndBanned =
+            content.membership_change(prev, ev.sender(), &target)
+        {
+            // IRC kickban: MODE +b, then KICK.
+            let chan = ctx.channel.to_string();
+            let victim = ctx.nick(&target);
+            let sender = ctx.nick(ev.sender());
+            let reason = content.reason.clone().filter(|r| !r.trim().is_empty());
+            let mode = g_line(vec![
+                sp("mode", n()),
+                sp("/", k()),
+                sp(chan.clone(), fg(Color::Cyan)),
+                sp(" [", k()),
+                sp(format!("+b {victim}"), w()),
+                sp("]", k()),
+                sp(" by ", n()),
+                sp(sender.clone(), w()),
+            ]);
+            let mut s = vec![
+                sp(format!("{victim} was kicked off {chan} by "), n()),
+                sp(sender, fg(Color::Cyan)),
+            ];
+            if let Some(r) = reason {
+                s.extend([sp(" (", k()), sp(r, n()), sp(")", k())]);
+            }
+            return vec![mode, g_line(s)];
+        }
+    }
+    vec![state_line(ev, ctx)]
+}
+
 fn state_line(ev: &AnySyncStateEvent, ctx: &FmtCtx<'_>) -> Line<'static> {
     let chan = ctx.channel.to_string();
     let sender = ctx.nick(ev.sender());
@@ -198,7 +237,7 @@ fn state_line(ev: &AnySyncStateEvent, ctx: &FmtCtx<'_>) -> Line<'static> {
                     g_line(s)
                 },
                 // KICK: `$G %n$victim was kicked off $chan by %c$kicker %K(%n$reason%K)`
-                MembershipChange::Kicked | MembershipChange::KickedAndBanned => {
+                MembershipChange::Kicked => {
                     let mut s = vec![
                         sp(format!("{victim} was kicked off {chan} by "), n()),
                         sp(sender, fg(Color::Cyan)),
@@ -586,4 +625,148 @@ pub fn status_parts(
     };
 
     (lines, status)
+}
+
+#[cfg(test)]
+mod tests {
+    use matrix_sdk::ruma::events::room::message::RoomMessageEventContent;
+    use serde_json::{Value, json};
+
+    use super::*;
+    use crate::tests::*;
+
+    fn text(lines: &[Line<'static>]) -> String {
+        lines
+            .iter()
+            .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn fmt(msg: &Message, me: &UserId) -> Vec<Line<'static>> {
+        let info = mock_room();
+        let ctx = FmtCtx { me, info: &info, channel: "#room1" };
+        format_message(msg, &ctx)
+    }
+
+    fn content(c: RoomMessageEventContent, sender: &UserId) -> Message {
+        mock_room1_message(c, sender.to_owned(), MSG2_KEY.clone())
+    }
+
+    fn state(kind: &str, key: &str, sender: &UserId, c: Value, prev: Option<Value>) -> Message {
+        let mut v = json!({
+            "type": kind,
+            "state_key": key,
+            "sender": sender,
+            "event_id": "$st:example.com",
+            "origin_server_ts": 1,
+            "content": c,
+        });
+        if let Some(p) = prev {
+            v["unsigned"] = json!({ "prev_content": p });
+        }
+        let ev: AnySyncStateEvent = serde_json::from_value(v).unwrap();
+        Message::new(MessageEvent::State(Box::new(ev)), sender.to_owned(), MSG1_KEY.ts)
+    }
+
+    fn joined() -> Option<Value> {
+        Some(json!({ "membership": "join" }))
+    }
+
+    /// `$G` = red `-`, white `:`, red `-`.
+    fn assert_g(line: &Line<'static>) {
+        let s = &line.spans;
+        assert_eq!(s[0].content, "-");
+        assert_eq!(s[0].style.fg, Some(Color::LightRed));
+        assert_eq!(s[1].content, ":");
+        assert_eq!(s[2].content, "-");
+    }
+
+    #[test]
+    fn test_public_and_own() {
+        let msg = content(RoomMessageEventContent::text_plain("hi"), &TEST_USER2);
+        let l = fmt(&msg, &TEST_USER1);
+        assert_eq!(text(&l), "<User 2> hi");
+        assert_eq!(l[0].spans[0].style.fg, Some(Color::LightBlue));
+
+        let own = content(RoomMessageEventContent::text_plain("me"), &TEST_USER1);
+        let l = fmt(&own, &TEST_USER1);
+        assert_eq!(text(&l), "<user1> me");
+        assert_eq!(l[0].spans[0].style.fg, Some(Color::LightMagenta));
+
+        let multi = content(RoomMessageEventContent::text_plain("a\nb"), &TEST_USER3);
+        assert_eq!(text(&fmt(&multi, &TEST_USER1)), "<user3> a\n        b");
+    }
+
+    #[test]
+    fn test_emote_and_notice() {
+        let me = content(RoomMessageEventContent::emote_plain("waves"), &TEST_USER3);
+        assert_eq!(text(&fmt(&me, &TEST_USER1)), "* user3 waves");
+
+        let no = content(RoomMessageEventContent::notice_plain("bot says"), &TEST_USER3);
+        assert_eq!(text(&fmt(&no, &TEST_USER1)), "-user3:#room1- bot says");
+    }
+
+    #[test]
+    fn test_membership_lines() {
+        let u3 = TEST_USER3.as_str();
+        let join = state("m.room.member", u3, &TEST_USER3, json!({"membership":"join"}), None);
+        let l = fmt(&join, &TEST_USER1);
+        assert_g(&l[0]);
+        assert_eq!(text(&l), format!("-:- user3 [{u3}] has joined #room1"));
+
+        let part = state(
+            "m.room.member",
+            u3,
+            &TEST_USER3,
+            json!({"membership":"leave","reason":"bye"}),
+            joined(),
+        );
+        let l = fmt(&part, &TEST_USER1);
+        assert_g(&l[0]);
+        assert_eq!(text(&l), format!("-:- user3 [{u3}] has left #room1 [bye]"));
+
+        let kick = state(
+            "m.room.member",
+            u3,
+            &TEST_USER2,
+            json!({"membership":"leave","reason":"spam"}),
+            joined(),
+        );
+        assert_eq!(
+            text(&fmt(&kick, &TEST_USER1)),
+            "-:- user3 was kicked off #room1 by User 2 (spam)"
+        );
+
+        let ban = state("m.room.member", u3, &TEST_USER2, json!({"membership":"ban"}), joined());
+        assert_eq!(
+            text(&fmt(&ban, &TEST_USER1)),
+            "-:- mode/#room1 [+b user3] by User 2\n-:- user3 was kicked off #room1 by User 2"
+        );
+        let unban = state(
+            "m.room.member",
+            u3,
+            &TEST_USER2,
+            json!({"membership":"leave"}),
+            Some(json!({"membership":"ban"})),
+        );
+        assert_eq!(text(&fmt(&unban, &TEST_USER1)), "-:- mode/#room1 [-b user3] by User 2");
+
+        let nick = state(
+            "m.room.member",
+            u3,
+            &TEST_USER3,
+            json!({"membership":"join","displayname":"newnick"}),
+            Some(json!({"membership":"join","displayname":"oldnick"})),
+        );
+        assert_eq!(text(&fmt(&nick, &TEST_USER1)), "-:- oldnick is now known as newnick");
+    }
+
+    #[test]
+    fn test_topic_line() {
+        let topic = state("m.room.topic", "", &TEST_USER2, json!({"topic":"hello"}), None);
+        let l = fmt(&topic, &TEST_USER1);
+        assert_g(&l[0]);
+        assert_eq!(text(&l), "-:- Topic (#room1): changed by User 2: hello");
+    }
 }
