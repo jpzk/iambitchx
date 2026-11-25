@@ -5,6 +5,7 @@
 
 pub mod app;
 pub mod commands;
+pub mod e2ee;
 pub mod format;
 pub mod input;
 pub mod model;

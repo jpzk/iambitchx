@@ -92,5 +92,35 @@ history, Tab nick completion, Backspace/Delete, Ctrl-C/D (empty line) quit.
 
 /join /part /msg /query /me /topic /nick /names /who /whois /rooms
 /window N|next|prev /clear /away /back /invite /kick /op /deop (PL 50)
-/quit /help. Unknown commands print a `-:-` error line. Plain text goes
+/quit /help /encrypt /verify /devices /trust /recover. Unknown commands print a `-:-` error line. Plain text goes
 to the current room (encryption is automatic in encrypted rooms).
+
+## End-to-end encryption
+
+    src/e2ee.rs        Matrix side: verification handlers registered with
+                       client.add_event_handler for to-device
+                       (ToDeviceKeyVerificationRequestEvent) and in-room
+                       (m.room.message msgtype m.key.verification.request)
+                       requests; request/SAS state streams -> MxEvent::Verify;
+                       /devices, /trust, /recover, /encrypt executors.
+    bitchx/e2ee.rs     Pure text: SAS emoji lines, decrypt-failure reasons,
+                       in-room m.key.verification.* lines, /encrypt prompt.
+
+- `/encrypt` asks `[y/n]` (irreversible) on the next input line, then
+  enables megolm. Encrypted rooms show `+e` in the status bar mode field.
+  New DMs (`/query`, `/msg`) are created with `m.room.encryption` in the
+  initial state (`Client::create_dm`).
+- `/verify` lists pending verifications; `/verify accept|start|confirm|
+  mismatch|cancel <user> [device]`. The 7 SAS emoji are printed as
+  `-:- SAS n/7  🐶  Dog` in the request's window (room or status) and the
+  current window. Incoming SAS starts are auto-accepted after `/verify
+  accept`; our own requests start SAS once the other side is ready.
+- `/devices [user]` lists devices `[verified]`/`[UNVERIFIED]`; `/trust`
+  prints own cross-signing and recovery status; `/recover <key>` imports
+  secrets from secure backup and bootstraps cross-signing if missing.
+  The key is masked with `*` while typing, stored as `/recover ********` in
+  history, redacted in `Debug` (`Secret`), and never printed or logged.
+- Undecryptable events render as `-:- [unable to decrypt: reason] from
+  nick`; `m.key.verification.*` events as `-:-` lines.
+- `--smoke` prints `=== encryption ===` with `N: name +e|-e` per room and
+  the account's cross-signing status.

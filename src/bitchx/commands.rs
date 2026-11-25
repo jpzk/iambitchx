@@ -7,38 +7,181 @@ use std::fmt;
 /// A parsed BitchX/IRC-style slash command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BitchxCommand {
-    Msg { target: String, text: String },
-    Me { text: String },
-    Action { text: String },
-    Join { room: String, key: Option<String> },
-    Part { room: Option<String>, reason: Option<String> },
+    Msg {
+        target: String,
+        text: String,
+    },
+    Me {
+        text: String,
+    },
+    Action {
+        text: String,
+    },
+    Join {
+        room: String,
+        key: Option<String>,
+    },
+    Part {
+        room: Option<String>,
+        reason: Option<String>,
+    },
     Leave,
-    Quit { reason: Option<String> },
-    Nick { nick: String },
-    Topic { topic: String },
-    Away { reason: Option<String> },
+    Quit {
+        reason: Option<String>,
+    },
+    Nick {
+        nick: String,
+    },
+    Topic {
+        topic: String,
+    },
+    Away {
+        reason: Option<String>,
+    },
     Back,
     Clear,
     Close,
-    Who { target: Option<String> },
-    Whois { target: String },
+    Who {
+        target: Option<String>,
+    },
+    Whois {
+        target: String,
+    },
     Rooms,
-    Names { target: Option<String> },
+    Names {
+        target: Option<String>,
+    },
     List,
-    Mode { target: String, modes: Option<String> },
-    Kick { target: String, reason: Option<String> },
-    Op { target: String },
-    Deop { target: String },
-    Invite { target: String, room: Option<String> },
-    Query { target: String },
-    Ctcp { target: String, text: String },
-    Ignore { pattern: String },
-    Unignore { pattern: String },
-    Window { target: Option<String> },
+    Mode {
+        target: String,
+        modes: Option<String>,
+    },
+    Kick {
+        target: String,
+        reason: Option<String>,
+    },
+    Op {
+        target: String,
+    },
+    Deop {
+        target: String,
+    },
+    Invite {
+        target: String,
+        room: Option<String>,
+    },
+    Query {
+        target: String,
+    },
+    Ctcp {
+        target: String,
+        text: String,
+    },
+    Ignore {
+        pattern: String,
+    },
+    Unignore {
+        pattern: String,
+    },
+    Window {
+        target: Option<String>,
+    },
     NextWindow,
     PrevWindow,
     Version,
     Help,
+    /// `/encrypt`: enable megolm in the current room (asks y/n first).
+    Encrypt,
+    /// `/verify [accept|start|confirm|mismatch|cancel] <user> [device]`.
+    Verify(VerifyCmd),
+    /// `/devices [user]`: list devices with verified flags.
+    Devices {
+        user: Option<String>,
+    },
+    /// `/trust`: own cross-signing status.
+    Trust,
+    /// `/recover <recovery key>`: import secrets from secure backup.
+    Recover {
+        key: Secret,
+    },
+}
+
+/// `/verify` subcommands.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerifyCmd {
+    /// `/verify`: list pending verifications.
+    List,
+    Accept {
+        user: String,
+    },
+    Start {
+        user: String,
+        device: Option<String>,
+    },
+    Confirm {
+        user: String,
+    },
+    Mismatch {
+        user: String,
+    },
+    Cancel {
+        user: String,
+    },
+}
+
+/// A secret typed by the user (recovery key). Never printed: `Debug` is
+/// redacted and there is no `Display`.
+#[derive(Clone, Eq, PartialEq)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(s: impl Into<String>) -> Self {
+        Secret(s.into())
+    }
+
+    /// The secret itself, for handing to the SDK only.
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Debug for Secret {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Secret(***)")
+    }
+}
+
+/// Commands whose arguments are secrets: masked in history and on screen.
+pub const SECRET_COMMANDS: &[&str] = &["recover"];
+
+/// If `line` is `/recover ...` (any case), the byte offset where the secret
+/// argument starts (after the command word and one separator).
+pub fn secret_offset(line: &str) -> Option<usize> {
+    let rest = line.strip_prefix('/')?;
+    let lead = rest.len() - rest.trim_start().len();
+    let rest = &rest[lead..];
+    let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
+    if !SECRET_COMMANDS.contains(&rest[..end].to_lowercase().as_str()) {
+        return None;
+    }
+    let sep = rest[end..].chars().next()?;
+    Some(1 + lead + end + sep.len_utf8())
+}
+
+/// For the screen while typing: every char of the secret becomes `*`.
+pub fn mask_secret(line: &str) -> String {
+    match secret_offset(line) {
+        Some(off) => format!("{}{}", &line[..off], "*".repeat(line[off..].chars().count())),
+        None => line.to_string(),
+    }
+}
+
+/// For history: the secret becomes a fixed `********` (no length leak).
+pub fn redact_secret(line: &str) -> String {
+    match secret_offset(line) {
+        Some(off) => format!("{}********", &line[..off]),
+        None => line.to_string(),
+    }
 }
 
 /// Why a slash command could not be parsed.
@@ -67,10 +210,10 @@ impl std::error::Error for BitchxError {}
 
 /// Every command word understood by [`parse`], including aliases, for `/help`.
 pub const COMMAND_NAMES: &[&str] = &[
-    "action", "away", "back", "clear", "close", "ctcp", "deop", "exit", "help", "ignore", "invite",
-    "j", "join", "kick", "leave", "list", "me", "mode", "msg", "names", "next", "nick", "op",
-    "part", "prev", "previous", "query", "quit", "rooms", "topic", "unignore", "version", "who",
-    "whois", "window",
+    "action", "away", "back", "clear", "close", "ctcp", "deop", "devices", "encrypt", "exit",
+    "help", "ignore", "invite", "j", "join", "kick", "leave", "list", "me", "mode", "msg", "names",
+    "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "rooms", "topic",
+    "trust", "unignore", "verify", "version", "who", "whois", "window",
 ];
 
 /// Split off the first whitespace-delimited word, returning it and the rest
@@ -143,6 +286,32 @@ impl<'a> Args<'a> {
 
     fn none(self, cmd: BitchxCommand) -> Result<BitchxCommand, BitchxError> {
         self.finish().map(|()| cmd)
+    }
+}
+
+/// `/verify` with no args lists; otherwise `<sub> <user> [device]`.
+fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
+    let Some(sub) = args.word() else {
+        return Ok(VerifyCmd::List);
+    };
+    let sub = sub.to_lowercase();
+    let cmd = match sub.as_str() {
+        "list" => VerifyCmd::List,
+        "accept" => VerifyCmd::Accept { user: args.required_word("user")? },
+        "start" => {
+            let user = args.required_word("user")?;
+            VerifyCmd::Start { user, device: args.word() }
+        },
+        "confirm" | "yes" => VerifyCmd::Confirm { user: args.required_word("user")? },
+        "mismatch" | "no" => VerifyCmd::Mismatch { user: args.required_word("user")? },
+        "cancel" => VerifyCmd::Cancel { user: args.required_word("user")? },
+        _ => return Err(BitchxError::InvalidArgument { command: "verify", argument: sub }),
+    };
+    let rest = std::mem::take(&mut args.rest).trim().to_string();
+    if rest.is_empty() {
+        Ok(cmd)
+    } else {
+        Err(BitchxError::InvalidArgument { command: "verify", argument: rest })
     }
 }
 
@@ -280,6 +449,20 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         "prev" => args.none(BitchxCommand::PrevWindow)?,
         "version" => args.none(BitchxCommand::Version)?,
         "help" => args.none(BitchxCommand::Help)?,
+        "encrypt" => args.none(BitchxCommand::Encrypt)?,
+        "trust" => args.none(BitchxCommand::Trust)?,
+        "devices" => {
+            let user = args.word();
+            args.finish()?;
+            BitchxCommand::Devices { user }
+        },
+        "recover" => {
+            // The whole remainder: recovery keys are space-separated groups.
+            // Errors must never echo it, so only `required_rest` is used.
+            let key = args.required_rest("recovery key")?;
+            BitchxCommand::Recover { key: Secret::new(key.trim()) }
+        },
+        "verify" => BitchxCommand::Verify(parse_verify(&mut args)?),
         _ => return Err(BitchxError::UnknownCommand(word.to_string())),
     };
 
@@ -532,6 +715,70 @@ mod tests {
         assert_eq!(BitchxError::UnknownCommand(s("foo")).to_string(), "Unknown command: /foo");
         assert_eq!(missing("msg", "text").to_string(), "/msg: missing argument <text>");
         assert_eq!(invalid("back", "now").to_string(), "/back: invalid argument \"now\"");
+    }
+
+    #[test]
+    fn test_bitchx_encrypt_trust_devices() {
+        assert_eq!(ok("encrypt"), BitchxCommand::Encrypt);
+        assert_eq!(ok("ENCRYPT"), BitchxCommand::Encrypt);
+        assert_eq!(parse("encrypt now"), Err(invalid("encrypt", "now")));
+        assert_eq!(ok("trust"), BitchxCommand::Trust);
+        assert_eq!(parse("trust x"), Err(invalid("trust", "x")));
+        assert_eq!(ok("devices"), BitchxCommand::Devices { user: None });
+        assert_eq!(ok("devices @bob:x"), BitchxCommand::Devices { user: Some(s("@bob:x")) });
+        assert_eq!(parse("devices a b"), Err(invalid("devices", "b")));
+    }
+
+    #[test]
+    fn test_bitchx_verify_subcommands() {
+        let v = |c| BitchxCommand::Verify(c);
+        assert_eq!(ok("verify"), v(VerifyCmd::List));
+        assert_eq!(ok("verify list"), v(VerifyCmd::List));
+        assert_eq!(ok("verify accept armin"), v(VerifyCmd::Accept { user: s("armin") }));
+        assert_eq!(ok("VERIFY Accept armin"), v(VerifyCmd::Accept { user: s("armin") }));
+        assert_eq!(ok("verify start @a:x"), v(VerifyCmd::Start { user: s("@a:x"), device: None }));
+        assert_eq!(
+            ok("verify start @a:x ABCDEF"),
+            v(VerifyCmd::Start { user: s("@a:x"), device: Some(s("ABCDEF")) })
+        );
+        assert_eq!(ok("verify confirm armin"), v(VerifyCmd::Confirm { user: s("armin") }));
+        assert_eq!(ok("verify mismatch armin"), v(VerifyCmd::Mismatch { user: s("armin") }));
+        assert_eq!(ok("verify cancel armin"), v(VerifyCmd::Cancel { user: s("armin") }));
+        assert_eq!(parse("verify accept"), Err(missing("verify", "user")));
+        assert_eq!(parse("verify start"), Err(missing("verify", "user")));
+        assert_eq!(parse("verify confirm"), Err(missing("verify", "user")));
+        assert_eq!(parse("verify mismatch"), Err(missing("verify", "user")));
+        assert_eq!(parse("verify cancel"), Err(missing("verify", "user")));
+        assert_eq!(parse("verify frob armin"), Err(invalid("verify", "frob")));
+        assert_eq!(parse("verify accept a b"), Err(invalid("verify", "b")));
+        assert_eq!(parse("verify start a DEV extra"), Err(invalid("verify", "extra")));
+    }
+
+    #[test]
+    fn test_bitchx_recover_secret() {
+        let key = "EsTc 1234 abcd EFGH";
+        assert_eq!(ok(&format!("recover {key}")), BitchxCommand::Recover { key: Secret::new(key) });
+        assert_eq!(parse("recover"), Err(missing("recover", "recovery key")));
+        assert_eq!(parse("recover   "), Err(missing("recover", "recovery key")));
+        // The secret never shows up in Debug output.
+        let dbg = format!("{:?}", ok(&format!("recover {key}")));
+        assert!(!dbg.contains("EsTc") && dbg.contains("***"), "{dbg}");
+    }
+
+    #[test]
+    fn test_bitchx_mask_secret() {
+        assert_eq!(secret_offset("/recover"), None);
+        assert_eq!(secret_offset("/recove x"), None);
+        assert_eq!(secret_offset("/msg bob x"), None);
+        assert_eq!(mask_secret("/recover"), "/recover");
+        assert_eq!(mask_secret("/recover "), "/recover ");
+        assert_eq!(mask_secret("/recover Es Tc"), "/recover *****");
+        assert_eq!(mask_secret("/RECOVER Es"), "/RECOVER **");
+        assert_eq!(mask_secret("/  recover ab"), "/  recover **");
+        assert_eq!(mask_secret("/recover\u{3000}ab"), "/recover\u{3000}**");
+        assert_eq!(redact_secret("/recover EsTc 1234"), "/recover ********");
+        assert_eq!(redact_secret("/msg bob hi"), "/msg bob hi");
+        assert_eq!(redact_secret("hello"), "hello");
     }
 
     #[test]

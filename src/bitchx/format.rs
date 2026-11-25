@@ -195,6 +195,22 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
                 .map(|t| g_line(vec![sp(t, fg(Color::LightRed))]))
                 .collect()
         },
+        Line::Undecryptable { nick, reason } => {
+            vec![g_line(vec![
+                sp("[", k()),
+                sp(format!("unable to decrypt: {reason}"), fg(Color::LightRed)),
+                sp("]", k()),
+                sp(" from ", n()),
+                sp(nick.clone(), c()),
+            ])]
+        },
+        Line::Sas { n: i, emoji, name } => {
+            vec![g_line(vec![
+                sp(format!("SAS {i}/7  "), k()),
+                sp(format!("{emoji}  "), n()),
+                sp(name.clone(), w()),
+            ])]
+        },
         Line::Raw(text) => vec![TLine::from(sp(text.clone(), bold(Color::LightBlue)))],
     }
 }

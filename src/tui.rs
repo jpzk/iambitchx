@@ -59,6 +59,7 @@ pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
     if let Some(device) = client.device_id() {
         app.status_info(format!("Device {device}"));
     }
+    crate::e2ee::register_verification_handlers(&client, tx.clone());
     matrix::spawn_sync(client.clone(), tx.clone());
     matrix::spawn_lag(client.clone(), tx.clone());
 

@@ -62,7 +62,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
     let prompt = sanitize(&app.prompt());
     let pw: usize = prompt.chars().map(|c| c.width().unwrap_or(0)).sum();
     let avail = (area.width as usize).saturating_sub(pw + 1).max(1);
-    let chars = app.input.chars();
+    let chars = app.input.display_chars();
     let cursor = app.input.cursor();
     let widths: Vec<usize> = chars.iter().map(|c| c.width().unwrap_or(0)).collect();
     let mut start = 0;
@@ -238,5 +238,36 @@ mod tests {
         app.input.set_text(&"x".repeat(100));
         let buf = render(&mut app, 40, 8);
         assert!(row(&buf, 7).starts_with("[#room] xxx"));
+    }
+
+    #[test]
+    fn test_recover_key_never_on_screen() {
+        use crossterm::event::KeyCode;
+
+        use crate::bitchx::app::tests::key;
+
+        let mut app = room_app();
+        let secret = "EsTc 9xQ2 kLm7";
+        for c in format!("/recover {secret}").chars() {
+            app.handle_key(key(KeyCode::Char(c)));
+        }
+        let screen = rows(&render(&mut app, 80, 24)).join("\n");
+        assert!(screen.contains("/recover **************"), "{screen}");
+        assert!(!screen.contains("EsTc") && !screen.contains("kLm7"));
+        app.handle_key(key(KeyCode::Enter));
+        app.handle_key(key(KeyCode::Up));
+        let screen = rows(&render(&mut app, 80, 24)).join("\n");
+        assert!(screen.contains("/recover ********"), "{screen}");
+        assert!(!screen.contains("EsTc") && !screen.contains("kLm7"), "{screen}");
+    }
+
+    #[test]
+    fn test_status_bar_shows_plus_e() {
+        let mut app = room_app();
+        let mut snap = crate::bitchx::app::tests::room("!a:example.org", "#room");
+        snap.encrypted = true;
+        app.handle_mx(MxEvent::Room(snap));
+        let screen = rows(&render(&mut app, 80, 24));
+        assert!(screen[21].contains("[#room(+e)]"), "{}", screen[21]);
     }
 }

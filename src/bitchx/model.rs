@@ -4,6 +4,8 @@
 //! driven by tests.
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 
+pub use crate::bitchx::commands::Secret;
+
 /// One scrollback line, already translated from Matrix into IRC terms.
 /// The channel name is filled in by the formatter from the window.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +38,10 @@ pub enum Line {
     Info(String),
     /// A `-:- text` error line.
     Error(String),
+    /// An event we could not decrypt: `-:- [unable to decrypt: reason]`.
+    Undecryptable { nick: String, reason: String },
+    /// One SAS emoji: `-:- SAS n/7  🐶  Dog`.
+    Sas { n: usize, emoji: String, name: String },
     /// A raw line without prefix (banner).
     Raw(String),
 }
@@ -97,6 +103,8 @@ pub enum MxEvent {
     Away(Option<String>),
     /// Round-trip time to the homeserver, in seconds.
     Lag(u64),
+    /// A key verification with `user` progressed.
+    Verify { user: OwnedUserId, update: VerifyUpdate },
 }
 
 /// Something the UI wants the Matrix side to do.
@@ -139,5 +147,50 @@ pub enum Effect {
     Away(Option<String>),
     Whois(OwnedUserId),
     Backfill(OwnedRoomId),
+    /// Enable megolm in a room (after the user confirmed: irreversible).
+    EnableEncryption(OwnedRoomId),
+    /// Drive a SAS verification with `user`. `flow_id` is the pending
+    /// request, if any.
+    Verify {
+        user: OwnedUserId,
+        flow_id: Option<String>,
+        action: VerifyAction,
+    },
+    /// List a user's devices with verified flags.
+    Devices(OwnedUserId),
+    /// Show our own cross-signing status.
+    Trust,
+    /// Import secrets from secure backup; bootstrap cross-signing if missing.
+    Recover(Secret),
     Quit,
+}
+
+/// What `/verify ...` asks the Matrix side to do.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerifyAction {
+    Accept,
+    Start { device: Option<String> },
+    Confirm,
+    Mismatch,
+    Cancel,
+}
+
+/// Progress of a key verification, as reported by the Matrix side.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum VerifyUpdate {
+    /// A request exists (theirs or ours). In-room requests carry the room.
+    Requested {
+        flow_id: String,
+        device: Option<String>,
+        room_id: Option<OwnedRoomId>,
+        we_started: bool,
+    },
+    /// Both sides are ready; SAS can start.
+    Ready,
+    /// The short auth string: 7 (emoji, name) pairs.
+    Emoji(Vec<(String, String)>),
+    /// We confirmed; waiting for the other side.
+    Confirmed,
+    Done,
+    Cancelled(String),
 }

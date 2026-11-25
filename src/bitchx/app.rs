@@ -7,9 +7,18 @@ use std::collections::HashSet;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
-use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, parse};
+use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, VerifyCmd, parse};
+use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
 use crate::bitchx::input::Input;
-use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot};
+use crate::bitchx::model::{
+    Effect,
+    Line,
+    Member,
+    MxEvent,
+    RoomSnapshot,
+    VerifyAction,
+    VerifyUpdate,
+};
 use crate::bitchx::status::{BxStatus, UserCounts};
 
 /// Refnum of the status window.
@@ -90,6 +99,25 @@ impl Window {
     }
 }
 
+/// A y/n question waiting for the next input line.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum Confirm {
+    /// `/encrypt` in this room.
+    Encrypt(OwnedRoomId),
+}
+
+/// A key verification in progress with another user (or own device).
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingVerify {
+    pub user: OwnedUserId,
+    pub flow_id: String,
+    pub device: Option<String>,
+    pub room_id: Option<OwnedRoomId>,
+    pub we_started: bool,
+    /// requested / ready / emoji / confirmed.
+    pub state: &'static str,
+}
+
 pub struct App {
     pub me: OwnedUserId,
     pub nick: String,
@@ -104,6 +132,10 @@ pub struct App {
     pub page: usize,
     /// Fixed clock for tests; `None` uses local time.
     pub clock: Option<String>,
+    /// A pending y/n question (`/encrypt`).
+    pub confirm: Option<Confirm>,
+    /// Key verifications in progress.
+    pub verifications: Vec<PendingVerify>,
 }
 
 impl App {
@@ -128,6 +160,8 @@ impl App {
             quit: false,
             page: 20,
             clock: None,
+            confirm: None,
+            verifications: vec![],
         }
     }
 
@@ -218,7 +252,7 @@ impl App {
             modes.push('i');
         }
         if win.room.encrypted {
-            modes.push('E');
+            modes.push('e');
         }
         let users = win.room.room_id.as_ref().map(|_| {
             UserCounts {
@@ -311,6 +345,7 @@ impl App {
                 self.info(msg);
             },
             MxEvent::Lag(lag) => self.lag = lag,
+            MxEvent::Verify { user, update } => self.verify_update(user, update),
         }
         vec![]
     }
@@ -427,6 +462,10 @@ impl App {
     pub fn submit(&mut self, line: &str) -> Vec<Effect> {
         if line.trim().is_empty() {
             return vec![];
+        }
+
+        if let Some(confirm) = self.confirm.take() {
+            return self.answer(confirm, line);
         }
 
         if let Some(rest) = line.strip_prefix('/') &&
@@ -644,6 +683,21 @@ impl App {
                 self.info(format!("iambitchx {}", env!("CARGO_PKG_VERSION")));
                 vec![]
             },
+            BitchxCommand::Encrypt => self.encrypt(),
+            BitchxCommand::Verify(v) => self.verify_cmd(v),
+            BitchxCommand::Devices { user } => {
+                let user = match user {
+                    Some(u) => self.user_cmd(&u),
+                    None => Some(self.me.clone()),
+                };
+                user.map(Effect::Devices).into_iter().collect()
+            },
+            BitchxCommand::Trust => vec![Effect::Trust],
+            BitchxCommand::Recover { key } => {
+                // Never echo the key.
+                self.info("Recovering secrets from secure backup with the given key (********)");
+                vec![Effect::Recover(key)]
+            },
             BitchxCommand::Mode { .. } |
             BitchxCommand::Ctcp { .. } |
             BitchxCommand::Ignore { .. } |
@@ -652,6 +706,153 @@ impl App {
                 vec![]
             },
         }
+    }
+
+    // ---- end-to-end encryption -----------------------------------------
+
+    /// `/encrypt`: ask first; enabling encryption can never be undone.
+    fn encrypt(&mut self) -> Vec<Effect> {
+        let Some(room_id) = self.current_room() else {
+            return vec![];
+        };
+        if self.cur().room.encrypted {
+            self.info(format!("{} is already encrypted (+e)", self.cur().room.name));
+            return vec![];
+        }
+        let name = self.cur().room.name.clone();
+        self.info(encrypt_prompt(&name));
+        self.confirm = Some(Confirm::Encrypt(room_id));
+        vec![]
+    }
+
+    /// The line typed after a y/n question.
+    fn answer(&mut self, confirm: Confirm, line: &str) -> Vec<Effect> {
+        let yes = matches!(line.trim().to_lowercase().as_str(), "y" | "yes");
+        match confirm {
+            Confirm::Encrypt(room_id) if yes => {
+                self.info("Enabling end-to-end encryption (megolm)...");
+                vec![Effect::EnableEncryption(room_id)]
+            },
+            Confirm::Encrypt(_) => {
+                self.info("Encryption not enabled");
+                vec![]
+            },
+        }
+    }
+
+    fn pending_verify(&self, user: &OwnedUserId) -> Option<&PendingVerify> {
+        self.verifications.iter().find(|v| &v.user == user)
+    }
+
+    fn verify_cmd(&mut self, cmd: VerifyCmd) -> Vec<Effect> {
+        let (target, action) = match cmd {
+            VerifyCmd::List => {
+                if self.verifications.is_empty() {
+                    self.info("No pending verifications");
+                }
+                let rows: Vec<String> = self
+                    .verifications
+                    .iter()
+                    .map(|v| {
+                        let dir = if v.we_started { "to" } else { "from" };
+                        let dev =
+                            v.device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
+                        format!("Verification {dir} {}{dev}: {}", v.user, v.state)
+                    })
+                    .collect();
+                for r in rows {
+                    self.info(r);
+                }
+                return vec![];
+            },
+            VerifyCmd::Accept { user } => (user, VerifyAction::Accept),
+            VerifyCmd::Start { user, device } => (user, VerifyAction::Start { device }),
+            VerifyCmd::Confirm { user } => (user, VerifyAction::Confirm),
+            VerifyCmd::Mismatch { user } => (user, VerifyAction::Mismatch),
+            VerifyCmd::Cancel { user } => (user, VerifyAction::Cancel),
+        };
+        let Some(user) = self.user_cmd(&target) else {
+            return vec![];
+        };
+        let flow_id = self.pending_verify(&user).map(|v| v.flow_id.clone());
+        if flow_id.is_none() && !matches!(action, VerifyAction::Start { .. }) {
+            self.error(format!("No pending verification with {user} -- see /verify"));
+            return vec![];
+        }
+        vec![Effect::Verify { user, flow_id, action }]
+    }
+
+    /// Print verification lines in the room of an in-room request (else the
+    /// status window), and in the current window too so they are not missed.
+    fn verify_lines(&mut self, room_id: Option<OwnedRoomId>, lines: Vec<Line>) {
+        let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(0);
+        for l in &lines {
+            self.windows[idx].push(None, l.clone());
+        }
+        if idx != self.current {
+            self.windows[idx].unread = true;
+            for l in lines {
+                self.cur_mut().push(None, l);
+            }
+        }
+    }
+
+    fn verify_update(&mut self, user: OwnedUserId, update: VerifyUpdate) {
+        let room_id = self.pending_verify(&user).and_then(|v| v.room_id.clone());
+        let set_state = |app: &mut App, state| {
+            if let Some(v) = app.verifications.iter_mut().find(|v| v.user == user) {
+                v.state = state;
+            }
+        };
+        let lines = match update {
+            VerifyUpdate::Requested { flow_id, device, room_id, we_started } => {
+                let dev = device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
+                let line = if we_started {
+                    format!("Verification request sent to {user}{dev}, waiting for them to accept")
+                } else {
+                    format!(
+                        "Verification request from {user}{dev} -- /verify accept {user} or /verify cancel {user}"
+                    )
+                };
+                self.verifications.retain(|v| v.user != user);
+                self.verifications.push(PendingVerify {
+                    user: user.clone(),
+                    flow_id,
+                    device,
+                    room_id: room_id.clone(),
+                    we_started,
+                    state: "requested",
+                });
+                return self.verify_lines(room_id, vec![Line::Info(line)]);
+            },
+            VerifyUpdate::Ready => {
+                set_state(self, "ready");
+                vec![Line::Info(format!(
+                    "Verification with {user} is ready, starting emoji (SAS)"
+                ))]
+            },
+            VerifyUpdate::Emoji(emojis) => {
+                set_state(self, "emoji");
+                sas_lines(user.as_str(), &emojis)
+            },
+            VerifyUpdate::Confirmed => {
+                set_state(self, "confirmed");
+                vec![Line::Info(format!(
+                    "Waiting for {user} to confirm the emoji..."
+                ))]
+            },
+            VerifyUpdate::Done => {
+                self.verifications.retain(|v| v.user != user);
+                vec![Line::Info(format!("{user} is now verified"))]
+            },
+            VerifyUpdate::Cancelled(reason) => {
+                self.verifications.retain(|v| v.user != user);
+                vec![Line::Error(format!(
+                    "Verification with {user} cancelled: {reason}"
+                ))]
+            },
+        };
+        self.verify_lines(room_id, lines);
     }
 
     fn power(&mut self, target: &str, level: i64) -> Vec<Effect> {
@@ -1079,5 +1280,177 @@ pub mod tests {
         assert!(st.chanop);
         assert_eq!(st.users.unwrap(), UserCounts { ops: 1, nonops: 2, voice: 1 });
         assert_eq!(st.window, 2);
+    }
+
+    #[test]
+    fn test_encrypt_confirm_flow() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        let a = owned_room_id!("!a:example.org");
+        // Asking does nothing yet; the question says it is irreversible.
+        assert_eq!(typed(&mut app, "/encrypt"), vec![]);
+        assert!(
+            matches!(last(&app), Line::Info(t) if t.contains("IRREVERSIBLE") && t.contains("[y/n]"))
+        );
+        assert_eq!(app.confirm, Some(Confirm::Encrypt(a.clone())));
+        // "n" declines and is not sent as a message.
+        assert_eq!(typed(&mut app, "n"), vec![]);
+        assert_eq!(app.confirm, None);
+        assert_eq!(last(&app), Line::Info("Encryption not enabled".into()));
+        // Anything but y/yes declines.
+        typed(&mut app, "/encrypt");
+        assert_eq!(typed(&mut app, "sure"), vec![]);
+        // "y" enables.
+        typed(&mut app, "/encrypt");
+        assert_eq!(typed(&mut app, "Y"), vec![Effect::EnableEncryption(a.clone())]);
+        typed(&mut app, "/encrypt");
+        assert_eq!(typed(&mut app, "yes"), vec![Effect::EnableEncryption(a)]);
+        // After answering, text is sent normally again.
+        assert!(matches!(&typed(&mut app, "hi")[0], Effect::Send { .. }));
+        // Not in the status window; not twice in an encrypted room.
+        app.handle_key(alt('1'));
+        assert_eq!(typed(&mut app, "/encrypt"), vec![]);
+        assert!(app.confirm.is_none());
+        app.handle_key(alt('2'));
+        let mut snap = room("!a:example.org", "#room");
+        snap.encrypted = true;
+        app.handle_mx(MxEvent::Room(snap));
+        assert_eq!(typed(&mut app, "/encrypt"), vec![]);
+        assert!(app.confirm.is_none());
+        assert!(matches!(last(&app), Line::Info(t) if t.contains("already encrypted")));
+    }
+
+    #[test]
+    fn test_status_plus_e() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        assert_eq!(app.status().modes, "");
+        let mut snap = room("!a:example.org", "#room");
+        snap.encrypted = true;
+        app.handle_mx(MxEvent::Room(snap.clone()));
+        assert_eq!(app.status().modes, "e");
+        snap.invite_only = true;
+        app.handle_mx(MxEvent::Room(snap));
+        assert_eq!(app.status().modes, "ie");
+        let text: String =
+            app.status().line1().spans.iter().map(|s| s.content.to_string()).collect();
+        assert!(text.contains("#room(+ie)"), "{text}");
+    }
+
+    #[test]
+    fn test_verify_dispatch() {
+        let mut app = app();
+        let armin = owned_user_id!("@armin:remote.tld");
+        // Nothing pending.
+        assert_eq!(typed(&mut app, "/verify"), vec![]);
+        assert_eq!(last(&app), Line::Info("No pending verifications".into()));
+        assert_eq!(typed(&mut app, "/verify accept armin"), vec![]);
+        assert!(matches!(last(&app), Line::Error(t) if t.contains("No pending verification")));
+        // Start needs no pending request.
+        assert_eq!(typed(&mut app, "/verify start armin DEV1"), vec![Effect::Verify {
+            user: armin.clone(),
+            flow_id: None,
+            action: VerifyAction::Start { device: Some("DEV1".into()) },
+        }]);
+        // An incoming to-device request shows a -:- line in the status window.
+        app.handle_mx(MxEvent::Verify {
+            user: armin.clone(),
+            update: VerifyUpdate::Requested {
+                flow_id: "f1".into(),
+                device: Some("DEV1".into()),
+                room_id: None,
+                we_started: false,
+            },
+        });
+        assert!(matches!(app.windows[0].lines.last(), Some(Line::Info(t))
+            if t.contains("Verification request from @armin:remote.tld [DEV1]")
+                && t.contains("/verify accept")));
+        typed(&mut app, "/verify");
+        assert!(
+            matches!(last(&app), Line::Info(t) if t.contains("from @armin:remote.tld [DEV1]: requested"))
+        );
+        let fx = |action| {
+            vec![Effect::Verify {
+                user: armin.clone(),
+                flow_id: Some("f1".into()),
+                action,
+            }]
+        };
+        assert_eq!(typed(&mut app, "/verify accept armin"), fx(VerifyAction::Accept));
+        assert_eq!(typed(&mut app, "/verify confirm @armin:remote.tld"), fx(VerifyAction::Confirm));
+        assert_eq!(typed(&mut app, "/verify mismatch armin"), fx(VerifyAction::Mismatch));
+        assert_eq!(typed(&mut app, "/verify cancel armin"), fx(VerifyAction::Cancel));
+        assert!(matches!(&typed(&mut app, "/verify start armin")[0], Effect::Verify {
+            flow_id: Some(_),
+            action: VerifyAction::Start { device: None },
+            ..
+        }));
+        assert_eq!(typed(&mut app, "/verify accept nobody"), vec![]);
+
+        // Emoji go to the request's window and the current one.
+        app.handle_key(alt('3'));
+        let emojis: Vec<(String, String)> =
+            (0..7).map(|i| (format!("e{i}"), format!("n{i}"))).collect();
+        app.handle_mx(MxEvent::Verify {
+            user: armin.clone(),
+            update: VerifyUpdate::Emoji(emojis),
+        });
+        assert_eq!(app.verifications[0].state, "emoji");
+        let sas = |w: &Window| w.lines.iter().filter(|l| matches!(l, Line::Sas { .. })).count();
+        assert_eq!(sas(&app.windows[0]), 7);
+        assert_eq!(sas(app.cur()), 7);
+        app.handle_mx(MxEvent::Verify { user: armin.clone(), update: VerifyUpdate::Done });
+        assert!(app.verifications.is_empty());
+        assert_eq!(last(&app), Line::Info("@armin:remote.tld is now verified".into()));
+
+        // In-room request lands in that room's window; cancel clears it.
+        app.handle_key(alt('1'));
+        app.handle_mx(MxEvent::Verify {
+            user: armin.clone(),
+            update: VerifyUpdate::Requested {
+                flow_id: "f2".into(),
+                device: None,
+                room_id: Some(owned_room_id!("!c:example.org")),
+                we_started: false,
+            },
+        });
+        assert!(
+            matches!(app.windows[3].lines.last(), Some(Line::Info(t)) if t.contains("Verification request from"))
+        );
+        assert!(app.windows[3].unread);
+        app.handle_mx(MxEvent::Verify {
+            user: armin,
+            update: VerifyUpdate::Cancelled("mismatch".into()),
+        });
+        assert!(app.verifications.is_empty());
+        assert!(
+            matches!(app.windows[3].lines.last(), Some(Line::Error(t)) if t.contains("cancelled: mismatch"))
+        );
+    }
+
+    #[test]
+    fn test_devices_trust_recover_dispatch() {
+        let mut app = app();
+        assert_eq!(typed(&mut app, "/devices"), vec![Effect::Devices(owned_user_id!(
+            "@carla:example.org"
+        ))]);
+        assert_eq!(typed(&mut app, "/devices armin"), vec![Effect::Devices(owned_user_id!(
+            "@armin:remote.tld"
+        ))]);
+        assert_eq!(typed(&mut app, "/trust"), vec![Effect::Trust]);
+        let key = "EsTc 9xQ2 kLm7 Zz11";
+        let fx = typed(&mut app, &format!("/recover {key}"));
+        assert_eq!(fx, vec![Effect::Recover(crate::bitchx::commands::Secret::new(key))]);
+        // The key is in no scrollback line of any window, nor in Debug output.
+        for w in &app.windows {
+            for l in &w.lines {
+                let s = format!("{l:?}");
+                assert!(!s.contains("EsTc") && !s.contains("kLm7"), "{s}");
+            }
+        }
+        assert!(!format!("{fx:?}").contains("EsTc"));
+        // A missing key is an error that echoes nothing secret.
+        typed(&mut app, "/recover");
+        assert!(matches!(last(&app), Line::Error(t) if t.contains("missing argument")));
     }
 }

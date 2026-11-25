@@ -19,6 +19,7 @@ use crate::config::{ApplicationSettings, Cli};
 mod bitchx;
 mod config;
 mod device_link;
+mod e2ee;
 mod login;
 mod matrix;
 mod oauth;

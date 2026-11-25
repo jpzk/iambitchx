@@ -3,6 +3,8 @@
 //! A small readline: cursor movement, Ctrl-A/E/U/K/W, history and Tab nick
 //! completion. Operates on `char`s; display width is the renderer's job.
 
+use crate::bitchx::commands::{mask_secret, redact_secret};
+
 /// State of an in-progress Tab completion, so repeated Tabs cycle.
 #[derive(Clone, Debug, Default)]
 struct Completion {
@@ -30,10 +32,16 @@ impl Input {
         self.buf.iter().collect()
     }
 
+    /// The chars to draw: secrets typed after `/recover ` are `*`.
+    pub fn display_chars(&self) -> Vec<char> {
+        mask_secret(&self.text()).chars().collect()
+    }
+
     pub fn cursor(&self) -> usize {
         self.cursor
     }
 
+    #[cfg(test)]
     pub fn chars(&self) -> &[char] {
         &self.buf
     }
@@ -120,8 +128,10 @@ impl Input {
         self.hist_pos = None;
         self.tab = None;
 
-        if !line.trim().is_empty() && self.history.last() != Some(&line) {
-            self.history.push(line.clone());
+        // Secrets (`/recover <key>`) are kept only in redacted form.
+        let entry = redact_secret(&line);
+        if !entry.trim().is_empty() && self.history.last() != Some(&entry) {
+            self.history.push(entry);
             if self.history.len() > HISTORY_MAX {
                 self.history.remove(0);
             }
@@ -300,6 +310,25 @@ mod tests {
         i.history_prev();
         assert_eq!(i.text(), "a");
         assert_eq!(i.history.len(), 1);
+    }
+
+    #[test]
+    fn test_recover_masked_in_history_and_display() {
+        let key = "EsTc 9xQ2 kLm7";
+        let mut i = typed(&format!("/recover {key}"));
+        let shown: String = i.display_chars().into_iter().collect();
+        assert!(!shown.contains("EsTc"), "{shown}");
+        assert_eq!(shown, format!("/recover {}", "*".repeat(key.chars().count())));
+        assert_eq!(i.display_chars().len(), i.chars().len());
+        // The submitted line still carries the key for the command itself...
+        assert_eq!(i.submit(), format!("/recover {key}"));
+        // ...but history only has the redacted form.
+        assert!(i.history.iter().all(|h| !h.contains("EsTc") && !h.contains("kLm7")));
+        i.history_prev();
+        assert_eq!(i.text(), "/recover ********");
+        // Ordinary lines are untouched.
+        i.set_text("/msg bob hi");
+        assert_eq!(i.display_chars().into_iter().collect::<String>(), "/msg bob hi");
     }
 
     #[test]

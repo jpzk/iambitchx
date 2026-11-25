@@ -29,11 +29,45 @@ pub fn render_text(app: &mut App, width: u16, height: u16) -> anyhow::Result<Vec
         .collect())
 }
 
+/// One line per room window: `N: name +e` (encrypted) or `N: name -e`.
+pub fn encryption_report(app: &App) -> Vec<String> {
+    let rows: Vec<String> = app
+        .windows
+        .iter()
+        .enumerate()
+        .skip(1)
+        .map(|(i, w)| {
+            let state = if w.room.encrypted {
+                "+e encrypted (megolm)"
+            } else {
+                "-e not encrypted"
+            };
+            format!("{}: {} {state}", i + 1, w.room.name)
+        })
+        .collect();
+    if rows.is_empty() {
+        vec!["(no rooms)".to_string()]
+    } else {
+        rows
+    }
+}
+
 pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
     client.sync_once(SyncSettings::default()).await?;
 
     app.status_info(format!("Connected to {} as {}", client.homeserver(), app.me));
     crate::tui::seed(&mut app, &client).await;
+
+    println!("=== encryption ===");
+    for row in encryption_report(&app) {
+        println!("{row}");
+    }
+    if let Some(s) = client.encryption().cross_signing_status().await {
+        println!(
+            "cross-signing: master={} self_signing={} user_signing={}",
+            s.has_master, s.has_self_signing, s.has_user_signing
+        );
+    }
 
     println!("=== window 1 (status) ===");
     for row in render_text(&mut app, WIDTH, HEIGHT)? {
@@ -58,4 +92,25 @@ pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bitchx::app::tests::{app, room};
+
+    #[test]
+    fn test_smoke_encryption_report() {
+        let mut app = app();
+        let mut snap = room("!b:example.org", "#other");
+        snap.encrypted = true;
+        app.handle_mx(MxEvent::Room(snap));
+        assert_eq!(encryption_report(&app), vec![
+            "2: #room -e not encrypted".to_string(),
+            "3: #other +e encrypted (megolm)".to_string(),
+            "4: armin -e not encrypted".to_string(),
+        ]);
+        let empty = App::new(app.me.clone());
+        assert_eq!(encryption_report(&empty), vec!["(no rooms)".to_string()]);
+    }
 }

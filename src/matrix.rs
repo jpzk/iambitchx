@@ -7,6 +7,7 @@
 use std::time::{Duration, Instant};
 
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::deserialized_responses::{TimelineEvent, TimelineEventKind};
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as PresenceRequest;
 use matrix_sdk::ruma::api::client::profile::DisplayName;
@@ -23,10 +24,11 @@ use matrix_sdk::ruma::events::{
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::room::JoinRuleKind;
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{Int, OwnedRoomId, OwnedRoomOrAliasId, UserId, uint};
+use matrix_sdk::ruma::{Int, OwnedRoomId, OwnedRoomOrAliasId, OwnedUserId, UserId, uint};
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot};
 
@@ -228,7 +230,22 @@ async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
 }
 
 /// Translate one timeline event. Unknown/irrelevant events yield nothing.
-pub async fn convert(
+pub async fn convert(room: &Room, me: &UserId, tev: &TimelineEvent) -> Vec<(Option<String>, Line)> {
+    if let TimelineEventKind::UnableToDecrypt { event, utd_info } = &tev.kind {
+        let id = event.get_field::<String>("event_id").ok().flatten();
+        let sender = event.get_field::<OwnedUserId>("sender").ok().flatten();
+        let nick = match &sender {
+            Some(s) => nick_of(room, s).await,
+            None => "?".to_string(),
+        };
+        let reason = utd_reason(&utd_info.reason);
+        return vec![(id, Line::Undecryptable { nick, reason })];
+    }
+    convert_raw(room, me, tev.raw()).await
+}
+
+/// Translate one (decrypted or plain) timeline event.
+pub async fn convert_raw(
     room: &Room,
     me: &UserId,
     raw: &Raw<AnySyncTimelineEvent>,
@@ -248,6 +265,9 @@ pub async fn convert(
                 MessageType::Text(t) => Line::Public { nick, own, text: t.body },
                 MessageType::Emote(e) => Line::Action { nick, own, text: e.body },
                 MessageType::Notice(n) => Line::Notice { nick, text: n.body },
+                MessageType::VerificationRequest(_) => {
+                    Line::Info(verification_event_text(&nick, "request"))
+                },
                 other => {
                     let text = format!("[{}] {}", other.msgtype(), other.body());
                     Line::Public { nick, own, text }
@@ -256,11 +276,14 @@ pub async fn convert(
             vec![line]
         },
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
-            vec![Line::Public {
-                nick,
-                own,
-                text: "** unable to decrypt message **".into(),
-            }]
+            vec![Line::Undecryptable { nick, reason: "not decrypted yet".into() }]
+        },
+        AnySyncTimelineEvent::MessageLike(m)
+            if m.event_type().to_string().starts_with("m.key.verification.") =>
+        {
+            let ty = m.event_type().to_string();
+            let kind = ty.trim_start_matches("m.key.verification.");
+            vec![Line::Info(verification_event_text(&nick, kind))]
         },
         AnySyncTimelineEvent::State(s) => state_lines(room, s).await,
         _ => vec![],
@@ -276,7 +299,7 @@ pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<(Option<St
     let msgs = room.messages(opts).await?;
     let mut out = vec![];
     for ev in msgs.chunk.iter().rev() {
-        out.extend(convert(room, me, ev.raw()).await);
+        out.extend(convert(room, me, ev).await);
     }
     Ok(out)
 }
@@ -299,7 +322,7 @@ pub fn spawn_sync(client: Client, tx: Tx) {
                         let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
                         let mut lines = vec![];
                         for ev in &update.timeline.events {
-                            lines.extend(convert(&room, &me, ev.raw()).await);
+                            lines.extend(convert(&room, &me, ev).await);
                         }
                         if !lines.is_empty() {
                             let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: false });
@@ -353,6 +376,8 @@ fn room_of(client: &Client, room_id: &OwnedRoomId) -> anyhow::Result<Room> {
         .ok_or_else(|| anyhow::anyhow!("Unknown room {room_id}"))
 }
 
+/// The DM with `user`, created if needed. New DMs are end-to-end encrypted:
+/// `create_dm` puts `m.room.encryption` (megolm) in the initial state.
 async fn dm_room(client: &Client, user: &UserId) -> anyhow::Result<Room> {
     match client.get_dm_room(user) {
         Some(room) => Ok(room),
@@ -481,6 +506,17 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let lines = backfill(&room, &me).await?;
             let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: true });
         },
+        Effect::EnableEncryption(room_id) => {
+            let room = room_of(client, &room_id)?;
+            crate::e2ee::enable_encryption(&room, tx).await?;
+            let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
+        },
+        Effect::Verify { user, flow_id, action } => {
+            crate::e2ee::verify(client, user, flow_id, action, tx).await?;
+        },
+        Effect::Devices(user) => crate::e2ee::devices(client, user, tx).await?,
+        Effect::Trust => crate::e2ee::trust(client, tx).await?,
+        Effect::Recover(key) => crate::e2ee::recover(client, key, tx).await?,
         Effect::Quit => {},
     }
     Ok(())
