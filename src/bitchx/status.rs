@@ -74,12 +74,10 @@ pub struct BxStatus {
     pub modes: String,
     /// `%F`: refnums of other windows with unread activity.
     pub act: Vec<usize>,
-    /// `%R`: this window's refnum.
-    pub window: usize,
     /// `%!`; `None` outside of channels.
     pub users: Option<UserCounts>,
-    /// `%L`: lag to the homeserver in seconds.
-    pub lag: u64,
+    /// `%L`: lag to the homeserver in seconds; `None` before the first sample.
+    pub lag: Option<u64>,
 }
 
 impl BxStatus {
@@ -150,13 +148,20 @@ impl BxStatus {
         Line::from(s).style(status_bg())
     }
 
-    /// STATUS_FORMAT2, left part: ` %L %!` (`[Lag 0] [O/1 N/2 I/0 V/0 F/0]`).
+    /// STATUS_FORMAT2, left part: `%L %!` (`[Lag ??] [O/1 N/2 I/0 V/0 F/0]`).
+    ///
+    /// `%L` reads `??` until the first lag sample, then the seconds
+    /// right-aligned to two columns (`[Lag  0]`, recon 2).
     pub fn line2(&self) -> Line<'static> {
+        let lag = match self.lag {
+            Some(n) => format!("{n:>2}"),
+            None => "??".to_string(),
+        };
         let mut s = vec![
-            sp(" ", st_text()),
+            sp(" ", st_bright()),
             sp("[", st_punct()),
             sp("Lag ", st_text()),
-            sp(self.lag.to_string(), st_bright()),
+            sp(lag, st_bright()),
             sp("]", st_punct()),
         ];
 
@@ -187,14 +192,16 @@ impl BxStatus {
         Line::from(s).style(status_bg())
     }
 
-    /// STATUS_FORMAT2, right-justified part (after `%>`): the window refnum.
+    /// STATUS_FORMAT2, right-justified part (after `%>`):
+    /// `[%u:%a:%f:%b:%h]`. BitchX shows `[U:a:S:b:h]` inside a channel and
+    /// `[::::]` elsewhere, all cyan (recon 21, 22). The IRC flags have no
+    /// Matrix meaning, so they are rendered exactly as captured.
     pub fn line2_right(&self) -> Line<'static> {
-        Line::from(vec![
-            sp("[", st_punct()),
-            sp("Win ", st_text()),
-            sp(self.window.to_string(), st_bright()),
-            sp("] ", st_punct()),
-        ])
-        .style(status_bg())
+        let flags = if self.channel.is_some() {
+            "[U:a:S:b:h]"
+        } else {
+            "[::::]"
+        };
+        Line::from(vec![sp(flags, st_punct()), sp(" ", st_punct())]).style(status_bg())
     }
 }

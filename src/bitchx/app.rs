@@ -126,7 +126,7 @@ pub struct App {
     pub current: usize,
     pub input: Input,
     pub away: Option<String>,
-    pub lag: u64,
+    pub lag: Option<u64>,
     pub quit: bool,
     /// Rows of scrollback on screen; set by the renderer, used for paging.
     pub page: usize,
@@ -156,7 +156,7 @@ impl App {
             current: 0,
             input: Input::default(),
             away: None,
-            lag: 0,
+            lag: None,
             quit: false,
             page: 20,
             clock: None,
@@ -276,7 +276,6 @@ impl App {
             query: win.room.dm_peer.as_ref().map(|_| win.room.name.clone()),
             modes,
             act: self.act(),
-            window: self.refnum(),
             users,
             lag: self.lag,
         }
@@ -345,7 +344,7 @@ impl App {
                 self.away = away;
                 self.info(msg);
             },
-            MxEvent::Lag(lag) => self.lag = lag,
+            MxEvent::Lag(lag) => self.lag = Some(lag),
             MxEvent::Verify { user, update } => self.verify_update(user, update),
         }
         vec![]
@@ -1280,7 +1279,8 @@ pub mod tests {
         assert_eq!(st.channel.as_deref(), Some("#room"));
         assert!(st.chanop);
         assert_eq!(st.users.unwrap(), UserCounts { ops: 1, nonops: 2, voice: 1 });
-        assert_eq!(st.window, 2);
+        assert_eq!(app.refnum(), 2);
+        assert_eq!(st.lag, None);
     }
 
     #[test]

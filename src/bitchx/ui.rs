@@ -172,8 +172,8 @@ mod tests {
         assert_blue_row(&buf, 9);
         assert_blue_row(&buf, 10);
         assert!(r[9].starts_with(" [09:24pm][@carla] [#room]"), "{:?}", r[9]);
-        assert!(r[10].contains("[Lag 0] [O/1 N/2 I/0 V/1 F/0]"), "{:?}", r[10]);
-        assert!(r[10].trim_end().ends_with("[Win 2]"), "{:?}", r[10]);
+        assert!(r[10].starts_with(" [Lag ??] [O/1 N/2 I/0 V/1 F/0]"), "{:?}", r[10]);
+        assert!(r[10].trim_end().ends_with("[U:a:S:b:h]"), "{:?}", r[10]);
         // The prompt on the last row, not blue.
         assert!(r[11].starts_with("[#room] "), "{:?}", r[11]);
         assert_ne!(buf[(0, 11)].bg, Color::Blue);
@@ -198,7 +198,8 @@ mod tests {
         assert_blue_row(&buf, 13);
         assert_blue_row(&buf, 14);
         assert!(r[13].starts_with(" [09:24pm][carla] []"), "{:?}", r[13]);
-        assert!(r[14].trim_end().ends_with("[Win 1]"));
+        assert!(r[14].starts_with(" [Lag ??]"), "{:?}", r[14]);
+        assert!(r[14].trim_end().ends_with("[::::]"), "{:?}", r[14]);
         assert!(r[15].starts_with("[status] "));
     }
 
@@ -258,6 +259,39 @@ mod tests {
         let buf = render(&mut app, 80, 12);
         let l1 = row(&buf, 9);
         assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
+    }
+
+    #[test]
+    fn test_status_line2_lag_and_flags() {
+        // Recon 21/22: `[Lag ??]` until the first sample, then `[Lag  n]`;
+        // right-aligned cyan `[U:a:S:b:h]` in a channel, `[::::]` elsewhere.
+        let mut app = room_app();
+        let buf = render(&mut app, 80, 12);
+        let l2 = row(&buf, 10);
+        assert!(l2.starts_with(" [Lag ??] [O/"), "{l2:?}");
+        assert!(l2.ends_with("[U:a:S:b:h] "), "{l2:?}");
+        let x = l2.find("[U:a").unwrap() as u16;
+        for dx in 0..11 {
+            assert_eq!(buf[(x + dx, 10)].fg, Color::Cyan);
+            assert_eq!(buf[(x + dx, 10)].bg, Color::Blue);
+        }
+        // `Lag` white, value bold white.
+        assert_eq!(buf[(2, 10)].fg, Color::Gray);
+        assert!(buf[(6, 10)].modifier.contains(ratatui::style::Modifier::BOLD));
+
+        app.handle_mx(MxEvent::Lag(0));
+        let buf = render(&mut app, 80, 12);
+        assert!(row(&buf, 10).starts_with(" [Lag  0] [O/"), "{:?}", row(&buf, 10));
+        app.handle_mx(MxEvent::Lag(12));
+        let buf = render(&mut app, 80, 12);
+        assert!(row(&buf, 10).starts_with(" [Lag 12] [O/"));
+
+        // Status window: no counters, `[::::]`.
+        app.handle_key(alt('1'));
+        let buf = render(&mut app, 80, 12);
+        let l2 = row(&buf, 10);
+        assert!(!l2.contains("[O/"), "{l2:?}");
+        assert!(l2.trim_end().ends_with("[::::]"), "{l2:?}");
     }
 
     #[test]
