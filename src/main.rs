@@ -75,6 +75,7 @@ mod bitchx;
 mod commands;
 mod completions;
 mod config;
+mod device_link;
 mod keybindings;
 mod message;
 mod notifications;
@@ -1167,7 +1168,7 @@ async fn login(worker: &Requester, settings: &ApplicationSettings) -> IambResult
 
     loop {
         let login_style = match read_response(
-            "Please select login type: [p]assword / [s]ingle sign on / [o]auth",
+            "Please select login type: [p]assword / [s]ingle sign on / [o]auth / [d]evice link",
         )
         .chars()
         .next()
@@ -1179,8 +1180,9 @@ async fn login(worker: &Requester, settings: &ApplicationSettings) -> IambResult
             },
             Some('s') => LoginStyle::SingleSignOn,
             Some('o') => LoginStyle::OAuth,
+            Some('d') => LoginStyle::DeviceLink,
             Some(_) => {
-                println!("Failed to login. Please enter 'p', 's' or 'o'");
+                println!("Failed to login. Please enter 'p', 's', 'o' or 'd'");
                 continue;
             },
         };
