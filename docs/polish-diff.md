@@ -23,7 +23,7 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
 6. **Lag before the first sample.** v2 showed `[Lag 0]` from startup. BitchX shows
    `[Lag ??]` until the first ping, then pads the value to two columns (`[Lag  0]`).
    **Fixed:** `BxStatus::lag` is now `Option<u64>`. It stays `None` until the first
-   `MxEvent::Lag`, which comes from the timed `/sync` round-trip.
+   `MxEvent::Lag` (see entry 31 for where the value comes from).
    Test: `ui::tests::test_status_line2_lag_and_flags`.
 7. **Right side of status line 2.** v2 right-aligned `[Win n]`, which BitchX never shows.
    BitchX right-aligns `[%u:%a:%f:%b:%h]`: `[U:a:S:b:h]` in a channel and `[::::]`
@@ -138,3 +138,28 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
     line there. Query window naming already matched: the prompt is `[nick]` and
     status line 1 shows `[Query: nick]` with no channel field (test
     `app::tests::test_query_window`).
+
+## Windows and Lag
+
+29. **Split top bar.** v2 had no `/window split`. In BitchX, `/window split on` puts
+    `STATUS_FORMAT3` (`BitchX by panasync`, bold white on blue, full width) on row 1,
+    starts the output one row lower and prints ` Window SPLIT is ON` (capture 19).
+    **Fixed:** `/window split on|off|toggle` (`BitchxCommand::WindowSplit`, `App::split`)
+    draws the same bar and shifts the scrollback down one row. The status lines and input
+    stay where they were. Tests: `ui::tests::test_window_split_top_bar`,
+    `commands::tests::test_bitchx_window`.
+30. **Multiple visible windows and the `^^^^^^^^` marker.** BitchX's `/window new` splits
+    the screen horizontally. Each pane gets its own status bar, and only the current pane
+    shows the clock and the bold yellow `^^^^^^^^` (captures 07, 19). v2 shows one window
+    at a time, and you switch with `/window n`, Alt-n or Ctrl-W n/p. **Justified (not
+    cheap):** this needs a pane layout, a status bar for each pane, plus
+    `/window new|hide|show|grow|shrink|balance` and the resize rules. That is a
+    layout-engine rewrite, not polish. The marker only means something when several
+    windows are visible, so it goes too. A single visible window is always current,
+    which is also why BitchX never shows `^^^^^^^^` with one window (capture 22).
+31. **Lag mapping.** IRC `%L` is the PING/PONG round-trip to the server, in seconds.
+    Matrix has no PING, so `matrix::spawn_lag` times an authenticated `whoami`
+    (`GET /account/whoami`) once a minute and sends whole seconds as `MxEvent::Lag`.
+    It doesn't use `/sync`, because that is a long-poll and its duration measures
+    server idle time, not lag. The status shows `[Lag ??]` until the first sample (entry 6).
+    **Fixed / mapped.** Test: `ui::tests::test_status_line2_lag_and_flags`.

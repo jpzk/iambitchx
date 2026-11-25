@@ -89,6 +89,8 @@ pub enum BitchxCommand {
     },
     NextWindow,
     PrevWindow,
+    /// `/window split on|off|toggle`: the top status bar.
+    WindowSplit(Option<bool>),
     Version,
     Help,
     /// `/encrypt`: enable megolm in the current room (asks y/n first).
@@ -439,6 +441,21 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         },
         "window" => {
             let target = args.word();
+            if target.as_deref().is_some_and(|t| t.eq_ignore_ascii_case("split")) {
+                let mode = args.required_word("on|off|toggle")?;
+                args.finish()?;
+                return Ok(Some(match mode.to_lowercase().as_str() {
+                    "on" => BitchxCommand::WindowSplit(Some(true)),
+                    "off" => BitchxCommand::WindowSplit(Some(false)),
+                    "toggle" => BitchxCommand::WindowSplit(None),
+                    _ => {
+                        return Err(BitchxError::InvalidArgument {
+                            command: "window",
+                            argument: mode,
+                        });
+                    },
+                }));
+            }
             args.finish()?;
 
             // BitchX-style `/window next` and `/window prev`.
@@ -698,6 +715,11 @@ mod tests {
         assert_eq!(ok("window 3"), BitchxCommand::Window { target: Some(s("3")) });
         assert_eq!(ok("window #a:b"), BitchxCommand::Window { target: Some(s("#a:b")) });
         assert_eq!(ok("window next"), BitchxCommand::NextWindow);
+        assert_eq!(ok("window split on"), BitchxCommand::WindowSplit(Some(true)));
+        assert_eq!(ok("window SPLIT off"), BitchxCommand::WindowSplit(Some(false)));
+        assert_eq!(ok("window split toggle"), BitchxCommand::WindowSplit(None));
+        assert!(parse("window split").is_err());
+        assert!(parse("window split sideways").is_err());
         assert_eq!(ok("window prev"), BitchxCommand::PrevWindow);
         assert_eq!(ok("window previous"), BitchxCommand::PrevWindow);
         assert_eq!(parse("window 1 2"), Err(invalid("window", "2")));

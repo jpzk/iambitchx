@@ -161,6 +161,8 @@ pub struct App {
     pub input: Input,
     pub away: Option<String>,
     pub lag: Option<u64>,
+    /// `/window split on`: show the `STATUS_FORMAT3` top bar (capture 19).
+    pub split: bool,
     pub quit: bool,
     /// Rows of scrollback on screen; set by the renderer, used for paging.
     pub page: usize,
@@ -185,6 +187,7 @@ impl App {
             input: Input::default(),
             away: None,
             lag: None,
+            split: false,
             quit: false,
             page: 20,
             clock: None,
@@ -701,6 +704,12 @@ impl App {
                         vec![]
                     },
                 }
+            },
+            BitchxCommand::WindowSplit(on) => {
+                self.split = on.unwrap_or(!self.split);
+                let state = if self.split { "ON" } else { "OFF" };
+                self.info(format!("Window SPLIT is {state}"));
+                vec![]
             },
             BitchxCommand::NextWindow => self.next_window(),
             BitchxCommand::PrevWindow => self.prev_window(),

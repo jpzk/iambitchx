@@ -1,9 +1,11 @@
 //! # The BitchX screen
 //!
-//! Scrollback from row 0, two blue status lines, the input line on the last
-//! row. No borders, no box drawing.
+//! Scrollback from row 0 (row 1 under `/window split on`, which adds the
+//! top bar), two blue status lines, the input line on the last row. No
+//! borders, no box drawing.
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
+use ratatui::style::{Color, Modifier};
 use ratatui::text::{Line as TLine, Span};
 use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthChar;
@@ -11,6 +13,9 @@ use unicode_width::UnicodeWidthChar;
 use crate::bitchx::app::App;
 use crate::bitchx::format::{format_line, n, sanitize, sp, wrap};
 use crate::bitchx::status::status_bg;
+
+/// `STATUS_FORMAT3`, the top bar shown with `/window split on` (capture 19).
+pub const TOP_BAR: &str = "BitchX by panasync";
 
 /// The scrollback rows of the current window that fit in `rows` x `width`,
 /// honouring (and clamping) its scroll offset. Top-aligned when short.
@@ -36,11 +41,25 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
         return;
     }
 
-    let rows = (area.height - 3) as usize;
+    // `/window split on`: row 0 is the `STATUS_FORMAT3` top bar (capture 19),
+    // bold white on blue, and the output starts one row lower.
+    let top = u16::from(app.split && area.height > 4);
+    if top == 1 {
+        let bar =
+            TLine::from(sp(TOP_BAR, status_bg().fg(Color::White).add_modifier(Modifier::BOLD)));
+        frame.render_widget(
+            Paragraph::new(bar).style(status_bg()),
+            Rect::new(area.x, area.y, area.width, 1),
+        );
+    }
+    let rows = (area.height - 3 - top) as usize;
     app.page = rows.saturating_sub(1).max(1);
 
     let lines = scrollback(app, area.width as usize, rows);
-    frame.render_widget(Paragraph::new(lines), Rect::new(area.x, area.y, area.width, rows as u16));
+    frame.render_widget(
+        Paragraph::new(lines),
+        Rect::new(area.x, area.y + top, area.width, rows as u16),
+    );
 
     // Status lines: blue background across the full width.
     let st = app.status();
@@ -271,6 +290,34 @@ mod tests {
         let buf = render(&mut app, 80, 12);
         let l1 = row(&buf, 9);
         assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
+    }
+
+    #[test]
+    fn test_window_split_top_bar() {
+        // Capture 19: `/window split on` puts `BitchX by panasync` (bold white
+        // on blue) on row 0 and pushes the output down one row.
+        let mut app = room_app();
+        let before = render(&mut app, 80, 12);
+        assert!(!row(&before, 0).starts_with(TOP_BAR));
+        let first = row(&before, 0);
+
+        app.submit("/window split on");
+        assert!(app.split);
+        let buf = render(&mut app, 80, 12);
+        assert_eq!(row(&buf, 0).trim_end(), TOP_BAR);
+        assert_eq!(buf[(0, 0)].bg, Color::Blue);
+        assert_eq!(buf[(79, 0)].bg, Color::Blue);
+        assert_eq!(buf[(0, 0)].fg, Color::White);
+        assert!(buf[(0, 0)].modifier.contains(ratatui::style::Modifier::BOLD));
+        assert_eq!(row(&buf, 1), first);
+        // The status lines and input stay at the bottom.
+        assert!(row(&buf, 9).starts_with(" [09:24pm]"), "{:?}", row(&buf, 9));
+        assert!(row(&buf, 10).starts_with(" [Lag ??]"));
+        assert!(rows(&buf).iter().any(|r| r.contains("Window SPLIT is ON")));
+
+        app.submit("/window split toggle");
+        assert!(!app.split);
+        assert!(!row(&render(&mut app, 80, 12), 0).starts_with(TOP_BAR));
     }
 
     #[test]
