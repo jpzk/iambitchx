@@ -104,6 +104,31 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             };
             body_lines(vec![sp(" ", k()), who], text, n())
         },
+        // Query lines (capture 29). Sent: `[msg(peer)] text`, `msg` red and
+        // the peer bold red. Received: `[nick(mxid)] text`, nick bold
+        // magenta, host magenta. Punctuation dark grey.
+        Line::Private { nick, mxid, own, text } => {
+            let prefix = if *own {
+                vec![
+                    sp("[", k()),
+                    sp("msg", fg(Color::Red)),
+                    sp("(", k()),
+                    sp(nick.clone(), bold(Color::Red)),
+                    sp(")]", k()),
+                    sp(" ", n()),
+                ]
+            } else {
+                vec![
+                    sp("[", k()),
+                    sp(nick.clone(), bold(Color::Magenta)),
+                    sp("(", k()),
+                    sp(mxid.clone(), fg(Color::Magenta)),
+                    sp(")]", k()),
+                    sp(" ", n()),
+                ]
+            };
+            body_lines(prefix, text, n())
+        },
         // `-nick(mxid)- text`: punctuation dark grey, nick and host magenta.
         Line::Notice { nick, mxid, text } => {
             let prefix = vec![
@@ -475,6 +500,33 @@ mod tests {
                 .add_modifier
                 .contains(Modifier::BOLD)
         );
+    }
+
+    #[test]
+    fn test_query_message_formats() {
+        // Capture 29: `[msg(bxrecon78)] private hello`, `msg` red, nick bold red.
+        let sent = Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: true,
+            text: "private hello".into(),
+        };
+        assert_eq!(text(&sent), "[msg(armin)] private hello");
+        let f = format_line(&sent, "armin");
+        assert_eq!(style_of(&f, "msg"), fg(Color::Red));
+        assert_eq!(style_of(&f, "armin"), bold(Color::Red));
+        assert_eq!(style_of(&f, "["), k());
+        // `[bxrecon78(~node@host)] private reply`: nick bold magenta, host magenta.
+        let recv = Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: false,
+            text: "private reply".into(),
+        };
+        assert_eq!(text(&recv), "[armin(@armin:remote.tld)] private reply");
+        let f = format_line(&recv, "armin");
+        assert_eq!(style_of(&f, "armin"), bold(Color::Magenta));
+        assert_eq!(style_of(&f, "@armin:remote.tld"), fg(Color::Magenta));
     }
 
     #[test]

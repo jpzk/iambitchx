@@ -14,6 +14,14 @@ pub enum Line {
     Public { nick: String, own: bool, text: String },
     /// ACTION / SEND_ACTION: ` nick text` / ` nick/#chan text`.
     Action { nick: String, own: bool, text: String },
+    /// Query (DM) message. SEND_MSG `[msg(nick)] text` when `own` (`nick`
+    /// is the peer), MSG `[nick(mxid)] text` otherwise.
+    Private {
+        nick: String,
+        mxid: String,
+        own: bool,
+        text: String,
+    },
     /// NOTICE: `-nick(mxid)- text`.
     Notice { nick: String, mxid: String, text: String },
     /// JOIN: ` nick [mxid] has joined #chan`.

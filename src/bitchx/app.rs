@@ -79,6 +79,18 @@ impl Window {
         self.room.room_id.as_ref().map(|_| self.room.name.as_str())
     }
 
+    /// In a query (DM) window, `<nick>` lines become BitchX query lines:
+    /// `[msg(peer)] text` for ours and `[peer(mxid)] text` for theirs.
+    fn query_line(&self, line: Line) -> Line {
+        match (&self.room.dm_peer, line) {
+            (Some(peer), Line::Public { nick, own, text }) => {
+                let nick = if own { self.room.name.clone() } else { nick };
+                Line::Private { nick, mxid: peer.to_string(), own, text }
+            },
+            (_, line) => line,
+        }
+    }
+
     fn push(&mut self, id: Option<String>, line: Line) -> bool {
         if let Some(id) = id &&
             !self.ids.insert(id)
@@ -315,6 +327,7 @@ impl App {
                     return vec![];
                 };
                 let win = &mut self.windows[idx];
+                let lines = lines.into_iter().map(|(id, l)| (id, win.query_line(l))).collect();
                 if backfill {
                     win.prepend(lines);
                 } else {
@@ -401,7 +414,8 @@ impl App {
         self.status_info(format!("{refnum:>6}) {} [{what}]", snap.name));
 
         let mut win = Window { room: snap, ..Default::default() };
-        if let Some(peer) = win.room.dm_peer.clone() {
+        if win.room.dm_peer.is_some() {
+            let peer = win.room.name.clone();
             win.push(None, Line::Info(format!("Starting conversation with {peer}")));
         }
         if let Some(topic) = win.room.topic.clone() {
@@ -583,13 +597,31 @@ impl App {
                 }
                 match self.user_cmd(&target) {
                     Some(user) => {
-                        self.info(format!("-> *{target}* {text}"));
+                        let line = Line::Private {
+                            nick: target,
+                            mxid: user.to_string(),
+                            own: true,
+                            text: text.clone(),
+                        };
+                        self.cur_mut().push(None, line);
                         vec![Effect::Msg { user, text }]
                     },
                     None => vec![],
                 }
             },
-            BitchxCommand::Query { target } => {
+            BitchxCommand::Query { target: None } => {
+                // `/query` alone ends the conversation. A Matrix DM is its own
+                // window, so fall back to window 1 and print the BitchX line
+                // there.
+                if self.current > 0 && self.cur().room.dm_peer.is_some() {
+                    let peer = self.cur().room.name.clone();
+                    let fx = self.switch(0);
+                    self.info(format!("Ending conversation with {peer}"));
+                    return fx;
+                }
+                vec![]
+            },
+            BitchxCommand::Query { target: Some(target) } => {
                 if let Some(idx) = self.find_window(&target).filter(|i| *i > 0) {
                     return self.switch(idx);
                 }
@@ -1051,6 +1083,68 @@ pub mod tests {
 
     fn last(app: &App) -> Line {
         app.cur().lines.last().cloned().unwrap()
+    }
+
+    #[test]
+    fn test_query_window() {
+        let mut app = app();
+        let dm = owned_room_id!("!c:example.org");
+        let idx = app.window_of(&dm).unwrap();
+        // Capture 29: ` Starting conversation with nick`, window named after the peer.
+        assert_eq!(
+            app.windows[idx].lines[0],
+            Line::Info("Starting conversation with armin".into())
+        );
+        app.switch(idx);
+        assert_eq!(app.prompt(), "[armin] ");
+        assert_eq!(app.status().query.as_deref(), Some("armin"));
+        assert_eq!(app.status().channel, None);
+        // `<nick>` lines in a DM become `[msg(peer)]` / `[peer(mxid)]`.
+        let public = |nick: &str, own| Line::Public { nick: nick.into(), own, text: "t".into() };
+        app.handle_mx(MxEvent::Lines {
+            room_id: dm.clone(),
+            lines: vec![
+                (None, public("carla", true)),
+                (None, public("armin", false)),
+            ],
+            backfill: false,
+        });
+        let n = app.cur().lines.len();
+        assert_eq!(app.cur().lines[n - 2], Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: true,
+            text: "t".into()
+        });
+        assert_eq!(app.cur().lines[n - 1], Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: false,
+            text: "t".into()
+        });
+        // Channel windows keep `<nick>`.
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!a:example.org"),
+            lines: vec![(None, public("bob", false))],
+            backfill: false,
+        });
+        assert_eq!(app.windows[1].lines.last(), Some(&public("bob", false)));
+        // `/query` alone: ` Ending conversation with nick`, back to window 1.
+        typed(&mut app, "/query");
+        assert_eq!(app.refnum(), 1);
+        assert_eq!(last(&app), Line::Info("Ending conversation with armin".into()));
+        // ...and does nothing outside a query.
+        let before = app.cur().lines.len();
+        assert!(typed(&mut app, "/query").is_empty());
+        assert_eq!(app.cur().lines.len(), before);
+        // `/msg user text` with no DM window echoes `[msg(user)] text`.
+        typed(&mut app, "/msg bob yo");
+        assert_eq!(last(&app), Line::Private {
+            nick: "bob".into(),
+            mxid: "@bob:example.org".into(),
+            own: true,
+            text: "yo".into()
+        });
     }
 
     #[test]

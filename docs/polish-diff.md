@@ -118,3 +118,23 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
     displayname, channels are the rooms in common (`@` for PL>=50), server is the
     homeserver, and `devices` (the device count) replaces `idle`/`actually`, which
     Matrix doesn't expose. Test: `format::tests::test_whois_layout`.
+26. **Query message formats.** In a DM window v2 printed `<nick> text`, the same as in a
+    channel. BitchX prints sent query lines as `[msg(nick)] text` (`msg` red, nick bold
+    red, `[ ( ) ]` dark grey) and received ones as `[nick(user@host)] text` (nick bold
+    magenta, host magenta), as in capture 29. **Fixed:** the new `Line::Private`.
+    `App` rewrites `Line::Public` into it for windows that have a `dm_peer`, and the
+    mxid stands in for user@host. Tests: `format::tests::test_query_message_formats`
+    and `app::tests::test_query_window`.
+27. **/msg echo.** `/msg user text` without an open DM window printed
+    `-> *user* text`. BitchX prints `[msg(user)] text`. **Fixed:** this now pushes an
+    own `Line::Private`.
+28. **Starting/Ending conversation.** v2 printed `Starting conversation with @mxid`,
+    and `/query` with no argument was an error. BitchX prints ` Starting conversation
+    with nick`, and a bare `/query` prints ` Ending conversation with nick`.
+    **Fixed:** the Starting line now uses the peer's name. A bare `/query` in a DM
+    window prints the Ending line, and does nothing elsewhere. **Justified deviation:**
+    a Matrix DM *is* its own room/window, so it can't stop being a query target while
+    the window stays. Ending a query therefore switches to window 1 and prints the
+    line there. Query window naming already matched: the prompt is `[nick]` and
+    status line 1 shows `[Query: nick]` with no channel field (test
+    `app::tests::test_query_window`).

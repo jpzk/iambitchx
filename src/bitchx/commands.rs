@@ -70,8 +70,9 @@ pub enum BitchxCommand {
         target: String,
         room: Option<String>,
     },
+    /// `/query nick`; `/query` alone ends the current query.
     Query {
-        target: String,
+        target: Option<String>,
     },
     Ctcp {
         target: String,
@@ -417,7 +418,7 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Invite { target, room }
         },
         "query" => {
-            let target = args.required_word("target")?;
+            let target = args.word();
             args.finish()?;
             BitchxCommand::Query { target }
         },
@@ -652,10 +653,10 @@ mod tests {
     fn test_bitchx_op_deop_query() {
         assert_eq!(ok("op @bob:x"), BitchxCommand::Op { target: s("@bob:x") });
         assert_eq!(ok("deop @bob:x"), BitchxCommand::Deop { target: s("@bob:x") });
-        assert_eq!(ok("query @bob:x"), BitchxCommand::Query { target: s("@bob:x") });
+        assert_eq!(ok("query @bob:x"), BitchxCommand::Query { target: Some(s("@bob:x")) });
         assert_eq!(parse("op"), Err(missing("op", "target")));
         assert_eq!(parse("deop"), Err(missing("deop", "target")));
-        assert_eq!(parse("query"), Err(missing("query", "target")));
+        assert_eq!(ok("query"), BitchxCommand::Query { target: None });
         assert_eq!(parse("op a b"), Err(invalid("op", "b")));
         assert_eq!(parse("deop a b"), Err(invalid("deop", "b")));
         assert_eq!(parse("query a hi there"), Err(invalid("query", "hi there")));
