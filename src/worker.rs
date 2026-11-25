@@ -94,6 +94,7 @@ use tracing::{Instrument as _, error, warn};
 
 use crate::base::{CreateRoomFlags, CreateRoomType, EchoLocation, MessageNeed};
 use crate::config::ProxyUrl;
+use crate::device_link::device_link_login;
 use crate::notifications::register_notifications;
 use crate::oauth::oauth_login;
 use crate::prelude::*;
@@ -1183,6 +1184,7 @@ pub enum LoginStyle {
     Password(String),
     SingleSignOn,
     OAuth,
+    DeviceLink,
 }
 
 pub struct ClientResponse<T>(Receiver<T>);
@@ -2272,6 +2274,15 @@ impl ClientWorker {
                     .oauth()
                     .full_session()
                     .expect("logged in client should have session");
+                self.settings.write_session(session)?;
+            },
+            LoginStyle::DeviceLink => {
+                let session = device_link_login(
+                    self.client.clone(),
+                    &self.settings.user_id,
+                    self.settings.read_saved_device(),
+                )
+                .await?;
                 self.settings.write_session(session)?;
             },
         }

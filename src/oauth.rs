@@ -149,7 +149,7 @@ async fn wait_auth_code(server_handle: LocalServerRedirectHandle) -> IambResult<
 }
 
 // Taken from the sdk's example
-fn client_metadata() -> Raw<ClientMetadata> {
+pub fn client_metadata() -> Raw<ClientMetadata> {
     let ipv4_localhost_uri = Url::parse(&format!("http://{}/", Ipv4Addr::LOCALHOST))
         .expect("Couldn't parse IPv4 redirect URI");
     let ipv6_localhost_uri = Url::parse(&format!("http://[{}]/", Ipv6Addr::LOCALHOST))
