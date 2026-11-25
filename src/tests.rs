@@ -216,6 +216,7 @@ pub fn mock_tunables() -> TunableValues {
         time_format: "  [%T]".to_string(),
         time_gutter_width: 12,
         reply_on_insert: false,
+        frontend: crate::bitchx::Frontend::Iamb,
     }
 }
 

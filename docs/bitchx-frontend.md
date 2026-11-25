@@ -101,6 +101,28 @@ Rules:
 * `quit`/`exit` are aliases; `leave` is an alias of `part` with no room;
   `me`/`action` are aliases of each other.
 
+Parser decisions and IRC-style additions (implemented in `commands.rs`):
+
+* Aliases: `/j` = `/join`; `/previous` = `/prev`; `/next` → `NextWindow`,
+  `/prev` → `PrevWindow`; BitchX-style `/window next` and `/window prev`
+  (case-insensitive) also yield `NextWindow` / `PrevWindow`. `/window` with no
+  argument or any other single argument → `Window { target }`.
+* `/me` → `Me`, `/action` → `Action`; same payload, dispatch treats them
+  identically.
+* `/leave` takes no argument (`Leave`); use `/part [reason]` for a reason.
+* `/part [#alias|!id] [reason…]`: the first word is taken as the room only if
+  it starts with `#` or `!`; otherwise the whole remainder is the reason.
+* Rest-of-line arguments (bodies keep their inner spacing): `msg` text,
+  `me`/`action` text, `ctcp` text, `nick` (Matrix display names may contain
+  spaces), `topic`, `quit`/`away`/`kick`/`part` reason, `mode` modes.
+* Single-word arguments with extra words → `InvalidArgument` (the extra text):
+  `join <room> [key]`, `who`/`names [target]`, `op`/`deop`/`query <target>`,
+  `invite <target> [room]`, `ignore`/`unignore <pattern>`, `window [target]`.
+* `UnknownCommand` carries the word as typed; error `command` fields carry the
+  canonical name (e.g. `quit` for `/exit`). `BitchxError` implements
+  `Display` for showing in the message area; `COMMAND_NAMES` lists every
+  accepted word for `/help`.
+
 ## 2. `src/bitchx/status.rs` (pure)
 
 BitchX's status bar looks like:
@@ -124,10 +146,16 @@ impl StatusBar {
 }
 ```
 
-* No topic → the `] topic` part is omitted entirely.
+* No topic (empty or whitespace) → the ` topic` part after the closing `]`
+  is omitted entirely (the `]` stays).
+* Modes are concatenated after one `+` (`["e", "p"]` → `+ep`); empty strings
+  are ignored.
 * No modes → the ` +modes` part is omitted entirely.
 * Truncation must never split a grapheme (`unicode_width` is already a
   dependency) and must not panic on `width == 0`.
+* `render` replaces control characters (newline, ESC, …) with spaces so a
+  room topic or display name cannot inject terminal escape sequences, and
+  styles the line `REVERSED` like BitchX's status bar.
 
 ## 3. `src/bitchx/screen.rs` (rendering)
 
@@ -158,7 +186,8 @@ Add to `TunableValues` (in `src/config/mod.rs`):
 pub frontend: Frontend,   // enum { Iamb, Bitchx }, serde rename_all = "lowercase"
 ```
 
-* `[tunables] frontend = "bitchx"` selects the BitchX frontend.
+* `frontend = "bitchx"` under `[settings]` (iamb's tunables section; also
+  allowed per profile) selects the BitchX frontend. Documented in `iamb.5`.
 * Default stays `iamb` → **existing config files keep working unchanged**.
 * `Frontend` derives `Deserialize`, `Serialize`, `Copy`, `Clone`, `Debug`,
   `PartialEq`, `Eq`, `Default` (default = `Iamb`).

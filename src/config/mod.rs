@@ -30,6 +30,7 @@ use serde::de::Visitor;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::base::{SortColumn, SortFieldRoom, SortFieldSpace, SortFieldUser, SortOrder};
+use crate::bitchx::Frontend;
 use crate::prelude::*;
 
 pub mod theme;
@@ -1160,6 +1161,7 @@ pub struct TunableValues {
     /// `time_format` once when the settings are loaded.
     pub time_gutter_width: usize,
     pub reply_on_insert: bool,
+    pub frontend: Frontend,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
@@ -1229,6 +1231,7 @@ pub struct Tunables {
     #[serde(default, deserialize_with = "deserialize_strftime")]
     pub time_format: Option<String>,
     pub reply_on_insert: Option<bool>,
+    pub frontend: Option<Frontend>,
 }
 
 impl Tunables {
@@ -1293,6 +1296,7 @@ impl Tunables {
             date_format: self.date_format.or(other.date_format),
             time_format: self.time_format.or(other.time_format),
             reply_on_insert: self.reply_on_insert.or(other.reply_on_insert),
+            frontend: self.frontend.or(other.frontend),
         }
     }
 
@@ -1355,6 +1359,7 @@ impl Tunables {
             time_format,
             time_gutter_width,
             reply_on_insert: self.reply_on_insert.unwrap_or_default(),
+            frontend: self.frontend.unwrap_or_default(),
         }
     }
 }
@@ -2527,6 +2532,37 @@ time_format = "%"
         assert_eq!(CursorShape::Line, serde_json::from_str(r#""line""#).unwrap());
         assert_eq!(CursorShape::Underline, serde_json::from_str(r#""underline""#).unwrap());
         assert!(serde_json::from_str::<CursorShape>(r#""beam""#).is_err());
+    }
+
+    #[test]
+    fn test_parse_tunables_frontend_bitchx() {
+        // Default stays iamb so existing configs keep working.
+        assert_eq!(Frontend::default(), Frontend::Iamb);
+        let res: Tunables = toml::from_str("").unwrap();
+        assert_eq!(res.frontend, None);
+        assert_eq!(res.values().frontend, Frontend::Iamb);
+
+        let res: Tunables = toml::from_str("frontend = \"bitchx\"").unwrap();
+        assert_eq!(res.frontend, Some(Frontend::Bitchx));
+        assert_eq!(res.values().frontend, Frontend::Bitchx);
+
+        let res: Tunables = toml::from_str("frontend = \"iamb\"").unwrap();
+        assert_eq!(res.values().frontend, Frontend::Iamb);
+
+        assert!(toml::from_str::<Tunables>("frontend = \"irssi\"").is_err());
+        assert!(toml::from_str::<Tunables>("frontend = \"BitchX\"").is_err());
+
+        // In a config file the tunables live under `[settings]`.
+        let settings = parse_settings_toml("[settings]\nfrontend = \"bitchx\"\n").unwrap();
+        assert_eq!(settings.values().frontend, Frontend::Bitchx);
+
+        // A profile without the setting inherits the global one.
+        let global = Tunables {
+            frontend: Some(Frontend::Bitchx),
+            ..Default::default()
+        };
+        let profile = Tunables::default();
+        assert_eq!(profile.merge(global).values().frontend, Frontend::Bitchx);
     }
 
     #[test]
