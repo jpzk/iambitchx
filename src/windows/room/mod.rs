@@ -2,6 +2,7 @@
 use std::collections::HashSet;
 
 use matrix_sdk::notification_settings::RoomNotificationMode;
+use matrix_sdk::ruma::Int;
 use matrix_sdk::ruma::api::client::room::upgrade_room::v3::Request as UpgradeRoomRequest;
 use matrix_sdk::ruma::api::error::ErrorKind as ClientApiErrorKind;
 use matrix_sdk::ruma::events::room::canonical_alias::RoomCanonicalAliasEventContent;
@@ -173,7 +174,12 @@ pub async fn room_command(
             };
 
             if !skip_confirm {
-                let msg = format!("Do you really want to {mua} {user} from this room?");
+                let msg = match mua {
+                    MemberUpdateAction::Op | MemberUpdateAction::Deop => {
+                        format!("Do you really want to {mua} {user} in this room?")
+                    },
+                    _ => format!("Do you really want to {mua} {user} from this room?"),
+                };
                 let act = RoomAction::MemberUpdate(mua, user, reason, true);
                 let act = IambAction::from(act);
                 let prompt = PromptYesNo::new(msg, vec![Action::from(act)]);
@@ -193,6 +199,16 @@ pub async fn room_command(
                 },
                 MemberUpdateAction::Kick => {
                     room.kick_user(&user_id, reason.as_deref())
+                        .await
+                        .map_err(IambError::from)?;
+                },
+                MemberUpdateAction::Op | MemberUpdateAction::Deop => {
+                    let level = if mua == MemberUpdateAction::Op {
+                        100
+                    } else {
+                        0
+                    };
+                    room.update_power_levels(vec![(user_id.as_ref(), Int::from(level))])
                         .await
                         .map_err(IambError::from)?;
                 },
@@ -880,7 +896,7 @@ impl RoomState {
         act: SendAction,
         ctx: ProgramContext,
         store: &mut ProgramStore,
-    ) -> IambResult<EditInfo> {
+    ) -> IambResult<Vec<(ProgramAction, ProgramContext)>> {
         if let RoomState::Chat(chat) = self {
             chat.send_command(act, ctx, store).await
         } else {

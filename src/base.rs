@@ -515,6 +515,12 @@ pub enum MemberUpdateAction {
     Ban,
     Kick,
     Unban,
+
+    /// Raise the user to operator (room admin, power level 100).
+    Op,
+
+    /// Drop the user back to the default power level.
+    Deop,
 }
 
 impl Display for MemberUpdateAction {
@@ -523,6 +529,8 @@ impl Display for MemberUpdateAction {
             MemberUpdateAction::Ban => write!(f, "ban"),
             MemberUpdateAction::Kick => write!(f, "kick"),
             MemberUpdateAction::Unban => write!(f, "unban"),
+            MemberUpdateAction::Op => write!(f, "op"),
+            MemberUpdateAction::Deop => write!(f, "deop"),
         }
     }
 }
@@ -664,6 +672,11 @@ pub enum SendAction {
     ///
     /// The [`bool`] arguments indicates whether to use the messagebar as a caption.
     UploadImage(usize, usize, Cow<'static, [u8]>, bool),
+
+    /// Send the given text instead of the message bar contents.
+    ///
+    /// Used by the BitchX frontend for `/msg`, which switches rooms first.
+    SubmitText(String),
 }
 
 /// An action performed against the user's homeserver.
@@ -698,6 +711,9 @@ pub enum HomeserverAction {
 
     /// Set a profile field.
     ProfileFieldShow(ProfileFieldName),
+
+    /// Set the logged-in user's presence, with an optional status message.
+    SetPresence(PresenceState, Option<String>),
 }
 
 /// An action performed against the user's room keys.

@@ -25,6 +25,7 @@ use std::sync::atomic::AtomicUsize;
 
 use clap::{CommandFactory, Parser};
 use matrix_sdk::OwnedServerName;
+use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as SetPresenceRequest;
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::ignored_user_list::IgnoredUserListEventContent;
 use matrix_sdk::ruma::events::invite_permission_config::{
@@ -697,7 +698,10 @@ impl Application {
                 if store.application.settings.tunables.normal_after_send {
                     self.bindings.reset_mode();
                 }
-                self.screen.current_window_mut()?.send_command(act, ctx, store).await?
+                let acts = self.screen.current_window_mut()?.send_command(act, ctx, store).await?;
+                self.action_prepend(acts);
+
+                None
             },
 
             IambAction::OpenLink(url) => {
@@ -917,6 +921,14 @@ impl Application {
                 let client = &store.application.worker.client;
                 let account = client.account();
                 account.delete_profile_field(field).await.map_err(IambError::from)?;
+                Ok(vec![])
+            },
+            HomeserverAction::SetPresence(presence, status_msg) => {
+                let client = &store.application.worker.client;
+                let user_id = store.application.settings.user_id.clone();
+                let mut req = SetPresenceRequest::new(user_id, presence);
+                req.status_msg = status_msg;
+                client.send(req).await.map_err(IambError::from)?;
                 Ok(vec![])
             },
             HomeserverAction::ProfileFieldShow(field) => {

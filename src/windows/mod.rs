@@ -638,7 +638,7 @@ impl IambWindow {
         act: SendAction,
         ctx: ProgramContext,
         store: &mut ProgramStore,
-    ) -> IambResult<EditInfo> {
+    ) -> IambResult<Vec<(ProgramAction, ProgramContext)>> {
         if let IambWindow::Room(w) = self {
             w.send_command(act, ctx, store).await
         } else {

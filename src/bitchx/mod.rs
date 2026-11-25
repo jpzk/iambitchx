@@ -4,10 +4,8 @@
 //! uses. See `docs/bitchx-frontend.md` for the design.
 use serde::{Deserialize, Serialize};
 
-// Not wired into the UI yet: slash-command dispatch (chat.rs) lands in a
-// follow-up change. Until then only the tests exercise the parser.
-#[allow(dead_code)]
 pub mod commands;
+pub mod dispatch;
 pub mod screen;
 pub mod status;
 
