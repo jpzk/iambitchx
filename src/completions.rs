@@ -1,4 +1,4 @@
-//! Tab completions for iamb
+//! Tab completions for iambitchx
 
 use matrix_sdk::ruma::RoomId;
 use modalkit::editing::completion::{Completer, complete_path};

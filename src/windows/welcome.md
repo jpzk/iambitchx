@@ -1,4 +1,4 @@
-# Welcome to iamb!
+# Welcome to iambitchx!
 
 ## Useful Keybindings
 
@@ -38,10 +38,11 @@ The different subcommands are:
 
 ## Additional Configuration
 
-You can customize iamb in your `$CONFIG_DIR/iamb/config.toml` file, where
+You can customize iambitchx in your `$CONFIG_DIR/iambitchx/config.toml` file, where
 `$CONFIG_DIR` is your system's per-user configuration directory. For example,
-this is typically `~/.config/iamb/config.toml` on systems that use the XDG
-Base Directory Specification.
+this is typically `~/.config/iambitchx/config.toml` on systems that use the XDG
+Base Directory Specification. If only the legacy `iamb/` directory exists, it
+is used instead.
 
-See the manual pages or <https://iamb.chat> for more details on how to
-further configure or use iamb.
+See the manual pages or the upstream iamb docs at <https://iamb.chat> for more details on how to
+further configure or use iambitchx.

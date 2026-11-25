@@ -1,15 +1,15 @@
-.\" iamb(1) manual page
+.\" iambitchx(1) manual page
 .\"
 .\" This manual page is written using the mdoc(7) macros. For more
 .\" information, see <https://manpages.bsd.lv/mdoc.html>.
 .\"
 .\" You can preview this file with:
-.\"     $ man ./docs/iamb.1
+.\"     $ man ./docs/iambitchx.1
 .Dd Oct 21, 2026
-.Dt IAMB 1
+.Dt IAMBITCHX 1
 .Os
 .Sh NAME
-.Nm iamb
+.Nm iambitchx
 .Nd a terminal-based client for Matrix for the Vim addict
 .Sh SYNOPSIS
 .Nm
@@ -38,7 +38,7 @@ If this flag is not specified,
 then it defaults to using
 .Sy default_profile
 (see
-.Xr iamb 5 ) .
+.Xr iambitchx 5 ) .
 .It Fl C , Fl Fl config-directory
 Path to the directory the configuration file is located in.
 .It Fl h , Fl Fl help
@@ -466,7 +466,7 @@ instead of the
 .Sy default_profile
 value:
 .Bd -literal -offset indent
-$ iamb -P personal
+$ iambitchx -P personal
 .Ed
 .Ss Example 2: Using an alternate configuration directory
 By default,
@@ -474,15 +474,15 @@ By default,
 will use the XDG directories, but you may sometimes want to store
 your configuration elsewhere.
 .Bd -literal -offset indent
-$ iamb -C ~/src/iamb-dev/dev-config/
+$ iambitchx -C ~/src/iambitchx-dev/dev-config/
 .Ed
 .Sh "REPORTING BUGS"
 Please report bugs in
 .Nm
 or its manual pages at
-.Lk https://github.com/ulyssa/iamb/issues
+.Lk https://github.com/jpzk/iambitchx/issues
 .Sh "SEE ALSO"
-.Xr iamb 5
+.Xr iambitchx 5
 .Pp
-Extended documentation is available online at
+Extended documentation for upstream iamb, which mostly applies, is available at
 .Lk https://iamb.chat

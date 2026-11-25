@@ -1,33 +1,37 @@
-.\" iamb(7) manual page
+.\" iambitchx(7) manual page
 .\"
 .\" This manual page is written using the mdoc(7) macros. For more
 .\" information, see <https://manpages.bsd.lv/mdoc.html>.
 .\"
 .\" You can preview this file with:
-.\"     $ man ./docs/iamb.5
+.\"     $ man ./docs/iambitchx.5
 .Dd Oct 21, 2026
-.Dt IAMB 5
+.Dt IAMBITCHX 5
 .Os
 .Sh NAME
 .Nm config.toml
 .Nd configuration file for
-.Sy iamb
+.Sy iambitchx
 .Sh DESCRIPTION
 Configuration must be placed under
-.Pa ~/.config/iamb/
+.Pa ~/.config/iambitchx/
 and named
 .Nm .
 (If
 .Ev $XDG_CONFIG_HOME
 is set, then
-.Sy iamb
+.Sy iambitchx
 will look for a directory named
-.Pa iamb
+.Pa iambitchx
 there instead.)
+If that directory does not exist but a legacy
+.Pa iamb
+directory does, the legacy directory is used instead.
+The same fallback applies to the default cache and data directories.
 .Pp
 Example configuration usually comes bundled with your installation and can
 typically be found in
-.Pa /usr/share/iamb .
+.Pa /usr/share/iambitchx .
 .Pp
 As implied by the filename, the configuration is formatted in TOML.
 It's structure and fields are described below.
@@ -51,13 +55,13 @@ It should be one of the names defined in the
 section.
 .It Sy settings
 Overwrite general settings for
-.Sy iamb .
+.Sy iambitchx .
 See
 .Sx SETTINGS
 for a description of possible values.
 .It Sy layout
 Configure the default window layout to use when starting
-.Sy iamb .
+.Sy iambitchx .
 See
 .Sx "STARTUP LAYOUT"
 for more information on how to configure this object.
@@ -197,9 +201,12 @@ Suffix to append to temporary file names when using the :editor command. Default
 Selects the user interface.
 Possible values are:
 .Bl -tag -width Ds
-.It Sy iamb
+.It Sy classic
 The normal modal, tabbed interface.
 This is the default value.
+The legacy value
+.Sy iamb
+is still accepted.
 .It Sy bitchx
 A BitchX-style status bar, full-screen chat and slash-command input line.
 .El
@@ -573,7 +580,7 @@ Both can be used via
 controls whether to show the message in the desktop notification, and defaults to
 .Sy true .
 Messages are truncated beyond a small length.
-The notification rules are stored server side, loaded once at startup, and are currently not configurable in iamb.
+The notification rules are stored server side, loaded once at startup, and are currently not configurable in iambitchx.
 In other words, you can simply change the rules with another client.
 .It Sy sound_hint
 Controls the notification sound name that is passed as a hint to the notification daemon.
@@ -742,13 +749,13 @@ members = ["server", "~localpart"]
 The
 .Sy settings.terminal
 subsection allows overriding how
-.Sy iamb
+.Sy iambitchx
 interacts with your terminal.
 .Pp
 The available fields in this subsection are:
 .Bl -tag -width Ds
 .It Sy cursor_shape
-Control the terminal cursor shape used by iamb.
+Control the terminal cursor shape used by iambitchx.
 Possible values are:
 .Dq Sy default ,
 .Dq Sy auto ,
@@ -769,11 +776,11 @@ Defaults to
 .It Sy enable_extended_keys
 Defines whether to explicitly enable or disable requesting extended keypresses from your terminal.
 By default, when unset,
-.Sy iamb
+.Sy iambitchx
 will attempt to auto-detect support in your terminal and request extended keypresses from the terminal if supported.
 .It Sy enable_title
 Whether to set the title of the terminal window to
-.Dq Sy iamb (<user_id>) .
+.Dq Sy iambitchx (<user_id>) .
 Defaults to true.
 .El
 .Sh "THEME OVERRIDES"
@@ -1067,11 +1074,11 @@ They are typically written as inline tables containing the following keys:
 .It Sy name
 Change the display name of the room.
 .El
-.Ss Example 1: Override how the iamb rooms appear in the room list
+.Ss Example 1: Override how rooms appear in the room list
 .Bd -literal -offset indent
 [settings.rooms]
-"#iamb-users:0x.badd.cafe".name = "iamb user discussion"
-"!EpWjxfRMnoLQPCKZei:0x.badd.cafe".name = "iamb developers"
+"#lobby:example.com".name = "user discussion"
+"!EpWjxfRMnoLQPCKZei:0x.badd.cafe".name = "developers"
 "@ada:example.com".name = "My DM with Ada Lovelace"
 .Ed
 .Sh "USER OVERRIDES"
@@ -1128,7 +1135,7 @@ key specifying an array of window objects.
 .Ss Example 1: Show a single room every startup
 .Bd -literal -offset indent
 [settings]
-default_room = "#iamb-users:0x.badd.cafe"
+default_room = "#lobby:example.com"
 
 [layout]
 style = "new"
@@ -1139,15 +1146,15 @@ style = "new"
 style = "config"
 
 [[layout.tabs]]
-window = "iamb://dms"
+window = "iambitchx://dms"
 
 [[layout.tabs]]
-window = "iamb://rooms"
+window = "iambitchx://rooms"
 
 [[layout.tabs]]
 split = [
-    { "window" = "#iamb-users:0x.badd.cafe" },
-    { "window" = "#iamb-dev:0x.badd.cafe" }
+    { "window" = "#lobby:example.com" },
+    { "window" = "#dev:example.com" }
 ]
 .Ed
 .Sh "CUSTOM COMMAND ALIASES"
@@ -1218,11 +1225,11 @@ Specifies where to store assets and temporary data in.
 .Sy logs
 will also go in here by default.)
 Defaults to
-.Ev $XDG_CACHE_HOME/iamb .
+.Ev $XDG_CACHE_HOME/iambitchx .
 .It Sy data
 Specifies where to store persistent data in, such as E2EE room keys.
 Defaults to
-.Ev $XDG_DATA_HOME/iamb .
+.Ev $XDG_DATA_HOME/iambitchx .
 .It Sy downloads
 Specifies where to store downloaded files.
 Defaults to
@@ -1234,26 +1241,26 @@ Defaults to
 .El
 .Sh FILES
 .Bl -tag -width Ds
-.It Pa ~/.config/iamb/config.toml
+.It Pa ~/.config/iambitchx/config.toml
 The TOML configuration file that
-.Sy iamb
+.Sy iambitchx
 loads by default.
-.It Pa ~/.config/iamb/config.json
+.It Pa ~/.config/iambitchx/config.json
 A JSON configuration file that
-.Sy iamb
+.Sy iambitchx
 will load if the TOML one is not found.
-.It Pa /usr/share/iamb/config.example.toml
+.It Pa /usr/share/iambitchx/config.example.toml
 A sample configuration file showing the basic values needed to get started.
-.It Pa /usr/share/iamb/config.full.toml
+.It Pa /usr/share/iambitchx/config.full.toml
 A sample configuration file with examples of how to set many different values.
 .El
 .Sh "REPORTING BUGS"
 Please report bugs in
-.Sy iamb
+.Sy iambitchx
 or its manual pages at
-.Lk https://github.com/ulyssa/iamb/issues
+.Lk https://github.com/jpzk/iambitchx/issues
 .Sh SEE ALSO
-.Xr iamb 1
+.Xr iambitchx 1
 .Pp
-Extended documentation is available online at
+Extended documentation for upstream iamb, which mostly applies, is available at
 .Lk https://iamb.chat

@@ -1,7 +1,7 @@
 //! # BitchX screen
 //!
 //! Draws the BitchX layout: a blue status bar on the first row, the focused
-//! room's chat (iamb's own [Chat](crate::windows::room::Chat) widget, so the
+//! room's chat (the classic UI's own [Chat](crate::windows::room::Chat) widget, so the
 //! message formatting and the message bar stay identical) below it, with the
 //! chat's message bar ending up on the last row. There is no tab bar, no
 //! window border and no `:` command bar.
@@ -66,7 +66,7 @@ fn status_line(status: &StatusBar, width: u16) -> Line<'static> {
     Line::from(spans).style(body)
 }
 
-/// The BitchX layout around a body widget (iamb's `Chat` in the application).
+/// The BitchX layout around a body widget (the classic `Chat` in the application).
 pub struct BitchxScreen<W> {
     status: StatusBar,
     notice: Option<(String, Style)>,
@@ -164,7 +164,7 @@ mod tests {
 
     use super::*;
 
-    /// Stands in for iamb's `Chat`: scrollback at the top, `> input` at the bottom.
+    /// Stands in for the classic `Chat`: scrollback at the top, `> input` at the bottom.
     struct FakeChat;
 
     impl StatefulWidget for FakeChat {

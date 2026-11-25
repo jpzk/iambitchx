@@ -1,5 +1,5 @@
 [package]
-name = "iamb"
+name = "iambitchx"
 version = "0.14.0-alpha.1"
 edition = "2024"
 authors = ["Ulyssa <git@ulyssa.dev>"]
@@ -13,6 +13,10 @@ keywords = ["matrix", "chat", "tui", "vim"]
 categories = ["command-line-utilities"]
 rust-version = "1.96"
 build = "build.rs"
+
+[[bin]]
+name = "iambitchx"
+path = "src/main.rs"
 
 [features]
 default = ["bundled", "desktop"]
@@ -133,36 +137,36 @@ section = "net"
 license-file = ["LICENSE", "0"]
 assets = [
     # Binary:
-    ["target/release/iamb", "usr/bin/iamb", "755"],
+    ["target/release/iambitchx", "usr/bin/iambitchx", "755"],
     # Manual pages:
-    ["docs/iamb.1", "usr/share/man/man1/iamb.1", "644"],
-    ["docs/iamb.5", "usr/share/man/man5/iamb.5", "644"],
+    ["docs/iambitchx.1", "usr/share/man/man1/iambitchx.1", "644"],
+    ["docs/iambitchx.5", "usr/share/man/man5/iambitchx.5", "644"],
     # Packaged themes:
-    [ "themes/*.toml", "usr/share/iamb/themes/", "644" ],
+    [ "themes/*.toml", "usr/share/iambitchx/themes/", "644" ],
     # Other assets:
-    ["iamb.desktop", "usr/share/applications/iamb.desktop", "644"],
-    ["config.example.toml", "usr/share/iamb/config.example.toml", "644"],
-    ["config.full.toml", "usr/share/iamb/config.full.toml", "644"],
-    ["docs/iamb.svg", "usr/share/icons/hicolor/scalable/apps/iamb.svg", "644"],
-    ["docs/iamb.metainfo.xml", "usr/share/metainfo/iamb.metainfo.xml", "644"],
+    ["iambitchx.desktop", "usr/share/applications/iambitchx.desktop", "644"],
+    ["config.example.toml", "usr/share/iambitchx/config.example.toml", "644"],
+    ["config.full.toml", "usr/share/iambitchx/config.full.toml", "644"],
+    ["docs/iambitchx.svg", "usr/share/icons/hicolor/scalable/apps/iambitchx.svg", "644"],
+    ["docs/iambitchx.metainfo.xml", "usr/share/metainfo/iambitchx.metainfo.xml", "644"],
 ]
 
 [package.metadata.generate-rpm]
 version = "0.14.0_alpha.1"
 assets = [
     # Binary:
-    { source = "target/release/iamb", dest = "/usr/bin/iamb", mode = "755" },
+    { source = "target/release/iambitchx", dest = "/usr/bin/iambitchx", mode = "755" },
     # Manual pages:
-    { source = "docs/iamb.1", dest = "/usr/share/man/man1/iamb.1", mode = "644" },
-    { source = "docs/iamb.5", dest = "/usr/share/man/man5/iamb.5", mode = "644" },
+    { source = "docs/iambitchx.1", dest = "/usr/share/man/man1/iambitchx.1", mode = "644" },
+    { source = "docs/iambitchx.5", dest = "/usr/share/man/man5/iambitchx.5", mode = "644" },
     # Packaged themes:
-    { source = "themes/*.toml", dest = "/usr/share/iamb/themes/", mode = "644" },
+    { source = "themes/*.toml", dest = "/usr/share/iambitchx/themes/", mode = "644" },
     # Other assets:
-    { source = "iamb.desktop", dest = "/usr/share/applications/iamb.desktop", mode = "644" },
-    { source = "config.example.toml", dest = "/usr/share/iamb/config.example.toml", mode = "644"},
-    { source = "config.full.toml", dest = "/usr/share/iamb/config.full.toml", mode = "644"},
-    { source = "docs/iamb.svg", dest = "/usr/share/icons/hicolor/scalable/apps/iamb.svg", mode = "644"},
-    { source = "docs/iamb.metainfo.xml", dest = "/usr/share/metainfo/iamb.metainfo.xml", mode = "644"},
+    { source = "iambitchx.desktop", dest = "/usr/share/applications/iambitchx.desktop", mode = "644" },
+    { source = "config.example.toml", dest = "/usr/share/iambitchx/config.example.toml", mode = "644"},
+    { source = "config.full.toml", dest = "/usr/share/iambitchx/config.full.toml", mode = "644"},
+    { source = "docs/iambitchx.svg", dest = "/usr/share/icons/hicolor/scalable/apps/iambitchx.svg", mode = "644"},
+    { source = "docs/iambitchx.metainfo.xml", dest = "/usr/share/metainfo/iambitchx.metainfo.xml", mode = "644"},
 ]
 
 [package.metadata.tar]
@@ -171,14 +175,14 @@ assets = [
     # License:
     { source = "LICENSE", dest = "LICENSE", mode = "644" },
     # Manual pages:
-    { source = "docs/iamb.1", dest = "docs/iamb.1", mode = "644" },
-    { source = "docs/iamb.5", dest = "docs/iamb.5", mode = "644" },
+    { source = "docs/iambitchx.1", dest = "docs/iambitchx.1", mode = "644" },
+    { source = "docs/iambitchx.5", dest = "docs/iambitchx.5", mode = "644" },
     # Packaged themes:
     { source = "themes/*.toml", dest = "themes/", mode = "644" },
     # Other assets:
-    { source = "iamb.desktop", dest = "assets/iamb.desktop", mode = "644" },
+    { source = "iambitchx.desktop", dest = "assets/iambitchx.desktop", mode = "644" },
     { source = "config.example.toml", dest = "assets/config.example.toml", mode = "644"},
     { source = "config.full.toml", dest = "assets/config.full.toml", mode = "644"},
-    { source = "docs/iamb.svg", dest = "assets/iamb.svg", mode = "644"},
-    { source = "docs/iamb.metainfo.xml", dest = "assets/iamb.metainfo.xml", mode = "644"},
+    { source = "docs/iambitchx.svg", dest = "assets/iambitchx.svg", mode = "644"},
+    { source = "docs/iambitchx.metainfo.xml", dest = "assets/iambitchx.metainfo.xml", mode = "644"},
 ]

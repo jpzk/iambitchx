@@ -1,19 +1,18 @@
 <div align="center">
-    <h1><img width="200" height="200" src="docs/iamb.svg"></h1>
+    <h1><img width="200" height="200" src="docs/iambitchx.svg"></h1>
 
-[![Build Status](https://github.com/ulyssa/iamb/actions/workflows/ci.yml/badge.svg)](https://github.com/ulyssa/iamb/actions?query=workflow%3ACI+)
-[![License: Apache 2.0](https://img.shields.io/crates/l/iamb.svg?logo=apache)][crates-io-iamb]
-[![#iamb:0x.badd.cafe](https://img.shields.io/badge/matrix-%23iamb:0x.badd.cafe-blue)](https://matrix.to/#/#iamb:0x.badd.cafe)
-[![Latest Version](https://img.shields.io/crates/v/iamb.svg?logo=rust)][crates-io-iamb]
-[![iamb](https://snapcraft.io/iamb/badge.svg)](https://snapcraft.io/iamb)
-
-![Example Usage](https://iamb.chat/static/images/iamb-demo.gif)
+[![Build Status](https://github.com/jpzk/iambitchx/actions/workflows/ci.yml/badge.svg)](https://github.com/jpzk/iambitchx/actions?query=workflow%3ACI+)
+[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 </div>
 
+> iambitchx is a fork of [iamb](https://github.com/ulyssa/iamb) by Ulyssa, used under the Apache License 2.0.
+
 ## About
 
-`iamb` is a Matrix client for the terminal that uses Vim keybindings. It includes support for:
+`iambitchx` is a Matrix client for the terminal that uses Vim keybindings, with
+an optional IRC/BitchX-style frontend (see [docs/bitchx-frontend.md](docs/bitchx-frontend.md)).
+It includes support for:
 
 - Threads, spaces, E2EE, and read receipts
 - Image previews in terminals that support it (sixels, Kitty, and iTerm2), or using pixelated blocks for those that don't
@@ -24,22 +23,25 @@
 - Editing, redacting, and reacting to messages
 - Custom keybindings
 - Multiple profiles
-
-_You may want to [see this page as it was when the latest version was published][crates-io-iamb]._
+- A BitchX-style status bar, full-screen chat and slash-command input (`frontend = "bitchx"`)
 
 ## Documentation
 
-You can find documentation for installing, configuring, and using iamb on its
-website, [iamb.chat].
+See the manual pages `docs/iambitchx.1` and `docs/iambitchx.5`. Most of the
+upstream documentation at [iamb.chat] also applies.
 
 ## Configuration
 
-You can create a basic configuration in `$CONFIG_DIR/iamb/config.toml` that looks like:
+You can create a basic configuration in `$CONFIG_DIR/iambitchx/config.toml` that looks like:
 
 ```toml
 [profiles."example.com"]
 user_id = "@user:example.com"
 ```
+
+If `$CONFIG_DIR/iambitchx/` does not exist but a legacy `$CONFIG_DIR/iamb/`
+directory does, iambitchx keeps using the legacy directory (the same applies to
+the data and cache directories), so an existing setup works unchanged.
 
 If your homeserver is located on a different domain than the server part of the
 `user_id` and you don't have a [`/.well-known`][well_known_entry] entry, then
@@ -92,106 +94,19 @@ system's SQLite instead of using a bundled SQLite.
 - `chafa-dyn`: use [chafa](https://hpjansson.org/chafa/) as a dynamic library for halfblock rendering
 - `chafa-static`: use [chafa](https://hpjansson.org/chafa/) as a static library for halfblock rendering
 
-## Installation (via `crates.io`)
-
-Install Rust (1.83.0 or above) and Cargo, and then run:
+## Installation (via Nix flake)
 
 ```
-cargo install --locked iamb
+nix profile install "github:jpzk/iambitchx"
 ```
 
-See [Configuration](#configuration) for getting a profile set up.
-
-## Installation (via package managers)
-
-### Arch Linux
-
-On Arch Linux a [package](https://aur.archlinux.org/packages/iamb-git) is available in the
-Arch User Repositories (AUR). To install it simply run with your favorite AUR helper:
-
-```
-paru iamb-git
-```
-
-### FreeBSD
-
-On FreeBSD a package is available from the official repositories. To install it simply run:
-
-```
-pkg install iamb
-```
-
-### Gentoo
-
-On Gentoo, an ebuild is available from the community-managed
-[GURU overlay](https://wiki.gentoo.org/wiki/Project:GURU).
-
-You can enable the GURU overlay with:
-
-```
-eselect repository enable guru
-emerge --sync guru
-```
-
-And then install `iamb` with:
-
-```
-emerge --ask iamb
-```
-
-### macOS
-
-On macOS a [package](https://formulae.brew.sh/formula/iamb#default) is available in Homebrew's
-repository. To install it simply run:
-
-```
-brew install iamb
-```
-
-### NetBSD
-
-On NetBSD a package is available from the official repositories. To install it simply run:
-
-```
-pkgin install iamb
-```
-
-### Nix / NixOS (flake)
-
-```
-nix profile install "github:ulyssa/iamb"
-```
-
-### openSUSE Tumbleweed
-
-On openSUSE Tumbleweed a [package](https://build.opensuse.org/package/show/openSUSE:Factory/iamb) is available from the official repositories. To install it simply run:
-
-```
-zypper install iamb
-```
-
-### Snap
-
-A snap for Linux distributions which [support](https://snapcraft.io/docs/installing-snapd) the packaging system.
-
-```
-snap install iamb
-```
-
-### Conda (Linux, macOS, Windows)
-
-A Conda [package](https://prefix.dev/channels/conda-forge/packages/iamb) is available on conda-forge. To install it simply run:
-
-```
-pixi global install iamb
-```
+Distribution packages (Arch, Homebrew, Snap, …) ship upstream iamb, not this
+fork; see the upstream README for those.
 
 ## License
 
-iamb is released under the [Apache License, Version 2.0].
+iambitchx is released under the [Apache License, Version 2.0](LICENSE), like
+the upstream project it is forked from.
 
-[Apache License, Version 2.0]: https://github.com/ulyssa/iamb/blob/master/LICENSE
-[crates-io-iamb]: https://crates.io/crates/iamb
 [iamb.chat]: https://iamb.chat
 [well_known_entry]: https://spec.matrix.org/latest/client-server-api/#getwell-knownmatrixclient
-[rustup]: https://rustup.rs/

@@ -1,4 +1,4 @@
-# BitchX-style frontend for iamb
+# BitchX-style frontend for iambitchx
 
 ## What this is
 
@@ -18,7 +18,7 @@ row h-1      input line
 No tabs, no window borders, no `:` command bar, no Normal/Insert modal
 switching — you just type, and `/` at the start of the input line is a command.
 
-The BitchX frontend is a **view** over the same `ProgramStore` the normal iamb
+The BitchX frontend is a **view** over the same `ProgramStore` the normal iambitchx
 UI uses. It renders the focused room's chat full-screen and interprets
 slash commands typed in the message bar.
 
@@ -27,7 +27,7 @@ slash commands typed in the message bar.
 * Do **not** touch the Matrix protocol layer: `src/worker.rs`, `src/message/**`,
   `src/verifications.rs`, `src/oauth.rs`, `src/notifications.rs`, `src/preview.rs`
   stay byte-identical.
-* Do **not** remove or rewrite iamb's modal UI, keybindings, `:commands`,
+* Do **not** remove or rewrite iambitchx's modal UI, keybindings, `:commands`,
   windows, spaces, threads, etc. They stay reachable.
 * Do **not** add new crates to `Cargo.toml` unless unavoidable — `Cargo.lock`
   must stay consistent (`cargo test --locked` is used by CI).
@@ -169,10 +169,10 @@ A `ratatui::widgets::StatefulWidget` (or plain `Widget`) that draws:
 
 Reuse `crate::windows::room::chat::Chat` for the message area so message
 formatting, timestamps, image previews and the message bar stay identical to
-iamb's normal UI — that is the "everything else stays the same" requirement.
+iambitchx's normal UI — that is the "everything else stays the same" requirement.
 
-The screen must not draw iamb's tab bar, window borders, or the `:` command
-bar. iamb's `Screen` widget (modalkit-ratatui) draws all three, so the
+The screen must not draw iambitchx's tab bar, window borders, or the `:` command
+bar. iambitchx's `Screen` widget (modalkit-ratatui) draws all three, so the
 BitchX screen is a separate widget used instead of `Screen` in
 `Application::redraw()`.
 
@@ -183,12 +183,12 @@ BitchX screen is a separate widget used instead of `Screen` in
 Add to `TunableValues` (in `src/config/mod.rs`):
 
 ```rust
-pub frontend: Frontend,   // enum { Iamb, Bitchx }, serde rename_all = "lowercase"
+pub frontend: Frontend,   // enum { Iamb, Bitchx }, serde: "classic" (alias "iamb"), "bitchx"
 ```
 
-* `frontend = "bitchx"` under `[settings]` (iamb's tunables section; also
-  allowed per profile) selects the BitchX frontend. Documented in `iamb.5`.
-* Default stays `iamb` → **existing config files keep working unchanged**.
+* `frontend = "bitchx"` under `[settings]` (iambitchx's tunables section; also
+  allowed per profile) selects the BitchX frontend. Documented in `iambitchx.5`.
+* Default stays `classic` (legacy alias `iamb` still accepted) → **existing config files keep working unchanged**.
 * `Frontend` derives `Deserialize`, `Serialize`, `Copy`, `Clone`, `Debug`,
   `PartialEq`, `Eq`, `Default` (default = `Iamb`).
 
@@ -196,7 +196,7 @@ pub frontend: Frontend,   // enum { Iamb, Bitchx }, serde rename_all = "lowercas
 
 In `src/main.rs::Application::redraw()`, when the BitchX frontend is active
 **and** the focused window is a joined room, render the BitchX screen instead
-of modalkit's `Screen`. Otherwise fall back to the normal iamb screen (so
+of modalkit's `Screen`. Otherwise fall back to the normal iambitchx screen (so
 `:rooms`, `:members`, spaces, verification windows etc. still work — in those
 cases the BitchX screen is not applicable).
 
@@ -214,9 +214,9 @@ frontend is active and the message bar content starts with `/`, then
    * `Ok(Some(cmd))` → dispatch, clear the message bar, and return without
      sending the text as a message.
 
-Dispatch maps onto existing iamb machinery (do not reimplement Matrix calls):
+Dispatch maps onto existing iambitchx machinery (do not reimplement Matrix calls):
 
-| BitchX command      | iamb mechanism                                                        |
+| BitchX command      | iambitchx mechanism                                                        |
 |---------------------|-----------------------------------------------------------------------|
 | `msg`               | open/focus the DM room with the target, then send the message         |
 | `me` / `action`     | send as a markdown emote (`*text*`)                                    |
@@ -240,7 +240,7 @@ Dispatch maps onto existing iamb machinery (do not reimplement Matrix calls):
 | `version`           | show the crate version in the message area                             |
 | `help`              | show the list of supported commands in the message area                |
 
-Where an exact iamb equivalent does not exist (e.g. `away`), implement the
+Where an exact iambitchx equivalent does not exist (e.g. `away`), implement the
 smallest possible action in `src/base.rs` (`IambAction`/`RoomAction`/
 `MessageAction`) and reuse the existing worker request helpers.
 
@@ -251,10 +251,10 @@ In BitchX mode the input line behaves like BitchX:
 * printable keys go straight into the message bar (no Normal/Insert switch),
 * `Enter` submits (send or run the slash command),
 * `Esc` clears/abandons the current input line,
-* the existing iamb keybindings still work for navigation (e.g. `Ctrl-w`,
+* the existing iambitchx keybindings still work for navigation (e.g. `Ctrl-w`,
   `Ctrl-u`, `Ctrl-f`).
 
-iamb's key handling lives in `src/keybindings.rs` +
+iambitchx's key handling lives in `src/keybindings.rs` +
 `Application::action_run()` in `src/main.rs`. Implement "always insert" by
 forcing the key manager into insert mode when the BitchX frontend is active
 (the `keybindings` crate exposes mode switching; `KeyManager::reset_mode()`
@@ -272,7 +272,7 @@ is already used in `src/main.rs` for `normal_after_send`).
   renders the BitchX screen and asserts the status bar text and the input
   line are present in the buffer.
 * `src/config/mod.rs` — a test that `[tunables] frontend = "bitchx"` parses
-  and that the default is `iamb`.
+  and that the default is `classic` and the legacy `iamb` value still parses.
 
 ## 6. Style constraints (CI enforces these)
 

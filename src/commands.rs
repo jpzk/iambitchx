@@ -1,6 +1,6 @@
 //! # Default Commands
 //!
-//! The command-bar commands are set up here, and iamb-specific commands are defined here. See
+//! The command-bar commands are set up here, and iambitchx-specific commands are defined here. See
 //! [modalkit::env::vim::command] for additional Vim commands we pull in.
 
 use matrix_sdk::ruma::{OwnedMxcUri, RoomVersionId};

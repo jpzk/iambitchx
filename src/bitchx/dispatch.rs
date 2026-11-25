@@ -1,6 +1,6 @@
 //! # BitchX slash-command dispatch
 //!
-//! Maps a parsed [`BitchxCommand`] onto iamb's existing machinery: iamb `:`
+//! Maps a parsed [`BitchxCommand`] onto iambitchx's existing machinery: iambitchx `:`
 //! commands from `src/commands.rs`, [`IambAction`]s, window actions, or a
 //! plain message. Everything here is pure, so the mapping is unit tested;
 //! `ChatState::send_command` only executes the result.
@@ -11,7 +11,7 @@ use crate::base::{HomeserverAction, MemberUpdateAction, RoomField};
 use crate::bitchx::commands::{BitchxCommand, BitchxError, parse};
 use crate::prelude::*;
 
-/// Slash commands that iamb's message composer already understands (see
+/// Slash commands that iambitchx's message composer already understands (see
 /// `src/message/compose.rs`). In BitchX mode they are sent as before.
 const COMPOSE_COMMANDS: &[&str] = &[
     "h",
@@ -36,7 +36,7 @@ const HELP: &[(&str, &str)] = &[
     ("/join, /j <room>", "join a room"),
     ("/part [room] [reason]", "leave a room"),
     ("/leave", "leave the current room"),
-    ("/quit, /exit [reason]", "quit iamb"),
+    ("/quit, /exit [reason]", "quit iambitchx"),
     ("/nick <name>", "set your display name"),
     ("/topic <topic>", "set the room topic"),
     ("/away [reason]", "set your presence to away"),
@@ -54,7 +54,7 @@ const HELP: &[(&str, &str)] = &[
     ("/window <n|room|next|prev>", "switch windows"),
     ("/next, /prev, /previous", "switch to the next or previous window"),
     ("/ctcp <target> <text>", "not available on Matrix"),
-    ("/version", "show the iamb version"),
+    ("/version", "show the iambitchx version"),
     ("/help", "show this help"),
 ];
 
@@ -64,7 +64,7 @@ pub enum BxAction {
     /// Send this text to the current room via the normal compose path.
     Send(String),
 
-    /// Run an iamb `:` command, reusing its implementation in `src/commands.rs`.
+    /// Run an iambitchx `:` command, reusing its implementation in `src/commands.rs`.
     Command(String),
 
     /// Run these actions in order.
@@ -169,7 +169,7 @@ fn help() -> String {
     out
 }
 
-/// Map a parsed command onto iamb machinery.
+/// Map a parsed command onto iambitchx machinery.
 pub fn dispatch(cmd: BitchxCommand) -> BxAction {
     match cmd {
         BitchxCommand::Msg { target, text } => {
@@ -183,7 +183,7 @@ pub fn dispatch(cmd: BitchxCommand) -> BxAction {
         BitchxCommand::Join { key: Some(_), .. } => {
             BxAction::Error("/join: Matrix rooms have no keys; use /join <room>".into())
         },
-        // Matrix leave reasons are not supported by iamb's leave action.
+        // Matrix leave reasons are not supported by iambitchx's leave action.
         BitchxCommand::Part { room: target, .. } => {
             in_room(target, vec![room(RoomAction::Leave(true))])
         },
@@ -260,7 +260,7 @@ pub fn dispatch(cmd: BitchxCommand) -> BxAction {
             BxAction::Actions(vec![focus(change)])
         },
         BitchxCommand::Version => {
-            BxAction::Info(format!("iamb {} (BitchX frontend)", env!("CARGO_PKG_VERSION")))
+            BxAction::Info(format!("iambitchx {} (BitchX frontend)", env!("CARGO_PKG_VERSION")))
         },
         BitchxCommand::Help => BxAction::Pager(help()),
     }
@@ -314,7 +314,7 @@ mod tests {
         }
     }
 
-    /// Run an iamb `:` command string through iamb's real command table.
+    /// Run an iambitchx `:` command string through iambitchx's real command table.
     fn iamb_cmd(cmd: &str) -> Vec<ProgramAction> {
         let mut cmds = setup_commands(&Default::default()).unwrap();
         let ctx = EditContext::default();
@@ -661,7 +661,7 @@ mod tests {
 
     #[test]
     fn test_bitchx_handle_input() {
-        // Empty commands and iamb's own compose commands are sent as-is.
+        // Empty commands and iambitchx's own compose commands are sent as-is.
         assert_eq!(handle_input("/"), BxOutcome::Send(s("/")));
         assert_eq!(handle_input("/  "), BxOutcome::Send(s("/  ")));
         assert_eq!(handle_input("/html <b>hi</b>"), BxOutcome::Send(s("/html <b>hi</b>")));

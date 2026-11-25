@@ -1,5 +1,5 @@
 {
-  description = "iamb";
+  description = "iambitchx";
   nixConfig.bash-prompt = "[nix-develop]$ ";
 
   inputs = {
@@ -44,18 +44,18 @@
             (craneLib.fileset.commonCargoSources ./.)
             ./src/windows/welcome.md
 
-            ./docs/iamb.1
-            ./docs/iamb.5
-            ./docs/iamb.svg
-            ./docs/iamb.metainfo.xml
-            ./iamb.desktop
+            ./docs/iambitchx.1
+            ./docs/iambitchx.5
+            ./docs/iambitchx.svg
+            ./docs/iambitchx.metainfo.xml
+            ./iambitchx.desktop
           ];
         };
 
         commonArgs = rec {
           inherit src;
           strictDeps = true;
-          pname = "iamb";
+          pname = "iambitchx";
           version = self.shortRev or self.dirtyShortRev;
 
           VERGEN_GIT_SHA = version;
@@ -66,26 +66,26 @@
         cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
         # Build the actual crate
-        iamb = craneLib.buildPackage (commonArgs // {
+        iambitchx = craneLib.buildPackage (commonArgs // {
           inherit cargoArtifacts;
 
           nativeBuildInputs = [ pkgs.installShellFiles ];
           postInstall = ''
             mkdir -p completions
-            ./target/release/iamb --completions zsh > completions/_iamb
-            ./target/release/iamb --completions bash > completions/iamb.bash
-            ./target/release/iamb --completions fish > completions/iamb.fish
-            installShellCompletion --cmd iamb completions/*
+            ./target/release/iambitchx --completions zsh > completions/_iambitchx
+            ./target/release/iambitchx --completions bash > completions/iambitchx.bash
+            ./target/release/iambitchx --completions fish > completions/iambitchx.fish
+            installShellCompletion --cmd iambitchx completions/*
 
-            installManPage $src/docs/iamb.{1,5}
-            install -D $src/docs/iamb.svg -t $out/share/icons/hicolor/scalable/apps
-            install -D $src/docs/iamb.metainfo.xml $out/share/appdata/chat.iamb.iamb.appdata.xml
-            install -D $src/iamb.desktop -t $out/share/applications
+            installManPage $src/docs/iambitchx.{1,5}
+            install -D $src/docs/iambitchx.svg -t $out/share/icons/hicolor/scalable/apps
+            install -D $src/docs/iambitchx.metainfo.xml $out/share/appdata/io.github.jpzk.iambitchx.appdata.xml
+            install -D $src/iambitchx.desktop -t $out/share/applications
           '';
 
           meta = {
             description = "Matrix client for Vim addicts";
-            mainProgram = "iamb";
+            mainProgram = "iambitchx";
             homepage = "https://github.com/ulyssa/iamb";
             license = lib.licenses.asl20;
           };
@@ -94,19 +94,19 @@
       {
         checks = {
           # Build the crate as part of `nix flake check`
-          inherit iamb;
+          inherit iambitchx;
 
-          iamb-clippy = craneLib.cargoClippy (commonArgs
+          iambitchx-clippy = craneLib.cargoClippy (commonArgs
             // {
               inherit cargoArtifacts;
               cargoClippyExtraArgs = "--all-targets -- --deny warnings";
             });
 
-          iamb-fmt = craneLibNightly.cargoFmt {
+          iambitchx-fmt = craneLibNightly.cargoFmt {
             inherit src;
           };
 
-          iamb-nextest = craneLib.cargoNextest (commonArgs
+          iambitchx-nextest = craneLib.cargoNextest (commonArgs
             // {
               inherit cargoArtifacts;
               partitions = 1;
@@ -114,10 +114,10 @@
             });
         };
 
-        packages.default = iamb;
+        packages.default = iambitchx;
 
         apps.default = flake-utils.lib.mkApp {
-          drv = iamb;
+          drv = iambitchx;
         };
 
         devShells.default = craneLib.devShell {

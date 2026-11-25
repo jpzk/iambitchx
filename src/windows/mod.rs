@@ -3,7 +3,7 @@
 //! This module contains the logic for rendering windows, and handling UI actions that get
 //! delegated to individual windows/UI elements (e.g., typing text or selecting a list item).
 //!
-//! Additionally, some of the iamb commands delegate behaviour to the current UI element. For
+//! Additionally, some of the iambitchx commands delegate behaviour to the current UI element. For
 //! example, [sending messages][crate::base::SendAction] delegate to the [room window][RoomState],
 //! where we have the message bar and room ID easily accessible and resettable.
 
@@ -1163,7 +1163,7 @@ impl Window<IambInfo> for IambWindow {
             IambWindow::SpaceList(_) => Line::from("Spaces"),
             IambWindow::ToplevelSpaceList(_) => Line::from("Toplevel Spaces"),
             IambWindow::VerifyList(_) => Line::from("Verifications"),
-            IambWindow::Welcome(_) => Line::from("Welcome to iamb"),
+            IambWindow::Welcome(_) => Line::from("Welcome to iambitchx"),
             IambWindow::ChatList(_) => Line::from("DMs & Rooms"),
             IambWindow::UnreadList(_) => Line::from("Unread Messages"),
             IambWindow::MentionsList(_) => Line::from("Unread Mentions"),
@@ -1203,7 +1203,7 @@ impl Window<IambInfo> for IambWindow {
             IambWindow::SpaceList(_) => Line::styled("Spaces", style),
             IambWindow::ToplevelSpaceList(_) => Line::styled("Toplevel Spaces", style),
             IambWindow::VerifyList(_) => Line::styled("Verifications", style),
-            IambWindow::Welcome(_) => Line::styled("Welcome to iamb", style),
+            IambWindow::Welcome(_) => Line::styled("Welcome to iambitchx", style),
             IambWindow::ChatList(_) => Line::styled("DMs & Rooms", style),
             IambWindow::UnreadList(_) => Line::styled("Unread Messages", style),
             IambWindow::MentionsList(_) => Line::styled("Unread Mentions", style),

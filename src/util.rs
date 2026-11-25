@@ -226,7 +226,7 @@ pub fn setup_tty(settings: &ApplicationSettings) -> std::io::Result<()> {
     }
 
     if settings.tunables.terminal.enable_title {
-        let title = format!("iamb ({})", settings.user_id.as_str());
+        let title = format!("iambitchx ({})", settings.user_id.as_str());
         crossterm::execute!(stdout(), SetTitle(title))?;
     }
 
@@ -264,7 +264,7 @@ pub fn restore_tty(enable_enhanced_keys: bool, enable_mouse: bool) {
 /// again when dropped.
 ///
 /// Programs that use the alternate screen themselves (editors, pagers) leave it
-/// on exit, which drops us back to the main screen without iamb knowing, and the
+/// on exit, which drops us back to the main screen without iambitchx knowing, and the
 /// TUI then draws over the user's scrollback. Suspending around the child keeps
 /// the alternate screen entries and exits balanced.
 pub struct SuspendedTty<'a> {

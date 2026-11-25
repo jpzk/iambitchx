@@ -68,10 +68,10 @@ jobs:
     - name: 'Upload: binary'
       uses: actions/upload-artifact@v4
       with:
-        name: iamb-${{ env.TARGET }}-binary
+        name: iambitchx-${{ env.TARGET }}-binary
         path: |
-          ./target/${{ env.TARGET }}/release/iamb
-          ./target/${{ env.TARGET }}/release/iamb.exe
+          ./target/${{ env.TARGET }}/release/iambitchx
+          ./target/${{ env.TARGET }}/release/iambitchx.exe
     - name: 'Package: tgz'
       run: |
         cargo +stable install --locked cargo-tar
@@ -79,8 +79,8 @@ jobs:
     - name: 'Upload: tgz'
       uses: actions/upload-artifact@v4
       with:
-        name: iamb-${{ env.TARGET }}-tgz
-        path: ./target/tar/iamb*-${{ env.TARGET }}.tar.gz
+        name: iambitchx-${{ env.TARGET }}-tgz
+        path: ./target/tar/iambitchx*-${{ env.TARGET }}.tar.gz
     - name: 'Package: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
@@ -90,8 +90,8 @@ jobs:
       if: matrix.platform == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: iamb-${{ env.TARGET }}-deb
-        path: ./target/${{ env.TARGET }}/debian/iamb*.deb
+        name: iambitchx-${{ env.TARGET }}-deb
+        path: ./target/${{ env.TARGET }}/debian/iambitchx*.deb
     - name: 'Package: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
@@ -101,5 +101,5 @@ jobs:
       if: matrix.platform == 'ubuntu-latest'
       uses: actions/upload-artifact@v4
       with:
-        name: iamb-${{ env.TARGET }}-rpm
-        path: ./target/${{ env.TARGET }}/generate-rpm/iamb*.rpm
+        name: iambitchx-${{ env.TARGET }}-rpm
+        path: ./target/${{ env.TARGET }}/generate-rpm/iambitchx*.rpm

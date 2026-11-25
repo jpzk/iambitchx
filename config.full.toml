@@ -1,5 +1,5 @@
 # ==============================================================================
-# NOTE: This file demonstrates using most of the configuration options in iamb!
+# NOTE: This file demonstrates using most of the configuration options in iambitchx!
 #
 # While some of the options in here are set to their defaults, many of them are
 # not and might not actually be what you want to use!
@@ -10,11 +10,11 @@
 
 # Include other config files
 include = [
-  # load `~/.config/iamb/config.d/*.toml` in lexicographic order
+  # load `~/.config/iambitchx/config.d/*.toml` in lexicographic order
   "config.d",
 
   # override all local settings with values from a global config
-  "/etc/iamb/config.toml"
+  "/etc/iambitchx/config.toml"
 ]
 
 default_profile = "default"
@@ -35,7 +35,7 @@ url = "https://matrix-client.matrix.org"
 # date_format = "%A, %B %d %Y"
 default_markup = "markdown"
 default_register = "\""
-default_room = "#iamb-users:0x.badd.cafe"
+default_room = "#lobby:example.com"
 default_split = "vertical"
 external_edit_file_suffix = ".md"
 ignorecase = false
@@ -83,7 +83,7 @@ headers.X-Proxy-Config = "foobar"
 rooms = ["favorite", "lowpriority", "unread", "name"]
 members = ["power", "id"]
 
-# Settings related to how iamb interacts with the terminal:
+# Settings related to how iambitchx interacts with the terminal:
 [settings.terminal]
 cursor_shape = "default"
 enable_extended_keys = false
@@ -98,20 +98,20 @@ enable_title = true
 "#room:matrix.org".name = "Some different room name"
 "@user:matrix.org".name = "My dm with John"
 
-# Specify a specific tab and window layout to use every time iamb starts:
+# Specify a specific tab and window layout to use every time iambitchx starts:
 [layout]
 style = "config"
 
 [[layout.tabs]]
-window = "iamb://dms"
+window = "iambitchx://dms"
 
 [[layout.tabs]]
-window = "iamb://rooms"
+window = "iambitchx://rooms"
 
 [[layout.tabs]]
 split = [
-    { "window" = "#iamb-users:0x.badd.cafe" },
-    { "window" = "#iamb-dev:0x.badd.cafe" }
+    { "window" = "#lobby:example.com" },
+    { "window" = "#dev:example.com" }
 ]
 
 # Map specific key inputs to other keys:
@@ -134,8 +134,8 @@ split = [
 
 # Specify different directories to use instead of the system defaults:
 [dirs]
-cache = "/home/user/.cache/iamb/"
-logs = "/home/user/.local/share/iamb/logs/"
+cache = "/home/user/.cache/iambitchx/"
+logs = "/home/user/.local/share/iambitchx/logs/"
 downloads = "/home/user/Downloads/"
 
 # Override default colors:

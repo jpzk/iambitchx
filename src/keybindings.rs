@@ -1,6 +1,6 @@
 //! # Default Keybindings
 //!
-//! The keybindings are set up here. We define some iamb-specific keybindings, but the default Vim
+//! The keybindings are set up here. We define some iambitchx-specific keybindings, but the default Vim
 //! keys come from [modalkit::env::vim::keybindings].
 use modalkit::actions::{EditAction, MacroAction};
 use modalkit::env::CommonKeyClass;
@@ -90,7 +90,7 @@ impl InputBindings<TerminalKey, IambStep> for ApplicationSettings {
 
 /// The key fed to the key manager to (re-)enter Insert mode in the BitchX frontend.
 ///
-/// This is Vim's plain `i`, so entering Insert mode behaves exactly like in iamb.
+/// This is Vim's plain `i`, so entering Insert mode behaves exactly like in the classic UI.
 pub fn bitchx_insert_key() -> TerminalKey {
     "i".parse::<TerminalKey>().unwrap()
 }
@@ -108,7 +108,7 @@ pub fn bitchx_clear_line() -> ProgramAction {
 /// The step still drops to Normal mode, so that `Esc` keeps working in the
 /// non-room windows (`:rooms`, `:members`, ...); the application puts the key
 /// manager straight back into Insert mode whenever a joined room is focused
-/// (see `Application::bitchx_wants_insert`). All other iamb bindings,
+/// (see `Application::bitchx_wants_insert`). All other classic bindings,
 /// including `Ctrl-O` for a single Normal mode command, stay as they are.
 fn setup_bitchx_keybindings(ism: &mut Keybindings) {
     let esc = vec![once(&"<Esc>".parse::<TerminalKey>().unwrap())];

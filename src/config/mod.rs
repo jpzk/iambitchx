@@ -100,6 +100,26 @@ const DEFAULT_SYNC_FREQUENCY: u64 = 250;
 
 const DEFAULT_ENC_INDICATOR_LOC: EncryptionIndicatorLocation = EncryptionIndicatorLocation::PROMPT;
 const DEFAULT_ICON_ENC: Cow<'static, str> = Cow::Borrowed("[E] ");
+
+/// Name of this application's directory under the config, data and cache dirs.
+pub const APP_DIR_NAME: &str = "iambitchx";
+
+/// Legacy directory name used by upstream iamb, which this fork falls back to.
+pub const LEGACY_APP_DIR_NAME: &str = "iamb";
+
+/// Pick the application directory inside `base`: `iambitchx/` normally, but the legacy
+/// `iamb/` directory when only that one exists, so existing setups keep working.
+pub fn app_dir(base: &Path) -> PathBuf {
+    let dir = base.join(APP_DIR_NAME);
+    let legacy = base.join(LEGACY_APP_DIR_NAME);
+
+    if !dir.exists() && legacy.is_dir() {
+        legacy
+    } else {
+        dir
+    }
+}
+
 const DEFAULT_ICON_UNENC: Cow<'static, str> = Cow::Borrowed("[U] ");
 const DEFAULT_ICON_UNKNOWN: Cow<'static, str> = Cow::Borrowed("[?] ");
 
@@ -253,7 +273,7 @@ fn load_themes(
     xdg::BaseDirectories::new()
         .get_data_dirs()
         .into_iter()
-        .map(|p| p.join("iamb/themes"))
+        .map(|p| app_dir(&p).join("themes"))
         .try_for_each(|p| load_dir(&p))?;
 
     // Load from the `themes` directory in the user's configuration directory:
@@ -346,7 +366,7 @@ impl From<IambVersion> for clap::builder::Str {
 }
 
 #[derive(Parser)]
-#[clap(version = IambVersion, about, long_about = None)]
+#[clap(name = "iambitchx", version = IambVersion, about, long_about = None)]
 #[clap(propagate_version = true)]
 pub struct Iamb {
     #[clap(long, value_parser)]
@@ -1452,11 +1472,7 @@ impl Directories {
                     .expect("unable to expand shell variables in dirs.cache");
                 Path::new(dir.as_ref()).to_owned()
             })
-            .or_else(|| {
-                let mut dir = dirs::cache_dir()?;
-                dir.push("iamb");
-                dir.into()
-            })
+            .or_else(|| dirs::cache_dir().map(|d| app_dir(&d)))
             .expect("no dirs.cache value configured!");
 
         let data = self
@@ -1466,11 +1482,7 @@ impl Directories {
                     .expect("unable to expand shell variables in dirs.cache");
                 Path::new(dir.as_ref()).to_owned()
             })
-            .or_else(|| {
-                let mut dir = dirs::data_dir()?;
-                dir.push("iamb");
-                dir.into()
-            })
+            .or_else(|| dirs::data_dir().map(|d| app_dir(&d)))
             .expect("no dirs.data value configured!");
 
         let logs = self
@@ -1671,7 +1683,7 @@ impl ApplicationSettings {
     }
 
     pub fn load(cli: Iamb) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut config_dir = cli
+        let config_dir = cli
             .config_directory
             .or_else(Self::get_xdg_config_home)
             .or_else(dirs::config_dir)
@@ -1683,7 +1695,7 @@ impl ApplicationSettings {
                 );
             });
 
-        config_dir.push("iamb");
+        let config_dir = app_dir(&config_dir);
         let config_json = config_dir.join("config.json");
         let config_toml = config_dir.join("config.toml");
 
@@ -2325,7 +2337,7 @@ time_format = "%"
     #[test]
     fn test_parse_tunables_proxy_https() {
         let res: Tunables = serde_json::from_str(
-            r#"{"proxy": {"url": "https://localhost:8080","auth": "Bearer abcd1234","headers":{"User-Agent": "iamb"}}}"#
+            r#"{"proxy": {"url": "https://localhost:8080","auth": "Bearer abcd1234","headers":{"User-Agent": "iambitchx"}}}"#
         ).unwrap();
         let proxy = res.proxy.unwrap();
         let ProxyUrl::Endpoint(url) = proxy.url.unwrap() else {
@@ -2343,13 +2355,13 @@ time_format = "%"
 
         // Verify our custom header is present:
         assert_eq!(proxy.headers.len(), 1);
-        assert_eq!(proxy.headers.get("user-agent").unwrap(), "iamb");
+        assert_eq!(proxy.headers.get("user-agent").unwrap(), "iambitchx");
     }
 
     #[test]
     fn test_parse_tunables_proxy_merge() {
         let global: Tunables = serde_json::from_str(
-            r#"{"proxy": {"url": "https://localhost:8080","auth": "Bearer abcd1234","headers":{"User-Agent": "iamb"}}}"#
+            r#"{"proxy": {"url": "https://localhost:8080","auth": "Bearer abcd1234","headers":{"User-Agent": "iambitchx"}}}"#
         ).unwrap();
         let profile: Tunables =
             serde_json::from_str(r#"{"proxy": {"url": "socks5://localhost:1080"}}"#).unwrap();
@@ -2407,6 +2419,7 @@ time_format = "%"
             tabs: vec![WindowLayout::Window { window: user.clone() }]
         });
 
+        // Mixes the current `iambitchx://` scheme with the legacy upstream `iamb://` one.
         let res: Layout = serde_json::from_str(
             "{\
             \"style\": \"config\",\
@@ -2418,7 +2431,7 @@ time_format = "%"
                 {\"split\":[\
                     {\"window\":\"!room:example.com\"},\
                     {\"split\":[\
-                        {\"window\":\"iamb://dms\"},\
+                        {\"window\":\"iambitchx://dms\"},\
                         {\"window\":\"iamb://welcome\"}\
                     ]}\
                 ]}\
@@ -2536,7 +2549,7 @@ time_format = "%"
 
     #[test]
     fn test_parse_tunables_frontend_bitchx() {
-        // Default stays iamb so existing configs keep working.
+        // Default stays the classic UI so existing configs keep working.
         assert_eq!(Frontend::default(), Frontend::Iamb);
         let res: Tunables = toml::from_str("").unwrap();
         assert_eq!(res.frontend, None);
@@ -2546,6 +2559,10 @@ time_format = "%"
         assert_eq!(res.frontend, Some(Frontend::Bitchx));
         assert_eq!(res.values().frontend, Frontend::Bitchx);
 
+        let res: Tunables = toml::from_str("frontend = \"classic\"").unwrap();
+        assert_eq!(res.values().frontend, Frontend::Iamb);
+
+        // Legacy value from upstream configs is still accepted.
         let res: Tunables = toml::from_str("frontend = \"iamb\"").unwrap();
         assert_eq!(res.values().frontend, Frontend::Iamb);
 
@@ -2754,5 +2771,35 @@ time_format = "%"
             enc.get_indicator(EncryptionIndicatorLocation::PROMPT, Encrypted, &theme)
                 .is_none()
         );
+    }
+
+    fn scratch_dir(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("iambitchx-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn test_app_dir_falls_back_to_legacy() {
+        let base = scratch_dir("legacy");
+        std::fs::create_dir(base.join(LEGACY_APP_DIR_NAME)).unwrap();
+
+        // Only the legacy `iamb/` directory exists: keep using it.
+        assert_eq!(app_dir(&base), base.join("iamb"));
+
+        // Once `iambitchx/` exists, it wins over the legacy directory.
+        std::fs::create_dir(base.join(APP_DIR_NAME)).unwrap();
+        assert_eq!(app_dir(&base), base.join("iambitchx"));
+
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_app_dir_defaults_to_new_name() {
+        // Neither directory exists: new installs use `iambitchx/`.
+        let base = scratch_dir("fresh");
+        assert_eq!(app_dir(&base), base.join("iambitchx"));
+        std::fs::remove_dir_all(&base).unwrap();
     }
 }

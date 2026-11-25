@@ -1,6 +1,6 @@
 //! # Common types and utilities
 //!
-//! The types defined here get used throughout iamb.
+//! The types defined here get used throughout iambitchx.
 
 use std::collections::{BTreeSet, HashSet};
 
@@ -697,7 +697,7 @@ pub enum HomeserverAction {
     /// "Knock" on a room, aka "request to join".
     KnockSend(OwnedRoomOrAliasId, Option<String>),
 
-    /// Logout the current iamb session on the homeserver.
+    /// Logout the current iambitchx session on the homeserver.
     Logout(String, bool),
 
     /// Forget all left rooms
@@ -2825,32 +2825,32 @@ impl Display for IambId {
         match self {
             IambId::Room(alias, RoomView::Main) => {
                 let encoded = percent_encode(alias.as_bytes(), NON_ALPHANUMERIC);
-                write!(f, "iamb://room/{encoded}")
+                write!(f, "iambitchx://room/{encoded}")
             },
             IambId::Room(alias, RoomView::Thread(thread)) => {
                 let encoded = percent_encode(alias.as_bytes(), NON_ALPHANUMERIC);
-                write!(f, "iamb://room/{encoded}/threads/{thread}")
+                write!(f, "iambitchx://room/{encoded}/threads/{thread}")
             },
             IambId::Room(alias, RoomView::Message(message)) => {
                 let encoded = percent_encode(alias.as_bytes(), NON_ALPHANUMERIC);
-                write!(f, "iamb://room/{encoded}/messages/{message}")
+                write!(f, "iambitchx://room/{encoded}/messages/{message}")
             },
             IambId::MemberList(room_id) => {
-                write!(f, "iamb://members/{room_id}")
+                write!(f, "iambitchx://members/{room_id}")
             },
             IambId::PinnedList(room_id) => {
-                write!(f, "iamb://room/{room_id}/pinned")
+                write!(f, "iambitchx://room/{room_id}/pinned")
             },
-            IambId::DirectList => f.write_str("iamb://dms"),
-            IambId::RoomList => f.write_str("iamb://rooms"),
-            IambId::SpaceList => f.write_str("iamb://spaces"),
-            IambId::ToplevelSpaceList => f.write_str("iamb://spaces/toplevel"),
-            IambId::VerifyList => f.write_str("iamb://verify"),
-            IambId::Welcome => f.write_str("iamb://welcome"),
-            IambId::ChatList => f.write_str("iamb://chats"),
-            IambId::UnreadList => f.write_str("iamb://unreads"),
-            IambId::MentionsList => f.write_str("iamb://mentions"),
-            IambId::InvitesList => f.write_str("iamb://invites"),
+            IambId::DirectList => f.write_str("iambitchx://dms"),
+            IambId::RoomList => f.write_str("iambitchx://rooms"),
+            IambId::SpaceList => f.write_str("iambitchx://spaces"),
+            IambId::ToplevelSpaceList => f.write_str("iambitchx://spaces/toplevel"),
+            IambId::VerifyList => f.write_str("iambitchx://verify"),
+            IambId::Welcome => f.write_str("iambitchx://welcome"),
+            IambId::ChatList => f.write_str("iambitchx://chats"),
+            IambId::UnreadList => f.write_str("iambitchx://unreads"),
+            IambId::MentionsList => f.write_str("iambitchx://mentions"),
+            IambId::InvitesList => f.write_str("iambitchx://invites"),
         }
     }
 }
@@ -2890,11 +2890,12 @@ impl Visitor<'_> for IambIdVisitor {
         E: SerdeError,
     {
         let Ok(url) = Url::parse(value) else {
-            return Err(E::custom("Invalid iamb window URL"));
+            return Err(E::custom("Invalid iambitchx window URL"));
         };
 
-        if url.scheme() != "iamb" {
-            return Err(E::custom("Invalid iamb window URL"));
+        // `iamb://` is the legacy scheme from upstream layouts; keep accepting it.
+        if url.scheme() != "iambitchx" && url.scheme() != "iamb" {
+            return Err(E::custom("Invalid iambitchx window URL"));
         }
 
         match url.domain() {
@@ -2943,7 +2944,7 @@ impl Visitor<'_> for IambIdVisitor {
 
                         Ok(IambId::PinnedList(room_id))
                     },
-                    _ => return Err(E::custom("Invalid iamb window URL")),
+                    _ => return Err(E::custom("Invalid iambitchx window URL")),
                 }
             },
             Some("members") => {
@@ -2963,14 +2964,14 @@ impl Visitor<'_> for IambIdVisitor {
             },
             Some("dms") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://dms takes no path"));
+                    return Err(E::custom("iambitchx://dms takes no path"));
                 }
 
                 Ok(IambId::DirectList)
             },
             Some("rooms") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://rooms takes no path"));
+                    return Err(E::custom("iambitchx://rooms takes no path"));
                 }
 
                 Ok(IambId::RoomList)
@@ -2981,55 +2982,55 @@ impl Visitor<'_> for IambIdVisitor {
                 }
 
                 if url.path() != "" {
-                    return Err(E::custom("Invalid iamb window URL"));
+                    return Err(E::custom("Invalid iambitchx window URL"));
                 }
 
                 Ok(IambId::SpaceList)
             },
             Some("verify") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://verify takes no path"));
+                    return Err(E::custom("iambitchx://verify takes no path"));
                 }
 
                 Ok(IambId::VerifyList)
             },
             Some("welcome") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://welcome takes no path"));
+                    return Err(E::custom("iambitchx://welcome takes no path"));
                 }
 
                 Ok(IambId::Welcome)
             },
             Some("chats") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://chats takes no path"));
+                    return Err(E::custom("iambitchx://chats takes no path"));
                 }
 
                 Ok(IambId::ChatList)
             },
             Some("unreads") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://unreads takes no path"));
+                    return Err(E::custom("iambitchx://unreads takes no path"));
                 }
 
                 Ok(IambId::UnreadList)
             },
             Some("mentions") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://mentions takes no path"));
+                    return Err(E::custom("iambitchx://mentions takes no path"));
                 }
 
                 Ok(IambId::MentionsList)
             },
             Some("invites") => {
                 if url.path() != "" {
-                    return Err(E::custom("iamb://invites takes no path"));
+                    return Err(E::custom("iambitchx://invites takes no path"));
                 }
 
                 Ok(IambId::InvitesList)
             },
             Some(s) => Err(E::custom(format!("{s:?} is not a valid window"))),
-            None => Err(E::custom("Invalid iamb window URL")),
+            None => Err(E::custom("Invalid iambitchx window URL")),
         }
     }
 }
@@ -3523,7 +3524,7 @@ pub mod tests {
         let id = IambId::Room(room_id.into(), RoomView::Main);
 
         // Hash gets replaced during encoding:
-        let exp = "iamb://room/%23room1%3Aexample%2Ecom";
+        let exp = "iambitchx://room/%23room1%3Aexample%2Ecom";
         assert_eq!(id.to_string(), exp);
 
         // Percent encoding turns back into hash during decoding:
@@ -3535,12 +3536,22 @@ pub mod tests {
     fn test_pinned_window_id() {
         let room_id = TEST_ROOM1_ID.clone();
         let id = IambId::PinnedList(room_id.clone());
-        let url = format!("iamb://room/{room_id}/pinned");
+        let url = format!("iambitchx://room/{room_id}/pinned");
 
         assert_eq!(id.to_string(), url);
 
         let parsed: IambId = serde_json::from_str(&format!("{url:?}")).unwrap();
         assert_eq!(parsed, id);
+    }
+
+    #[test]
+    fn test_legacy_window_scheme() {
+        // Layouts written for upstream iamb use the legacy `iamb://` scheme.
+        let parsed: IambId = serde_json::from_str("\"iamb://dms\"").unwrap();
+        assert_eq!(parsed, IambId::DirectList);
+        assert_eq!(parsed.to_string(), "iambitchx://dms");
+
+        assert!(serde_json::from_str::<IambId>("\"https://dms\"").is_err());
     }
 
     #[test]

@@ -59,7 +59,7 @@ pub async fn oauth_login(
             println!("{opened}");
             println!(
                 "\n\n\
-                If the redirect fails to connect (i.e., iamb is not reachable from your browser), \
+                If the redirect fails to connect (i.e., iambitchx is not reachable from your browser), \
                 the url (or just the query string) can be pasted here to complete the authorisation flow.\
                 "
             );
@@ -168,7 +168,7 @@ fn client_metadata() -> Raw<ClientMetadata> {
                     redirect_uris: vec![ipv4_localhost_uri, ipv6_localhost_uri],
                 }],
         client_uri), {
-            client_name: Some(Localized::new("iamb".to_owned(), [])),
+            client_name: Some(Localized::new("iambitchx".to_owned(), [])),
             logo_uri: Some(logo_uri)
     });
 

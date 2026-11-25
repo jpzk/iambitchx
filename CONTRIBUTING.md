@@ -1,12 +1,12 @@
-# Contributing to iamb
+# Contributing to iambitchx
 
 ## Building
 
-You can build `iamb` locally by using `cargo build`.
+You can build `iambitchx` locally by using `cargo build`.
 
 ## Pull Requests
 
-When making changes to `iamb`, please make sure to:
+When making changes to `iambitchx`, please make sure to:
 
 - Add new tests for fixed bugs and new features whenever possible
 - Add new documentation with new features

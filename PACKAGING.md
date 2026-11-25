@@ -31,16 +31,16 @@ you'll want to install as part of a package:
 <!-- Please keep in sync w/ the `deb`/`generate-rpm` sections of `Cargo.toml` -->
 | Repository Path         | Installed Path (may vary per OS)                |
 | ----------------------- | ----------------------------------------------- |
-| /iamb.desktop           | /usr/share/applications/iamb.desktop            |
-| /config.example.toml    | /usr/share/iamb/config.example.toml             |
-| /config.full.toml       | /usr/share/iamb/config.full.toml                |
-| /themes/                | /usr/share/iamb/themes/                         |
-| /docs/iamb-256x256.png  | /usr/share/icons/hicolor/256x256/apps/iamb.png  |
-| /docs/iamb-512x512.png  | /usr/share/icons/hicolor/512x512/apps/iamb.png  |
-| /docs/iamb.svg          | /usr/share/icons/hicolor/scalable/apps/iamb.svg |
-| /docs/iamb.1            | /usr/share/man/man1/iamb.1                      |
-| /docs/iamb.5            | /usr/share/man/man5/iamb.5                      |
-| /docs/iamb.metainfo.xml | /usr/share/metainfo/iamb.metainfo.xml           |
+| /iambitchx.desktop           | /usr/share/applications/iambitchx.desktop            |
+| /config.example.toml    | /usr/share/iambitchx/config.example.toml             |
+| /config.full.toml       | /usr/share/iambitchx/config.full.toml                |
+| /themes/                | /usr/share/iambitchx/themes/                         |
+| /docs/iambitchx-256x256.png  | /usr/share/icons/hicolor/256x256/apps/iambitchx.png  |
+| /docs/iambitchx-512x512.png  | /usr/share/icons/hicolor/512x512/apps/iambitchx.png  |
+| /docs/iambitchx.svg          | /usr/share/icons/hicolor/scalable/apps/iambitchx.svg |
+| /docs/iambitchx.1            | /usr/share/man/man1/iambitchx.1                      |
+| /docs/iambitchx.5            | /usr/share/man/man5/iambitchx.5                      |
+| /docs/iambitchx.metainfo.xml | /usr/share/metainfo/iambitchx.metainfo.xml           |
 
 [ring-lto]: https://github.com/briansmith/ring/issues/1444
 [rustls]: https://crates.io/crates/rustls

@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="console-application">
-  <id>chat.iamb.iamb</id>
+  <id>io.github.jpzk.iambitchx</id>
 
-  <name>iamb</name>
+  <name>iambitchx</name>
   <summary>TUI Matrix client for Vim addicts</summary>
   <url type="homepage">https://iamb.chat</url>
 
@@ -35,20 +35,21 @@
   <screenshots>
     <screenshot type="default">
       <image>https://iamb.chat/static/images/metainfo-screenshot.png</image>
-      <caption>Example screenshot of room and lists of rooms, spaces and members within iamb</caption>
+      <caption>Example screenshot of room and lists of rooms, spaces and members within iambitchx</caption>
     </screenshot>
   </screenshots>
 
   <description>
     <p>
-        iamb is a client for the Matrix communication protocol. It provides a
+        iambitchx is a fork of iamb with an optional BitchX-style frontend. It is
+        a client for the Matrix communication protocol, and provides a
         terminal user interface with familiar Vim keybindings, and includes
         support for multiple profiles, threads, spaces, notifications,
         reactions, custom keybindings, and more.
     </p>
   </description>
 
-  <launchable type="desktop-id">iamb.desktop</launchable>
+  <launchable type="desktop-id">iambitchx.desktop</launchable>
 
   <categories>
     <category>Network</category>
@@ -56,6 +57,6 @@
   </categories>
 
   <provides>
-    <binary>iamb</binary>
+    <binary>iambitchx</binary>
   </provides>
 </component>

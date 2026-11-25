@@ -87,7 +87,7 @@ jobs:
         cargo +stable tar --profile=release-lto --target ${{ env.TARGET }}
     - name: 'Upload: tgz'
       run: |
-        gh release upload ${TAG} ./target/tar/iamb*-${{ env.TARGET }}.tar.gz
+        gh release upload ${TAG} ./target/tar/iambitchx*-${{ env.TARGET }}.tar.gz
       env:
         TAG: ${{ github.ref_name }}
         GH_TOKEN: ${{ github.token }}
@@ -99,7 +99,7 @@ jobs:
     - name: 'Upload: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        gh release upload ${TAG} ./target/${{ env.TARGET }}/debian/iamb*.deb
+        gh release upload ${TAG} ./target/${{ env.TARGET }}/debian/iambitchx*.deb
       env:
         TAG: ${{ github.ref_name }}
         GH_TOKEN: ${{ github.token }}
@@ -111,7 +111,7 @@ jobs:
     - name: 'Upload: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        gh release upload ${TAG} ./target/${{ env.TARGET }}/generate-rpm/iamb*.rpm
+        gh release upload ${TAG} ./target/${{ env.TARGET }}/generate-rpm/iambitchx*.rpm
       env:
         TAG: ${{ github.ref_name }}
         GH_TOKEN: ${{ github.token }}

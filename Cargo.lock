@@ -2544,7 +2544,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "iamb"
+name = "iambitchx"
 version = "0.14.0-alpha.1"
 dependencies = [
  "anyhow",

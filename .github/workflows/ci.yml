@@ -63,7 +63,7 @@ jobs:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
       - uses: cachix/cachix-action@v15
         with:
-          name: iamb-prs
+          name: iambitchx-prs
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
       - name: Flake check
         run: |

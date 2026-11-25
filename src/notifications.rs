@@ -22,7 +22,7 @@ use crate::config::NotifyVia;
 use crate::prelude::*;
 
 const IAMB_XDG_NAME: &str = match option_env!("IAMB_XDG_NAME") {
-    None => "iamb",
+    None => "iambitchx",
     Some(iamb) => iamb,
 };
 

@@ -1,7 +1,7 @@
-//! # iamb
+//! # iambitchx
 //!
-//! The iamb client loops over user input and commands, and turns them into actions, [some of
-//! which][IambAction] are specific to iamb, and [some of which][Action] come from [modalkit]. When
+//! The iambitchx client loops over user input and commands, and turns them into actions, [some of
+//! which][IambAction] are specific to iambitchx, and [some of which][Action] come from [modalkit]. When
 //! adding new functionality, you will usually want to extend [`IambAction`] or one of its variants
 //! (like [`RoomAction`]), and then add an appropriate [command][commands] or
 //! [keybinding][keybindings].
@@ -352,7 +352,7 @@ impl Application {
 
             // BitchX frontend: a joined room gets the status bar + chat + input
             // line layout. Anything else (room lists, members, dialogs, the
-            // command bar) falls back to the normal iamb screen.
+            // command bar) falls back to the classic screen.
             let bx_chat = if bx_active && !hide_cursor {
                 sstate.current_window_mut().ok().and_then(bitchx::screen::bitchx_chat)
             } else {
@@ -1310,7 +1310,7 @@ async fn run(
 }
 
 fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocking::WorkerGuard {
-    let log_prefix = format!("iamb-log-{}", settings.profile_name);
+    let log_prefix = format!("iambitchx-log-{}", settings.profile_name);
     let log_dir = settings.dirs.logs.as_path();
     let max_log_files = settings.tunables.max_log_files;
     let log_level = &settings.tunables.log_level;
@@ -1352,7 +1352,7 @@ fn main() {
     let iamb = Iamb::parse();
 
     if let Some(shell) = iamb.completions {
-        clap_complete::generate(shell, &mut Iamb::command(), "iamb", &mut std::io::stdout());
+        clap_complete::generate(shell, &mut Iamb::command(), "iambitchx", &mut std::io::stdout());
         return;
     }
 
@@ -1384,7 +1384,7 @@ fn main() {
         .thread_name_fn(|| {
             static ATOMIC_ID: AtomicUsize = AtomicUsize::new(0);
             let id = ATOMIC_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-            format!("iamb-worker-{id}")
+            format!("iambitchx-worker-{id}")
         })
         .build()
         .unwrap();
