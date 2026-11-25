@@ -516,7 +516,7 @@ pub enum MemberUpdateAction {
     Kick,
     Unban,
 
-    /// Raise the user to operator (room admin, power level 100).
+    /// Raise the user to operator (moderator, power level 50; never 100, which is irrevocable).
     Op,
 
     /// Drop the user back to the default power level.

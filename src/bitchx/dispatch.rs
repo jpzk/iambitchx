@@ -47,7 +47,7 @@ const HELP: &[(&str, &str)] = &[
     ("/list", "show the room list"),
     ("/mode <room> [+o|-o|+b|-b <user>]", "show access or change a member"),
     ("/kick <user> [reason]", "kick a user"),
-    ("/op, /deop <user>", "give or take operator (power level 100)"),
+    ("/op, /deop <user>", "give or take operator (moderator, power level 50)"),
     ("/invite <user> [room]", "invite a user"),
     ("/query <target>", "open a direct chat"),
     ("/ignore, /unignore <user>", "ignore or unignore a user"),

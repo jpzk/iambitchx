@@ -204,7 +204,9 @@ pub async fn room_command(
                 },
                 MemberUpdateAction::Op | MemberUpdateAction::Deop => {
                     let level = if mua == MemberUpdateAction::Op {
-                        100
+                        // Moderator, not admin: in Matrix a PL100 grant to a peer
+                        // can never be revoked (you cannot demote an equal).
+                        50
                     } else {
                         0
                     };
