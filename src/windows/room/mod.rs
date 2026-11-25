@@ -18,11 +18,11 @@ use modalkit::editing::context::EditContext;
 use crate::base::{MemberUpdateAction, RoomField};
 use crate::config::EncryptionIndicatorLocation;
 use crate::prelude::*;
-use crate::windows::room::chat::ChatState;
 use crate::windows::room::message::{MessageState, MessageWidget};
 use crate::windows::room::not_joined::NotJoined;
 use crate::windows::room::space::{Space, SpaceState};
 
+pub use crate::windows::room::chat::{Chat, ChatState};
 pub use crate::windows::room::not_joined::NotJoinedState;
 
 mod chat;
