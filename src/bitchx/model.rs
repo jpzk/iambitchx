@@ -2,6 +2,8 @@
 //!
 //! Nothing here touches the SDK or the terminal, so the whole UI can be
 //! driven by tests.
+use std::time::{Duration, Instant};
+
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 use crate::bitchx::channels::{JoinTarget, ListArgs, ListEntry};
@@ -60,12 +62,23 @@ pub enum Line {
     Logo(String),
     /// NAMES header: ` [Users(#chan:n/m)]`.
     Users { chan: String, shown: usize, total: usize },
-    /// One NAMES grid row: `[@nick ] [ nick ]`, nicks padded to `width`.
-    Names { cells: Vec<(char, String)>, width: usize },
+    /// One NAMES grid row: `[@nick ] [ nick (zZzZ 4h) ]`, cells padded to `width`.
+    Names {
+        cells: Vec<(char, String, Option<PresenceMark>)>,
+        width: usize,
+    },
     /// The WHOIS ruler `------------- --  -`.
     WhoisRule,
     /// WHOIS first row: `| nick (mxid) (info)`.
     WhoisNick { nick: String, mxid: String, info: String },
+    /// WHOIS first row of an away/offline peer, with the presence marker:
+    /// `| nick (mxid) (info) (zZzZ 4h)`.
+    WhoisMark {
+        nick: String,
+        mxid: String,
+        info: String,
+        mark: PresenceMark,
+    },
     /// WHOIS field row n (1-based): `{lead}{key:<8} : value`, the lead
     /// alternating ` `/`|` and fading green to grey, `:` on the last row.
     WhoisRow { row: u8, last: bool, key: String, value: String },
@@ -77,18 +90,126 @@ pub fn nick_of(user: &UserId) -> String {
     crate::bitchx::format::sanitize(user.localpart())
 }
 
-/// Matrix presence as IRC away: `unavailable` is away (BitchX shows
-/// `away : nick - msg`, the message defaulting to `away`); `online`,
-/// `offline` and unknown states are not.
-pub fn away_of(presence: &str, status_msg: Option<&str>) -> Option<String> {
-    (presence == "unavailable").then(|| {
-        let msg = crate::bitchx::format::sanitize(status_msg.unwrap_or("").trim());
-        if msg.is_empty() {
-            "away".to_string()
-        } else {
-            msg
+/// Matrix presence state of another user.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PresenceState {
+    Online,
+    Unavailable,
+    Offline,
+}
+
+/// The last known presence of another user. `last_active_ago` was measured
+/// by the homeserver when the event arrived at `received_at`, so the age
+/// ticks forward locally: `age = last_active_ago + (now - received_at)`.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Presence {
+    pub state: PresenceState,
+    pub status_msg: Option<String>,
+    pub last_active_ago: Option<Duration>,
+    pub received_at: Instant,
+    pub currently_active: bool,
+}
+
+/// The compact marker next to a peer: `zZzZ 4h` (unavailable) or `off 2d`
+/// (offline); the age is missing when the homeserver sent none.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PresenceMark {
+    pub offline: bool,
+    pub age: Option<String>,
+}
+
+impl PresenceMark {
+    /// The marker word: `zZzZ` (BitchX STATUS_AWAY) or `off`.
+    pub fn word(&self) -> &'static str {
+        if self.offline { "off" } else { "zZzZ" }
+    }
+
+    /// `zZzZ 4h`, `off 2d`, `zZzZ`.
+    pub fn text(&self) -> String {
+        match &self.age {
+            Some(age) => format!("{} {age}", self.word()),
+            None => self.word().to_string(),
         }
-    })
+    }
+}
+
+impl Presence {
+    /// The away message while `unavailable` (BitchX `away : nick - msg`).
+    pub fn away(&self) -> Option<String> {
+        (self.state == PresenceState::Unavailable).then(|| {
+            let msg = self.status_msg.as_deref().unwrap_or("").trim();
+            if msg.is_empty() {
+                "away".to_string()
+            } else {
+                msg.to_string()
+            }
+        })
+    }
+
+    /// Time since the user was last active, as of `now`; `None` when the
+    /// homeserver sent no `last_active_ago`.
+    pub fn age(&self, now: Instant) -> Option<Duration> {
+        let since = now.saturating_duration_since(self.received_at);
+        self.last_active_ago.map(|ago| ago + since)
+    }
+
+    /// The status bar / NAMES marker; nothing for online or currently active.
+    pub fn mark(&self, now: Instant) -> Option<PresenceMark> {
+        if self.currently_active || self.state == PresenceState::Online {
+            return None;
+        }
+        Some(PresenceMark {
+            offline: self.state == PresenceState::Offline,
+            age: self.age(now).map(compact_age),
+        })
+    }
+}
+
+/// Compact age, largest unit only, rounded down: `45s 12m 4h 2d 3w`.
+pub fn compact_age(age: Duration) -> String {
+    let s = age.as_secs();
+    match s {
+        0..60 => format!("{s}s"),
+        60..3_600 => format!("{}m", s / 60),
+        3_600..86_400 => format!("{}h", s / 3_600),
+        86_400..604_800 => format!("{}d", s / 86_400),
+        _ => format!("{}w", s / 604_800),
+    }
+}
+
+/// WHOIS_IDLE `: idle     : $0 hours $1 mins $2 secs` (`include/color.h:731`,
+/// split as in `source/numbers.c:870-877`). Matrix has no signon time, so
+/// the `(signon: ...)` part is left out.
+pub fn whois_idle(idle: Duration) -> String {
+    let secs = idle.as_secs();
+    let hours = secs / 3600;
+    let minutes = (secs - hours * 3600) / 60;
+    let seconds = secs % 60;
+    format!("{hours} hours {minutes} mins {seconds} secs")
+}
+
+/// Matrix presence as the UI keeps it. `unavailable` is away (BitchX shows
+/// `away : nick - msg`, the message defaulting to `away`); unknown states
+/// count as offline. The status message is sanitized for the terminal.
+pub fn away_of(
+    presence: &str,
+    status_msg: Option<&str>,
+    last_active_ago: Option<Duration>,
+    currently_active: Option<bool>,
+    received_at: Instant,
+) -> Presence {
+    let state = match presence {
+        "online" => PresenceState::Online,
+        "unavailable" => PresenceState::Unavailable,
+        _ => PresenceState::Offline,
+    };
+    Presence {
+        state,
+        status_msg: status_msg.map(crate::bitchx::format::sanitize),
+        last_active_ago,
+        received_at,
+        currently_active: currently_active.unwrap_or(false),
+    }
 }
 
 /// A line with the event id it came from (for dedup) and the event's
@@ -160,8 +281,8 @@ pub enum MxEvent {
     OwnDisplayName(String),
     /// Away state changed.
     Away(Option<String>),
-    /// Presence of another user: `Some(status_msg)` while `unavailable`.
-    Presence { user: OwnedUserId, away: Option<String> },
+    /// Presence of another user, stamped with when it arrived.
+    Presence { user: OwnedUserId, presence: Presence },
     /// Round-trip time to the homeserver, in seconds.
     Lag(u64),
     /// A key verification with `user` progressed.
@@ -268,13 +389,75 @@ pub enum VerifyUpdate {
 mod tests {
     use super::*;
 
+    fn p(state: &str, ago: Option<u64>, active: Option<bool>, at: Instant) -> Presence {
+        away_of(state, None, ago.map(Duration::from_secs), active, at)
+    }
+
     #[test]
     fn test_away_of_presence() {
-        assert_eq!(away_of("unavailable", Some("lunch")), Some("lunch".into()));
-        assert_eq!(away_of("unavailable", Some("  ")), Some("away".into()));
-        assert_eq!(away_of("unavailable", None), Some("away".into()));
-        assert_eq!(away_of("unavailable", Some("a\x1b[31mb")), Some("a [31mb".into()));
-        assert_eq!(away_of("online", Some("hi")), None);
-        assert_eq!(away_of("offline", None), None);
+        let t = Instant::now();
+        let away = |s, m| away_of(s, m, None, None, t).away();
+        assert_eq!(away("unavailable", Some("lunch")), Some("lunch".into()));
+        assert_eq!(away("unavailable", Some("  ")), Some("away".into()));
+        assert_eq!(away("unavailable", None), Some("away".into()));
+        assert_eq!(away("unavailable", Some("a\x1b[31mb")), Some("a [31mb".into()));
+        assert_eq!(away("online", Some("hi")), None);
+        assert_eq!(away("offline", None), None);
+        assert_eq!(away_of("weird", None, None, None, t).state, PresenceState::Offline);
+    }
+
+    #[test]
+    fn test_compact_age_boundaries() {
+        let a = |s| compact_age(Duration::from_secs(s));
+        assert_eq!(a(0), "0s");
+        assert_eq!(a(45), "45s");
+        assert_eq!(a(59), "59s");
+        assert_eq!(a(60), "1m");
+        assert_eq!(a(12 * 60 + 59), "12m");
+        assert_eq!(a(3_599), "59m");
+        assert_eq!(a(3_600), "1h");
+        assert_eq!(a(4 * 3_600 + 15 * 60), "4h");
+        assert_eq!(a(86_399), "23h");
+        assert_eq!(a(86_400), "1d");
+        assert_eq!(a(2 * 86_400 + 5), "2d");
+        assert_eq!(a(604_799), "6d");
+        assert_eq!(a(604_800), "1w");
+        assert_eq!(a(3 * 604_800 + 86_400), "3w");
+        assert_eq!(compact_age(Duration::from_millis(999)), "0s");
+    }
+
+    #[test]
+    fn test_presence_age_ticks_with_fake_clock() {
+        let t0 = Instant::now();
+        let pr = p("unavailable", Some(30), None, t0);
+        let at = |s| pr.mark(t0 + Duration::from_secs(s)).unwrap().text();
+        assert_eq!(at(0), "zZzZ 30s");
+        assert_eq!(at(15), "zZzZ 45s");
+        assert_eq!(at(30), "zZzZ 1m");
+        assert_eq!(at(4 * 3_600), "zZzZ 4h");
+        // a clock before the receive time never goes negative
+        assert_eq!(pr.age(t0), Some(Duration::from_secs(30)));
+    }
+
+    #[test]
+    fn test_presence_mark_states() {
+        let t = Instant::now();
+        let h4 = Some(4 * 3_600);
+        assert_eq!(p("unavailable", h4, None, t).mark(t).unwrap().text(), "zZzZ 4h");
+        assert_eq!(p("offline", Some(2 * 86_400), None, t).mark(t).unwrap().text(), "off 2d");
+        assert_eq!(p("unavailable", None, None, t).mark(t).unwrap().text(), "zZzZ");
+        assert_eq!(p("offline", None, None, t).mark(t).unwrap().text(), "off");
+        assert_eq!(p("online", h4, None, t).mark(t), None);
+        assert_eq!(p("online", None, Some(true), t).mark(t), None);
+        assert_eq!(p("unavailable", h4, Some(true), t).mark(t), None);
+        assert!(p("offline", None, None, t).mark(t).unwrap().offline);
+    }
+
+    #[test]
+    fn test_whois_idle_format() {
+        let i = |s| whois_idle(Duration::from_secs(s));
+        assert_eq!(i(0), "0 hours 0 mins 0 secs");
+        assert_eq!(i(4 * 3_600 + 15 * 60 + 7), "4 hours 15 mins 7 secs");
+        assert_eq!(i(50 * 3_600 + 59), "50 hours 0 mins 59 secs");
     }
 }

@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line as TLine, Span};
 use unicode_width::UnicodeWidthChar;
 
-use crate::bitchx::model::Line;
+use crate::bitchx::model::{Line, PresenceMark};
 
 pub fn fg(c: Color) -> Style {
     Style::default().fg(c)
@@ -352,9 +352,10 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
             ])]
         },
         // `[@op ] [ nick ]`: no leading glyph, ops bold white, others bold blue.
+        // Away/offline peers carry their marker: `[ armin (zZzZ 4h) ]`.
         Line::Names { cells, width } => {
             let mut spans = vec![];
-            for (i, (flag, nick)) in cells.iter().enumerate() {
+            for (i, (flag, nick, mark)) in cells.iter().enumerate() {
                 if i > 0 {
                     spans.push(sp(" ", n()));
                 }
@@ -365,7 +366,17 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
                 };
                 spans.push(sp("[", k()));
                 spans.push(sp(flag.to_string(), fs));
-                spans.push(sp(format!("{nick:<width$} "), ns));
+                match mark {
+                    None => spans.push(sp(format!("{nick:<width$} "), ns)),
+                    Some(m) => {
+                        spans.push(sp(nick.clone(), ns));
+                        spans.push(sp(" (", k()));
+                        spans.extend(mark_spans(m));
+                        spans.push(sp(")", k()));
+                        let pad = width.saturating_sub(names_cell_width(nick, Some(m)));
+                        spans.push(sp(" ".repeat(pad + 1), ns));
+                    },
+                }
                 spans.push(sp("]", k()));
             }
             vec![TLine::from(spans)]
@@ -389,6 +400,21 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
                 sp(")", k()),
             ])]
         },
+        Line::WhoisMark { nick, mxid, info, mark } => {
+            let mut l = format_line_hl(
+                &Line::WhoisNick {
+                    nick: nick.clone(),
+                    mxid: mxid.clone(),
+                    info: info.clone(),
+                },
+                chan,
+                false,
+            );
+            l[0].spans.push(sp(" (", k()));
+            l[0].spans.extend(mark_spans(mark));
+            l[0].spans.push(sp(")", k()));
+            l
+        },
         Line::WhoisRow { row, last, key, value } => {
             let lead = match (last, row % 2) {
                 (true, _) => ": ",
@@ -411,6 +437,23 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
             ])]
         },
     }
+}
+
+/// A presence marker `zZzZ 4h` / `off 2d`: green zZzZ like STATUS_AWAY,
+/// grey `off`, the age in the default colour.
+pub fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
+    let word = if mark.offline { k() } else { fg(Color::Green) };
+    let mut out = vec![sp(mark.word(), word)];
+    if let Some(age) = &mark.age {
+        out.push(sp(format!(" {age}"), n()));
+    }
+    out
+}
+
+/// Columns of a NAMES cell: the nick plus ` (marker)`.
+pub fn names_cell_width(nick: &str, mark: Option<&PresenceMark>) -> usize {
+    let nick = nick.chars().count();
+    mark.map_or(nick, |m| nick + m.text().chars().count() + 3)
 }
 
 /// Split lines so that none is wider than `width` cells.
@@ -697,7 +740,7 @@ mod tests {
         assert_eq!(style_of(&h, "Users"), bold(Color::Green));
         assert_eq!(style_of(&h, ")]"), k());
         let row = Line::Names {
-            cells: vec![('@', "op".into()), (' ', "armin".into())],
+            cells: vec![('@', "op".into(), None), (' ', "armin".into(), None)],
             width: 5,
         };
         assert_eq!(text(&row), "[@op    ] [ armin ]");

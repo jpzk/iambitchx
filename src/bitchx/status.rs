@@ -8,6 +8,7 @@ use ratatui::style::{Color, Modifier as StyleModifier, Style};
 use ratatui::text::Line;
 
 use crate::bitchx::format::sp;
+use crate::bitchx::model::PresenceMark;
 
 /// The status bar background (`ESC[44m`).
 pub fn status_bg() -> Style {
@@ -83,8 +84,9 @@ pub struct BxStatus {
     pub channel: Option<String>,
     /// `%Q`: the query target of a DM window.
     pub query: Option<String>,
-    /// The query target is away (Matrix presence `unavailable`).
-    pub query_away: bool,
+    /// The query target's presence marker: `zZzZ 4h` (unavailable) or
+    /// `off 2d` (offline); `None` while online or currently active.
+    pub query_away: Option<PresenceMark>,
     /// `%+`, without the `+`.
     pub modes: String,
     /// `%F`: refnums of other windows with unread activity.
@@ -156,9 +158,13 @@ impl BxStatus {
             s.push(sp("  [", st_punct()));
             s.push(sp("Query: ", st_text()));
             s.push(sp(q.clone(), st_bright()));
-            if self.query_away {
+            if let Some(mark) = &self.query_away {
                 s.push(sp(" (", st_punct()));
-                s.push(sp("zZzZ", st_away()));
+                let word = if mark.offline { st_text() } else { st_away() };
+                s.push(sp(mark.word(), word));
+                if let Some(age) = &mark.age {
+                    s.push(sp(format!(" {age}"), st_bright()));
+                }
                 s.push(sp(")", st_punct()));
             }
             s.push(sp("]", st_punct()));

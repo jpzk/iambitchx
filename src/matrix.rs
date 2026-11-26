@@ -424,9 +424,15 @@ async fn sync_run(
                 }
                 for raw in &resp.presence {
                     if let Ok(ev) = raw.deserialize() {
-                        let away =
-                            away_of(ev.content.presence.as_str(), ev.content.status_msg.as_deref());
-                        let _ = tx.send(MxEvent::Presence { user: ev.sender, away });
+                        let c = &ev.content;
+                        let presence = away_of(
+                            c.presence.as_str(),
+                            c.status_msg.as_deref(),
+                            c.last_active_ago.map(|ms| Duration::from_millis(ms.into())),
+                            c.currently_active,
+                            Instant::now(),
+                        );
+                        let _ = tx.send(MxEvent::Presence { user: ev.sender, presence });
                     }
                 }
                 for room_id in resp.rooms.left.into_keys() {
@@ -655,12 +661,14 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 }
             }
             // WHOIS_AWAY `| away     : $0 - $1-` (include/color.h:726).
-            let away = client
-                .send(GetPresenceRequest::new(user.clone()))
-                .await
-                .ok()
-                .and_then(|p| away_of(p.presence.as_str(), p.status_msg.as_deref()));
-            let _ = tx.send(MxEvent::Presence { user: user.clone(), away: away.clone() });
+            let presence = client.send(GetPresenceRequest::new(user.clone())).await.ok().map(|p| {
+                let (ago, active) = (p.last_active_ago, p.currently_active);
+                away_of(p.presence.as_str(), p.status_msg.as_deref(), ago, active, Instant::now())
+            });
+            let away = presence.as_ref().and_then(|p| p.away());
+            if let Some(presence) = presence {
+                let _ = tx.send(MxEvent::Presence { user: user.clone(), presence });
+            }
             let devices = client
                 .encryption()
                 .get_user_devices(&user)

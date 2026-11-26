@@ -470,6 +470,9 @@ mod tests {
         assert!(!row(&render(&mut app, 80, 12), 0).starts_with(TOP_BAR));
     }
 
+    const H4: std::time::Duration = std::time::Duration::from_secs(4 * 3_600);
+    const D2: std::time::Duration = std::time::Duration::from_secs(2 * 86_400);
+
     #[test]
     fn test_status_away_marker() {
         // STATUS_AWAY ` ([zZzZ] %A)`: green zZzZ, MSGCOUNT for %A (color.h:806).
@@ -485,14 +488,26 @@ mod tests {
 
         // The query peer away (presence unavailable).
         app.away = None;
-        app.handle_mx(MxEvent::Presence {
-            user: matrix_sdk::ruma::owned_user_id!("@armin:remote.tld"),
-            away: Some("brb".into()),
-        });
+        let armin = matrix_sdk::ruma::owned_user_id!("@armin:remote.tld");
+        app.fake_mono = Some(std::time::Instant::now());
+        let ev = crate::bitchx::model::away_of("unavailable", None, Some(H4), None, app.mono());
+        app.handle_mx(MxEvent::Presence { user: armin.clone(), presence: ev });
         app.handle_key(alt('4'));
         let buf = render(&mut app, 80, 12);
         let l1 = row(&buf, 9);
-        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (zZzZ)]"), "{l1:?}");
+        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (zZzZ 4h)]"), "{l1:?}");
+        let x = l1.find("zZzZ 4h").unwrap() as u16;
+        assert_eq!(buf[(x, 9)].fg, Color::Green);
+
+        // offline: grey `off` and the age; online: no marker at all.
+        let ev = crate::bitchx::model::away_of("offline", None, Some(D2), None, app.mono());
+        app.handle_mx(MxEvent::Presence { user: armin.clone(), presence: ev });
+        let l1 = row(&render(&mut app, 80, 12), 9);
+        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (off 2d)]"), "{l1:?}");
+        let ev = crate::bitchx::model::away_of("online", None, Some(D2), None, app.mono());
+        app.handle_mx(MxEvent::Presence { user: armin, presence: ev });
+        let l1 = row(&render(&mut app, 80, 12), 9);
+        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
     }
 
     #[test]

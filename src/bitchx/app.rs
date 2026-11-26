@@ -4,6 +4,7 @@
 //! Keys and Matrix events go in, [`Effect`]s for the Matrix side come out.
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::time::Instant;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
@@ -11,6 +12,7 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 use crate::bitchx::channels::{list_lines, normalize_join, short_name};
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, VerifyCmd, parse};
 use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
+use crate::bitchx::format::names_cell_width;
 use crate::bitchx::input::Input;
 use crate::bitchx::mention::Matcher;
 use crate::bitchx::model::{
@@ -18,9 +20,11 @@ use crate::bitchx::model::{
     Line,
     Member,
     MxEvent,
+    Presence,
     RoomSnapshot,
     VerifyAction,
     VerifyUpdate,
+    whois_idle,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
 use crate::bitchx::vars::{Vars, expand_auto_away_msg, expand_away_nick, lookup, strip_away_nick};
@@ -223,8 +227,13 @@ pub struct App {
     pub auto_away_armed: bool,
     /// Fixed clock for tests (unix millis); `None` uses the real time.
     pub fake_now: Option<i64>,
-    /// Other users whose presence is `unavailable`, with their status message.
-    pub presence_away: HashMap<OwnedUserId, String>,
+    /// The last known presence of other users.
+    pub presence: HashMap<OwnedUserId, Presence>,
+    /// Fixed monotonic clock for tests (presence ages); `None`: real time.
+    pub fake_mono: Option<Instant>,
+    /// The user of the /whois being printed (from its WhoisNick line), so
+    /// the idle row can be spliced in before the last row.
+    pub whois_user: Option<OwnedUserId>,
     /// Our own Matrix display name, once known (silent self-whois at
     /// connect, `/nick`, profile changes seen in rooms).
     pub display_name: Option<String>,
@@ -281,7 +290,9 @@ impl App {
             away_msgs: 0,
             auto_away_armed: false,
             fake_now: None,
-            presence_away: HashMap::new(),
+            presence: HashMap::new(),
+            fake_mono: None,
+            whois_user: None,
             display_name: None,
             probe: Probe::Start,
             bell: false,
@@ -434,7 +445,8 @@ impl App {
                 .room
                 .dm_peer
                 .as_ref()
-                .is_some_and(|p| self.presence_away.contains_key(p)),
+                .and_then(|p| self.presence.get(p))
+                .and_then(|p| p.mark(self.mono())),
             modes,
             act: self.act(),
             hilite: self.hilite(),
@@ -538,7 +550,9 @@ impl App {
                     return vec![];
                 }
                 let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
-                self.windows[idx].push(None, line);
+                for line in self.whois_splice(line) {
+                    self.windows[idx].push(None, line);
+                }
             },
             MxEvent::OwnDisplayName(name) => {
                 self.own_name(name.clone());
@@ -548,11 +562,8 @@ impl App {
                 self.windows[0].push(None, line);
             },
             MxEvent::Away(away) => self.away_changed(away),
-            MxEvent::Presence { user, away } => {
-                match away {
-                    Some(msg) => self.presence_away.insert(user, msg),
-                    None => self.presence_away.remove(&user),
-                };
+            MxEvent::Presence { user, presence } => {
+                self.presence.insert(user, presence);
             },
             MxEvent::Lag(lag) => {
                 self.lag = Some(lag);
@@ -605,6 +616,11 @@ impl App {
     // ---- keys ---------------------------------------------------------
 
     // ---- away / AUTO_AWAY ----------------------------------------------
+
+    /// The monotonic clock presence ages tick on (the fake one in tests).
+    pub fn mono(&self) -> Instant {
+        self.fake_mono.unwrap_or_else(Instant::now)
+    }
 
     /// Now in unix millis (the fake clock in tests).
     pub fn now(&self) -> i64 {
@@ -1381,30 +1397,79 @@ impl App {
     }
 
     fn names_in(&mut self, idx: usize) {
+        let now = self.mono();
         let room = &self.windows[idx].room;
         let mut members = room.members.clone();
         members.sort_by(|a, b| b.power.cmp(&a.power).then(a.nick.cmp(&b.nick)));
         let total = members.len();
-        let width = members.iter().map(|m| m.nick.chars().count()).max().unwrap_or(0);
+        let cells: Vec<_> = members
+            .iter()
+            .map(|m| {
+                let flag = if m.is_op() {
+                    '@'
+                } else if m.is_voice() {
+                    '+'
+                } else {
+                    ' '
+                };
+                let mark = self.presence.get(&m.user_id).and_then(|p| p.mark(now));
+                (flag, m.nick.clone(), mark)
+            })
+            .collect();
+        let width = cells
+            .iter()
+            .map(|(_, nick, mark)| names_cell_width(nick, mark.as_ref()))
+            .max()
+            .unwrap_or(0);
         let mut lines = vec![Line::Users { chan: room.name.clone(), shown: total, total }];
-        for chunk in members.chunks(5) {
-            let cells = chunk
-                .iter()
-                .map(|m| {
-                    let flag = if m.is_op() {
-                        '@'
-                    } else if m.is_voice() {
-                        '+'
-                    } else {
-                        ' '
-                    };
-                    (flag, m.nick.clone())
-                })
-                .collect();
-            lines.push(Line::Names { cells, width });
+        for chunk in cells.chunks(5) {
+            lines.push(Line::Names { cells: chunk.to_vec(), width });
         }
         for l in lines {
             self.windows[idx].push(None, l);
+        }
+    }
+
+    /// A /whois from the Matrix side, with what only the UI knows spliced
+    /// in: the peer's presence marker on the nick row, and BitchX's
+    /// WHOIS_IDLE row (`source/numbers.c:870-877`) before the closing row.
+    fn whois_splice(&mut self, line: Line) -> Vec<Line> {
+        match line {
+            Line::WhoisNick { nick, mxid, info } => {
+                let user = UserId::parse(mxid.as_str()).ok();
+                let mark = user
+                    .as_ref()
+                    .and_then(|u| self.presence.get(u))
+                    .and_then(|p| p.mark(self.mono()));
+                self.whois_user = user;
+                match mark {
+                    Some(mark) => vec![Line::WhoisMark { nick, mxid, info, mark }],
+                    None => vec![Line::WhoisNick { nick, mxid, info }],
+                }
+            },
+            Line::WhoisRow { row, last: true, key, value } => {
+                let idle = self
+                    .whois_user
+                    .take()
+                    .and_then(|u| self.presence.get(&u))
+                    .and_then(|p| p.age(self.mono()));
+                let end = |row| Line::WhoisRow { row, last: true, key, value };
+                match idle {
+                    Some(idle) => {
+                        vec![
+                            Line::WhoisRow {
+                                row,
+                                last: false,
+                                key: "idle".into(),
+                                value: whois_idle(idle),
+                            },
+                            end(row.saturating_add(1)),
+                        ]
+                    },
+                    None => vec![end(row)],
+                }
+            },
+            line => vec![line],
         }
     }
 
@@ -1537,6 +1602,179 @@ pub mod tests {
 
     fn last(app: &App) -> Line {
         app.cur().lines.last().cloned().unwrap()
+    }
+
+    /// A presence event for `user`, last active `ago` seconds before the
+    /// app's fake monotonic clock.
+    pub fn presence_ev(user: &OwnedUserId, state: &str, ago: Option<u64>) -> MxEvent {
+        presence_at(user, state, ago, None, T_MONO.with(|t| *t))
+    }
+
+    fn presence_at(
+        user: &OwnedUserId,
+        state: &str,
+        ago: Option<u64>,
+        active: Option<bool>,
+        at: Instant,
+    ) -> MxEvent {
+        let ago = ago.map(std::time::Duration::from_secs);
+        let presence = crate::bitchx::model::away_of(state, None, ago, active, at);
+        MxEvent::Presence { user: user.clone(), presence }
+    }
+
+    thread_local! {
+        static T_MONO: Instant = Instant::now();
+    }
+
+    fn mono_app() -> App {
+        let mut app = app();
+        app.fake_mono = Some(T_MONO.with(|t| *t));
+        app
+    }
+
+    fn advance(app: &mut App, secs: u64) {
+        let t = app.fake_mono.unwrap() + std::time::Duration::from_secs(secs);
+        app.fake_mono = Some(t);
+    }
+
+    fn query_mark(app: &App) -> Option<String> {
+        app.status().query_away.map(|m| m.text())
+    }
+
+    #[test]
+    fn test_query_presence_ticks_with_fake_clock() {
+        let mut app = mono_app();
+        let armin = owned_user_id!("@armin:remote.tld");
+        let q = app.find_window("armin").unwrap();
+        app.switch(q);
+        app.handle_mx(presence_ev(&armin, "unavailable", Some(45)));
+        assert_eq!(query_mark(&app).as_deref(), Some("zZzZ 45s"));
+        advance(&mut app, 15);
+        assert_eq!(query_mark(&app).as_deref(), Some("zZzZ 1m"));
+        advance(&mut app, 11 * 60);
+        assert_eq!(query_mark(&app).as_deref(), Some("zZzZ 12m"));
+        advance(&mut app, 4 * 3_600);
+        assert_eq!(query_mark(&app).as_deref(), Some("zZzZ 4h"));
+        // offline vs unavailable vs online
+        app.handle_mx(presence_ev(&armin, "offline", Some(2 * 86_400)));
+        let off = app.status().query_away.unwrap();
+        assert!(off.offline);
+        assert_eq!(off.text(), "off 2d");
+        app.handle_mx(presence_ev(&armin, "offline", Some(3 * 604_800)));
+        assert_eq!(query_mark(&app).as_deref(), Some("off 3w"));
+        app.handle_mx(presence_ev(&armin, "online", Some(5)));
+        assert_eq!(query_mark(&app), None);
+        let now = app.mono();
+        app.handle_mx(presence_at(&armin, "unavailable", Some(99), Some(true), now));
+        assert_eq!(query_mark(&app), None);
+        // our own away keeps the BitchX `(zZzZ N)` message counter
+        app.away = Some("gone".into());
+        app.away_msgs = 3;
+        assert!(app.status().away);
+        assert_eq!(app.status().away_msgs, 3);
+    }
+
+    #[test]
+    fn test_names_show_presence_marks() {
+        let mut app = mono_app();
+        app.handle_key(alt('2'));
+        let armin = owned_user_id!("@armin:remote.tld");
+        let bob = owned_user_id!("@bob:example.org");
+        let me = app.me.clone();
+        app.handle_mx(presence_ev(&armin, "unavailable", Some(4 * 3_600)));
+        app.handle_mx(presence_ev(&bob, "offline", Some(2 * 86_400)));
+        app.handle_mx(presence_ev(&me, "online", Some(1)));
+        typed(&mut app, "/names");
+        let Line::Names { cells, width } = last(&app) else {
+            panic!("{:?}", last(&app));
+        };
+        let marks: Vec<_> = cells
+            .iter()
+            .map(|(_, n, m)| (n.clone(), m.as_ref().map(|m| m.text())))
+            .collect();
+        assert_eq!(marks, vec![
+            ("carla".into(), None),
+            ("bob".into(), Some("off 2d".into())),
+            ("armin".into(), Some("zZzZ 4h".into())),
+        ]);
+        // `armin (zZzZ 4h)` is the widest cell
+        assert_eq!(width, 15);
+        let text = crate::bitchx::format::plain(&crate::bitchx::format::format_line(
+            &Line::Names { cells, width },
+            "#room",
+        ))
+        .concat();
+        assert_eq!(text.trim_end(), "[@carla           ] [+bob (off 2d)    ] [ armin (zZzZ 4h) ]");
+    }
+
+    fn whois_of(app: &mut App, mxid: &str) {
+        let row = |row: u8, last: bool, key: &str, value: &str| {
+            Line::WhoisRow { row, last, key: key.into(), value: value.into() }
+        };
+        let lines = vec![
+            Line::WhoisRule,
+            Line::WhoisNick {
+                nick: "armin".into(),
+                mxid: mxid.into(),
+                info: "unverified".into(),
+            },
+            row(1, false, "ircname", "Armin"),
+            row(2, false, "server", "remote.tld"),
+            row(3, true, "devices", "2"),
+        ];
+        for line in lines {
+            app.handle_mx(MxEvent::Info { room_id: None, line });
+        }
+    }
+
+    #[test]
+    fn test_whois_idle_line_and_mark() {
+        let mut app = mono_app();
+        let armin = owned_user_id!("@armin:remote.tld");
+        app.handle_mx(presence_ev(&armin, "unavailable", Some(4 * 3_600 + 15 * 60)));
+        advance(&mut app, 7);
+        whois_of(&mut app, "@armin:remote.tld");
+        let lines = &app.cur().lines;
+        let n = lines.len();
+        assert_eq!(lines[n - 2], Line::WhoisRow {
+            row: 3,
+            last: false,
+            key: "idle".into(),
+            value: "4 hours 15 mins 7 secs".into(),
+        });
+        assert_eq!(lines[n - 1], Line::WhoisRow {
+            row: 4,
+            last: true,
+            key: "devices".into(),
+            value: "2".into(),
+        });
+        let nick = lines.iter().rev().find(|l| matches!(l, Line::WhoisMark { .. })).unwrap();
+        let text =
+            crate::bitchx::format::plain(&crate::bitchx::format::format_line(nick, "")).concat();
+        assert_eq!(text.trim_end(), "| armin (@armin:remote.tld) (unverified) (zZzZ 4h)");
+        let idle =
+            crate::bitchx::format::plain(&crate::bitchx::format::format_line(&lines[n - 2], ""))
+                .concat();
+        assert_eq!(idle.trim_end(), " idle     : 4 hours 15 mins 7 secs");
+
+        // online: idle line still there, no marker on the nick row
+        // stamped at the (advanced) fake now, so no extra elapsed time
+        let now = app.fake_mono.unwrap();
+        app.handle_mx(presence_at(&armin, "online", Some(30), None, now));
+        whois_of(&mut app, "@armin:remote.tld");
+        let lines = &app.cur().lines;
+        let n = lines.len();
+        assert!(
+            matches!(&lines[n - 2], Line::WhoisRow { key, value, .. } if key == "idle" && value == "0 hours 0 mins 30 secs")
+        );
+        assert!(matches!(&lines[n - 5], Line::WhoisNick { .. }), "{:?}", &lines[n - 6..]);
+
+        // unknown presence: no idle line, rows untouched
+        whois_of(&mut app, "@bob:example.org");
+        let lines = &app.cur().lines;
+        let n = lines.len();
+        assert!(matches!(&lines[n - 1], Line::WhoisRow { row: 3, last: true, .. }));
+        assert!(matches!(&lines[n - 2], Line::WhoisRow { key, .. } if key == "server"));
     }
 
     #[test]
@@ -1907,9 +2145,9 @@ pub mod tests {
         assert!(app.cur().lines.iter().any(|l| {
             *l == Line::Names {
                 cells: vec![
-                    ('@', "carla".into()),
-                    ('+', "bob".into()),
-                    (' ', "armin".into()),
+                    ('@', "carla".into(), None),
+                    ('+', "bob".into(), None),
+                    (' ', "armin".into(), None),
                 ],
                 width: 5,
             }
@@ -2488,12 +2726,12 @@ pub mod tests {
         // The query window shows the peer's presence.
         let q = app.find_window("armin").unwrap();
         app.switch(q);
-        assert!(!app.status().query_away);
+        assert_eq!(app.status().query_away, None);
         let armin = owned_user_id!("@armin:remote.tld");
-        app.handle_mx(MxEvent::Presence { user: armin.clone(), away: Some("brb".into()) });
-        assert!(app.status().query_away);
-        app.handle_mx(MxEvent::Presence { user: armin, away: None });
-        assert!(!app.status().query_away);
+        app.handle_mx(presence_ev(&armin, "unavailable", None));
+        assert_eq!(app.status().query_away.map(|m| m.text()).as_deref(), Some("zZzZ"));
+        app.handle_mx(presence_ev(&armin, "online", None));
+        assert_eq!(app.status().query_away, None);
     }
 
     // ---- AWAY_NICK ------------------------------------------------------
