@@ -21,16 +21,22 @@ pub struct JoinTarget {
 }
 
 /// Percent-decode `%23` and friends in a matrix.to fragment.
+///
+/// Works on bytes only: `%` followed by a multi-byte char must not slice the
+/// `&str` off a char boundary (F32, that used to panic).
 fn percent_decode(s: &str) -> String {
+    fn hex(c: u8) -> Option<u8> {
+        (c as char).to_digit(16).map(|d| d as u8)
+    }
     let b = s.as_bytes();
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
         if b[i] == b'%' &&
             i + 2 < b.len() &&
-            let Ok(v) = u8::from_str_radix(&s[i + 1..i + 3], 16)
+            let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2]))
         {
-            out.push(v);
+            out.push(h << 4 | l);
             i += 3;
             continue;
         }
@@ -247,6 +253,17 @@ mod tests {
         assert_eq!(j("!abc:matrix.org").id, "!abc:matrix.org");
         assert_eq!(j("!abc").id, "!abc");
         assert!(!j("!abc:matrix.org").implicit_server);
+    }
+
+    #[test]
+    fn test_percent_decode_non_char_boundary() {
+        // F32: '%' followed by multi-byte chars must not panic.
+        assert_eq!(percent_decode("%é"), "%é");
+        assert_eq!(percent_decode("a%€x"), "a%€x");
+        assert_eq!(percent_decode("%2é"), "%2é");
+        assert_eq!(percent_decode("%23x%3a"), "#x:");
+        assert_eq!(percent_decode("%"), "%");
+        assert!(normalize_join("https://matrix.to/#/#a%é:b?via=%€", "own").is_ok());
     }
 
     #[test]
