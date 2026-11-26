@@ -45,6 +45,17 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
   - SHA 24c54180a607b1449ed407dd24f251e4e9147c8d
   - released 2026-10-08 (commit 2026-10-08)
   - v4.39.x (2026-11) skipped: too new
+- actions/attest-build-provenance v4.2.2 (added 2026-11-26, release.yml `attest`)
+  - SHA 4d101475d8b20a2381f78447822ac1eab6504dd8
+  - released 2026-08-06 (commit 2026-08-06)
+  - composite; internally pins actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d (v4.2.1, released 2026-07-29)
+- actions/attest-sbom v4.1.0 (added 2026-11-26, release.yml `attest`)
+  - SHA c604332985a26aa8cf1bdc465b92731239ec6b9e
+  - released 2026-03-18 (commit 2026-03-03)
+  - composite; internally pins actions/attest@59d89421af93a897026c735860bf21b6eb4f7b26 (v4.1.0, released 2026-02-26)
+  - upstream marks it deprecated (prints a `::warning::` asking to use
+    actions/attest with `sbom-path`); kept because the operator asked for
+    attest-sbom explicitly. Swap path: actions/attest v4.2.x, same inputs.
 
 ### Removed third-party actions
 
@@ -84,13 +95,30 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
 
 ## release.yml layout (least privilege)
 
-- no separate prep job: `publish` creates the draft release itself, so it
-  is the only job with contents: write.
-- `build` matrix (contents: read): builds + packages tgz/deb/rpm, hands them
-  over as workflow artifacts. Third-party build code never sees a write token.
-- `sbom` (contents: read): `iambitchx-<version>.cdx.json` (version = tag
-  without `v`) + `vuln.json`; the scan never fails the release (error-JSON
-  fallback in `.github/workflows/vuln.sh`).
-- `publish` (contents: write): creates the draft if missing, downloads all
-  artifacts and runs
-  `gh release upload --clobber`; runs even if a build target failed.
+Triggers: `push` of a `v*.*.*` tag, and `workflow_dispatch` with input
+`dry_run` (boolean, default `true`). File names use `VERSION` = tag without
+`v`, or `dev-<commit sha>` on a dispatch from a branch.
+
+- top-level `permissions: {}`; every job opts in to the minimum.
+- `build` matrix (contents: read): x86_64-unknown-linux-musl,
+  aarch64-unknown-linux-gnu, x86_64/aarch64-apple-darwin,
+  x86_64-pc-windows-msvc. Produces the raw binary
+  `iambitchx-<v>-<target>[.exe]`, the tgz, and on linux deb/rpm, as
+  workflow artifacts. The x86_64 linux build asserts the binary is static
+  (`file` says static(-pie) linked, no PT_INTERP, no DT_NEEDED). Third-party
+  build code never sees a write token or an OIDC token.
+- `sbom` (contents: read): `iambitchx-<v>.cdx.json` + `vuln.json`; the
+  scan never fails the release (error-JSON fallback in `vuln.sh`).
+- `attest` (contents: read, id-token: write, attestations: write — the
+  only job with these): downloads all artifacts, writes `SHA256SUMS`, then
+  - SLSA build provenance (`attest-build-provenance`) over every file in
+    dist: binaries, tgz, deb, rpm, cdx, vuln.json, SHA256SUMS
+  - SBOM attestation (`attest-sbom`) binding the CycloneDX SBOM to the
+    x86_64 musl binary and its tgz
+  - uploads the attested set as artifact `release-dist`.
+  It runs no build code: only download, sha256sum and the pinned actions.
+- `publish` (contents: write — the only job with it): runs only on a `v*`
+  tag ref and never for a dispatch with `dry_run=true`; downloads
+  `release-dist`, re-checks `sha256sum -c SHA256SUMS`, creates the draft
+  release if missing and uploads with `gh release upload --clobber`.
+  A dispatch from a branch never publishes, whatever `dry_run` says.

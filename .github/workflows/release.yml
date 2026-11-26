@@ -4,11 +4,26 @@ on:
   push:
     tags:
       - "v*.*.*"
+  # Manual run: proves build + SBOM + attestations without a tag.
+  # dry_run=true (default) skips the publish job; publish also only ever
+  # runs on a v* tag ref, so a dispatch on a branch never creates a release.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build, SBOM and attest only; skip publishing to a release"
+        type: boolean
+        default: true
 
-# Least privilege: nothing by default. Only the publish job gets
-# contents: write; build/sbom jobs (which run third-party build code) are
-# read-only and hand their outputs over as workflow artifacts.
+# Least privilege: nothing by default. build/sbom jobs (which run
+# third-party build code) are read-only and hand their outputs over as
+# workflow artifacts. Only the attest job gets id-token + attestations
+# write (Sigstore signing), only the publish job gets contents: write.
 permissions: {}
+
+# Version label for file names: the tag without its leading v on a tag
+# push, dev-<short sha> on a manual (dry) run from a branch.
+env:
+  VERSION: ${{ github.ref_type == 'tag' && github.ref_name || format('dev-{0}', github.sha) }}
 
 defaults:
   run:
@@ -40,7 +55,6 @@ jobs:
       contents: read
     env:
       TARGET: ${{ matrix.arch }}-${{ matrix.triple }}
-      TAG: ${{ github.ref_name }}
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -68,10 +82,26 @@ jobs:
     - name: 'Build: binary'
       run: |
         cargo +stable build --profile=release-lto --locked --target="$TARGET"
+    - name: 'Verify: x86_64 linux binary is static (musl)'
+      if: matrix.arch == 'x86_64' && matrix.platform == 'ubuntu-latest'
+      run: |
+        bin="target/$TARGET/release-lto/iambitchx"
+        file "$bin"
+        file "$bin" | grep -Eq 'static-pie linked|statically linked'
+        # no dynamic loader, no shared-library dependencies
+        if readelf -lW "$bin" | grep -q INTERP; then echo "has PT_INTERP" >&2; exit 1; fi
+        if readelf -dW "$bin" | grep -q NEEDED; then echo "has DT_NEEDED" >&2; exit 1; fi
+        echo "static: OK"
+    - name: 'Package: raw binary'
+      # bare executable as its own release asset (attested on its own digest)
+      run: |
+        mkdir -p dist
+        ext=; case "$TARGET" in *windows*) ext=.exe ;; esac
+        cp "target/$TARGET/release-lto/iambitchx$ext" "dist/iambitchx-${VERSION#v}-$TARGET$ext"
     - name: 'Package: tgz'
       # cargo-tar replaced, see docs/ci-supply-chain.md
       run: |
-        .github/workflows/package-tar.sh "${TAG#v}" "$TARGET" release-lto dist
+        .github/workflows/package-tar.sh "${VERSION#v}" "$TARGET" release-lto dist
     - name: 'Package: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
@@ -96,8 +126,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    env:
-      TAG: ${{ github.ref_name }}
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -114,7 +142,7 @@ jobs:
         cargo install cargo-audit --version 0.22.2 --locked
     - name: Generate CycloneDX SBOM (JSON, spec 1.5)
       # -> dist/iambitchx-<version>.cdx.json (version = tag without leading v)
-      run: .github/workflows/sbom.sh "${TAG#v}" dist
+      run: .github/workflows/sbom.sh "${VERSION#v}" dist
     - name: Vulnerability scan (RustSec, never fails the release)
       run: .github/workflows/vuln.sh dist/vuln.json
     - name: Upload SBOM + vuln artifact
@@ -127,25 +155,75 @@ jobs:
           dist/vuln.json
         if-no-files-found: error
 
-  publish:
-    name: Upload assets to release
+  attest:
+    name: Checksums + attestations
     needs: [build, sbom]
-    # upload whatever was produced even if one build target failed
+    # attest whatever was produced even if one build target failed
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
+    # the ONLY job that may mint an OIDC token / write attestations
     permissions:
-      contents: write
+      contents: read
+      id-token: write
+      attestations: write
     steps:
     - name: Download build, SBOM and vuln artifacts
       uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
       with:
         path: dist
         merge-multiple: true
+    - name: Checksums (SHA256SUMS)
+      id: files
+      run: |
+        v="${VERSION#v}"
+        cdx="dist/iambitchx-$v.cdx.json"
+        bin="dist/iambitchx-$v-x86_64-unknown-linux-musl"
+        tgz="$bin.tar.gz"
+        for p in "$cdx" dist/vuln.json "$bin" "$tgz"; do test -f "$p"; done
+        (cd dist && sha256sum -- * > ../SHA256SUMS) && mv SHA256SUMS dist/
+        cat dist/SHA256SUMS
+        { echo "cdx=$cdx"; echo "bin=$bin"; echo "tgz=$tgz"; } >> "$GITHUB_OUTPUT"
+    - name: 'Attest: SLSA build provenance (every release file)'
+      uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      with:
+        subject-path: dist/*
+    - name: 'Attest: CycloneDX SBOM -> x86_64 linux binary + tgz'
+      uses: actions/attest-sbom@c604332985a26aa8cf1bdc465b92731239ec6b9e # v4.1.0
+      with:
+        subject-path: |
+          ${{ steps.files.outputs.bin }}
+          ${{ steps.files.outputs.tgz }}
+        sbom-path: ${{ steps.files.outputs.cdx }}
+    - name: Upload release dist artifact
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: release-dist
+        path: dist/*
+        if-no-files-found: error
+
+  publish:
+    name: Upload assets to release
+    needs: [attest]
+    # only on a v* tag, never on a dispatch with dry_run=true
+    if: >-
+      ${{ !cancelled() && needs.attest.result == 'success'
+      && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+      && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download attested release files
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        name: release-dist
+        path: dist
     - name: Upload to release
       run: |
         ls -l dist
         test -f "dist/iambitchx-${TAG#v}.cdx.json"
         test -f dist/vuln.json
+        (cd dist && sha256sum -c SHA256SUMS)
         gh release view "$TAG" >/dev/null 2>&1 \
           || gh release create "$TAG" --draft=true --target "$GITHUB_SHA" --title "$TAG"
         gh release upload "$TAG" dist/* --clobber
