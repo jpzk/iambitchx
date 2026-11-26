@@ -718,12 +718,12 @@ async fn run(client: &Client, tokens: &Tokens, effect: Effect, tx: &Tx) -> anyho
             let (presence, status_msg) = away_presence(reason.as_deref());
             // the sync loop first, so the next /sync already carries it
             SYNC_AWAY.send_replace(reason.is_some());
-            let set_presence = || {
+            let req = || {
                 let mut req = PresenceRequest::new(me.clone(), presence.clone());
                 req.status_msg = status_msg.clone();
                 client.send(req)
             };
-            with_retry(tokens, set_presence).await?;
+            with_retry(tokens, req).await?;
             let _ = tx.send(MxEvent::Away(reason));
         },
         Effect::Whois(user) => {
