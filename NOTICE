@@ -22,7 +22,3 @@ Third-party components
   artwork and are kept in it. The "Why BitchX?" and "History" texts in
   README.md are quoted from the same project and are covered by the same
   license.
-
-* The project page (site/) is set in JetBrains Mono
-  (https://github.com/JetBrains/JetBrainsMono), SIL Open Font License 1.1;
-  the license text is in site/fonts/OFL.txt.

@@ -16,7 +16,13 @@ for that.
 
 ## [Unreleased]
 
-Nothing yet — the section fills as the next batch of work lands.
+### Changed
+
+- The project page is pure UTF-8 text: one `<pre>`, box-drawing and block
+  glyphs, every line within 72 columns. No CSS, no graphics, no web fonts
+  (JetBrains Mono and `site/fonts` are gone). Adds install (deb, rpm,
+  tarball, musl, macOS, Windows) and verify (SHA256SUMS,
+  `gh attestation verify`) sections.
 
 ## [0.1.0] — planned first release
 
