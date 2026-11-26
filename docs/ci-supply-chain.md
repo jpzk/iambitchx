@@ -27,6 +27,10 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
 - actions/cache v6.1.0
   - SHA 55cc8345863c7cc4c66a329aec7e433d2d1c52a9
   - released 2026-06-26 (commit 2026-06-23)
+- actions/download-artifact v8.0.2
+  - SHA 9000827ccba6bdab643e8b6fd33ac0654aef8333
+  - released 2026-10-07 (commit 2026-10-07)
+  - used by release.yml `publish` to collect build/SBOM artifacts
 - mozilla-actions/sccache-action v0.0.11
   - SHA fc920bf0ec8de6ee65d409111f7ec508035751ba
   - released 2026-07-29 (commit 2026-07-29)
@@ -77,3 +81,14 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
   fetched from static.rust-lang.org by rustup, signature-checked by rustup.
 - the RustSec advisory DB is fetched fresh by cargo-audit on every run (by
   design: a stale DB defeats the scan).
+
+## release.yml layout (least privilege)
+
+- `prep-release` (contents: write): creates the draft release; no checkout.
+- `build` matrix (contents: read): builds + packages tgz/deb/rpm, hands them
+  over as workflow artifacts. Third-party build code never sees a write token.
+- `sbom` (contents: read): `iambitchx-<version>.cdx.json` (version = tag
+  without `v`) + `vuln.json`; the scan never fails the release (error-JSON
+  fallback in `.github/workflows/vuln.sh`).
+- `publish` (contents: write): downloads all artifacts and runs
+  `gh release upload --clobber`; runs even if a build target failed.

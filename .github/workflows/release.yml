@@ -5,6 +5,11 @@ on:
     tags:
       - "v*.*.*"
 
+# Least privilege: nothing by default. Only prep-release and publish get
+# contents: write; build/sbom jobs (which run third-party build code) are
+# read-only and hand their outputs over as workflow artifacts.
+permissions: {}
+
 defaults:
   run:
     shell: bash
@@ -15,20 +20,15 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
       - name: Create draft release
         run: |
-          gh release create ${TAG} --draft=true --target ${{ github.sha }} --title ${TAG}
+          gh release create "$TAG" --draft=true --target "$GITHUB_SHA" --title "$TAG"
         env:
           TAG: ${{ github.ref_name }}
+          GH_REPO: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
 
   build:
-    needs: prep-release
     strategy:
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
@@ -50,19 +50,19 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.platform }}
     permissions:
-      contents: write
+      contents: read
     env:
       TARGET: ${{ matrix.arch }}-${{ matrix.triple }}
+      TAG: ${{ github.ref_name }}
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
     - name: Install Rust (stable)
-      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
-      with:
-          toolchain: stable
-          targets: ${{ env.TARGET }}
+      run: |
+        rustup toolchain install stable --profile minimal --target "$TARGET"
+        rustup default stable
     - name: Install C cross-compilation toolchain
       if: matrix.platform == 'ubuntu-latest'
       run: |
@@ -80,38 +80,87 @@ jobs:
         echo CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ >> $GITHUB_ENV
     - name: 'Build: binary'
       run: |
-        cargo +stable build --profile=release-lto --locked --target=${{ env.TARGET }}
+        cargo +stable build --profile=release-lto --locked --target="$TARGET"
     - name: 'Package: tgz'
+      # cargo-tar replaced, see docs/ci-supply-chain.md
       run: |
-        cargo +stable install --locked cargo-tar
-        cargo +stable tar --profile=release-lto --target ${{ env.TARGET }}
-    - name: 'Upload: tgz'
-      run: |
-        gh release upload ${TAG} ./target/tar/iambitchx*-${{ env.TARGET }}.tar.gz
-      env:
-        TAG: ${{ github.ref_name }}
-        GH_TOKEN: ${{ github.token }}
+        .github/workflows/package-tar.sh "${TAG#v}" "$TARGET" release-lto dist
     - name: 'Package: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-deb
-        cargo +stable deb --profile=release-lto --no-strip --target ${{ env.TARGET }}
-    - name: 'Upload: deb'
-      if: matrix.platform == 'ubuntu-latest'
-      run: |
-        gh release upload ${TAG} ./target/${{ env.TARGET }}/debian/iambitchx*.deb
-      env:
-        TAG: ${{ github.ref_name }}
-        GH_TOKEN: ${{ github.token }}
+        cargo +stable install cargo-deb --version 3.8.0 --locked
+        cargo +stable deb --profile=release-lto --no-strip --target "$TARGET"
+        cp ./target/"$TARGET"/debian/iambitchx*.deb dist/
     - name: 'Package: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-generate-rpm
-        cargo +stable generate-rpm --profile=release-lto --target ${{ env.TARGET }}
-    - name: 'Upload: rpm'
-      if: matrix.platform == 'ubuntu-latest'
+        cargo +stable install cargo-generate-rpm --version 0.21.0 --locked
+        cargo +stable generate-rpm --profile=release-lto --target "$TARGET"
+        cp ./target/"$TARGET"/generate-rpm/iambitchx*.rpm dist/
+    - name: Upload packages artifact
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: pkg-${{ env.TARGET }}
+        path: dist/*
+        if-no-files-found: error
+
+  sbom:
+    name: SBOM + vulnerability report
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+    - name: Checkout
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Install Rust (stable)
       run: |
-        gh release upload ${TAG} ./target/${{ env.TARGET }}/generate-rpm/iambitchx*.rpm
+        rustup toolchain install stable --profile minimal
+        rustup default stable
+    - name: Install pinned SBOM/audit tools
+      # versions + publish dates: docs/ci-supply-chain.md
+      run: |
+        cargo install cargo-cyclonedx --version 0.5.9 --locked
+        cargo install cargo-audit --version 0.22.2 --locked
+    - name: Generate CycloneDX SBOM (JSON, spec 1.5)
+      # -> dist/iambitchx-<version>.cdx.json (version = tag without leading v)
+      run: .github/workflows/sbom.sh "${TAG#v}" dist
+    - name: Vulnerability scan (RustSec, never fails the release)
+      run: .github/workflows/vuln.sh dist/vuln.json
+    - name: Upload SBOM + vuln artifact
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: sbom-vuln
+        path: |
+          dist/*.cdx.json
+          dist/vuln.json
+        if-no-files-found: error
+
+  publish:
+    name: Upload assets to release
+    needs: [prep-release, build, sbom]
+    # upload whatever was produced even if one build target failed
+    if: ${{ !cancelled() && needs.prep-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: Download build, SBOM and vuln artifacts
+      uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      with:
+        path: dist
+        merge-multiple: true
+    - name: Upload to release
+      run: |
+        ls -l dist
+        test -f "dist/iambitchx-${TAG#v}.cdx.json"
+        test -f dist/vuln.json
+        gh release upload "$TAG" dist/* --clobber
       env:
         TAG: ${{ github.ref_name }}
+        GH_REPO: ${{ github.repository }}
         GH_TOKEN: ${{ github.token }}
