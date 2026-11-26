@@ -143,6 +143,7 @@ pub fn clean_line(line: Line) -> Line {
         Line::SetVar { name, value } => Line::SetVar { name: o(name), value: opt(value) },
         Line::Raw(t) => Line::Raw(o(t)),
         Line::Logo(t) => Line::Logo(o(t)),
+        Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
         l @ Line::WhoisRule => l,
     }
 }
