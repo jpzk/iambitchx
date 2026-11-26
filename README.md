@@ -6,107 +6,60 @@
 
 </div>
 
-> iambitchx is a fork of [iamb](https://github.com/ulyssa/iamb) by Ulyssa, used under the Apache License 2.0.
-
-## About
-
-`iambitchx` is a Matrix client for the terminal that uses Vim keybindings, with
-an optional IRC/BitchX-style frontend (see [docs/bitchx-frontend.md](docs/bitchx-frontend.md)).
-It includes support for:
-
-- Threads, spaces, E2EE, and read receipts
-- Image previews in terminals that support it (sixels, Kitty, and iTerm2), or using pixelated blocks for those that don't
-- Notifications via terminal bell or desktop environment
-- Send Markdown, HTML or plaintext messages
-- Creating, joining, and leaving rooms
-- Sending and accepting room invitations
-- Editing, redacting, and reacting to messages
-- Custom keybindings
-- Multiple profiles
-- A BitchX-style status bar, full-screen chat and slash-command input (`frontend = "bitchx"`)
-
-## Documentation
-
-See the manual pages `docs/iambitchx.1` and `docs/iambitchx.5`. Most of the
-upstream documentation at [iamb.chat] also applies.
-
-## Configuration
-
-You can create a basic configuration in `$CONFIG_DIR/iambitchx/config.toml` that looks like:
-
-```toml
-[profiles."example.com"]
-user_id = "@user:example.com"
+```
+    _               ____  _ __       __   _  __
+   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /
+  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /
+ / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |
+/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|
 ```
 
-If `$CONFIG_DIR/iambitchx/` does not exist but a legacy `$CONFIG_DIR/iamb/`
-directory does, iambitchx keeps using the legacy directory (the same applies to
-the data and cache directories), so an existing setup works unchanged.
+**iamBitchX** is a BitchX-style Matrix client for the terminal.
+Channels, not rooms. `/join #channel`, `/msg`, `/whois`, `/away`, `/set` —
+like back in the day, with end-to-end encryption underneath.
 
-If your homeserver is located on a different domain than the server part of the
-`user_id` and you don't have a [`/.well-known`][well_known_entry] entry, then
-you can explicitly specify the homeserver URL to use:
+## Why BitchX?
 
-```toml
-[profiles."example.com"]
-url = "https://example.com"
-user_id = "@user:example.com"
+Because IRC has been running since 1988 and nobody owns it. No algorithms.
+No ads. No age verification. No terms of service. Just text, moving at the
+speed of thought, in a terminal that looks like the future imagined by the past.
+
+BitchX was the client that made IRC feel dangerous and exciting. This fork
+keeps that energy alive — and gives it a brain.
+
+## History
+
+BitchX was created by panasync (Colten Edwards) in 1995 as a script pack for
+ircII, evolving into the most popular terminal IRC client of its era. It was
+abandoned around 2004. This fork picks up where it left off, with respect for
+the original work and an eye toward the future.
+
+## Build & run
+
+```sh
+cargo build --release
+./target/release/iambitchx            # default profile
+./target/release/iambitchx -P <name>  # another profile
 ```
 
-## Installation (from source)
+On first start you log in with your Matrix account (OAuth or device link).
+Type `/help` inside the client.
 
-Install Rust and Cargo using [rustup], and then run from the directory
-containing the sources (ie: from a git clone):
+## Commands
 
-```
-cargo install --locked --path .
-```
+`/join` `/part` `/list` `/names` `/who` `/whois` `/msg` `/query` `/me`
+`/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
+`/set` `/window` `/next` `/prev` `/clear` `/ignore` `/encrypt` `/verify`
+`/trust` `/devices` `/recover` `/version` `/quit`
 
-If you're willing to wait longer on the build, you can use the `release-lto`
-profile to enable link-time optimization:
+More: [docs/bitchx-frontend.md](docs/bitchx-frontend.md),
+[docs/bitchx-formats.md](docs/bitchx-formats.md).
 
-```
-cargo install --profile release-lto --locked --path .
-```
+## Credits & license
 
-If you would prefer to optimize for a smaller binary, you can use the
-`release-light` profile, which will do LTO, optimize code generation
-for smaller output, and strip the binary. The `max_level_error` feature
-will also make sure that any `tracing` logs below the error level have
-their strings removed during compile-time, so that you only get `error`
-logs.
-
-```
-cargo install --profile release-light --features max_level_error --path .
-```
-
-Add `--no-default-features` if you want to skip desktop integration (e.g.
-clipboard and notifications support) and you would like to link against your
-system's SQLite instead of using a bundled SQLite.
-
-### Crate features
-
-- `bundled`: use bundled SQLite instead of system library (default)
-- `desktop`: enable desktop notifications and clipboard support (default)
-- `max_level_warn`: disable support for more verbose logging than the default `warn` level
-- `max_level_error`: disable support for more verbose logging than the `error` level
-- `max_level_off`: disable all logs at compile time
-- `chafa-dyn`: use [chafa](https://hpjansson.org/chafa/) as a dynamic library for halfblock rendering
-- `chafa-static`: use [chafa](https://hpjansson.org/chafa/) as a static library for halfblock rendering
-
-## Installation (via Nix flake)
-
-```
-nix profile install "github:jpzk/iambitchx"
-```
-
-Distribution packages (Arch, Homebrew, Snap, …) ship upstream iamb, not this
-fork; see the upstream README for those.
-
-## License
-
-iambitchx is released under the [Apache License, Version 2.0](LICENSE), like
-the upstream project it is forked from.
-
-[iamb.chat]: https://iamb.chat
-[well_known_entry]: https://spec.matrix.org/latest/client-server-api/#getwell-knownmatrixclient
+- The "Why BitchX?" and "History" texts are taken from
+  [prime001/BitchX](https://github.com/prime001/BitchX).
+- iamBitchX is a fork of [iamb](https://github.com/ulyssa/iamb) by Ulyssa,
+  used under the Apache License 2.0. See [NOTICE](NOTICE) and [LICENSE](LICENSE).
+- BitchX is by panasync (Colten Edwards) and contributors. iamBitchX shares no
+  code with it, only the look and the attitude.
