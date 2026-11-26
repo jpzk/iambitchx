@@ -66,17 +66,14 @@ pub async fn run(
         app.status_info(format!("Device {device}"));
     }
     crate::e2ee::register_verification_handlers(&client, tx.clone());
-    // one token coordinator: proactive refresh + retry-once for every request
-    let tokens = matrix::tokens(client.clone(), settings.clone(), tx.clone());
-    matrix::spawn_token_keeper(tokens.clone());
-    matrix::spawn_sync(client.clone(), tx.clone(), tokens.clone(), settings);
+    matrix::spawn_sync(client.clone(), tx.clone(), settings);
     matrix::spawn_lag(client.clone(), tx.clone());
 
     // AUTO_AWAY runs only here, in the interactive client (never --smoke).
     app.auto_away_armed = true;
     app.last_input = app.now();
     let mut term = setup()?;
-    let res = event_loop(&mut term, &client, &tokens, &mut app, &mut rx, &tx).await;
+    let res = event_loop(&mut term, &client, &mut app, &mut rx, &tx).await;
     restore();
     res
 }
@@ -84,7 +81,6 @@ pub async fn run(
 async fn event_loop(
     term: &mut Terminal<CrosstermBackend<Stdout>>,
     client: &Client,
-    tokens: &matrix::Tokens,
     app: &mut App,
     rx: &mut tokio::sync::mpsc::UnboundedReceiver<MxEvent>,
     tx: &matrix::Tx,
@@ -124,7 +120,7 @@ async fn event_loop(
             if effect == Effect::Quit {
                 return Ok(());
             }
-            matrix::spawn_effect(client.clone(), tokens.clone(), effect, tx.clone());
+            matrix::spawn_effect(client.clone(), effect, tx.clone());
         }
 
         if app.quit {

@@ -27,7 +27,6 @@ mod matrix;
 mod oauth;
 mod session_guard;
 mod smoke;
-mod token;
 mod tui;
 
 fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocking::WorkerGuard {
