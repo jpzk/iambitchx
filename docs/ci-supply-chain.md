@@ -34,11 +34,11 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
 - mozilla-actions/sccache-action v0.0.11
   - SHA fc920bf0ec8de6ee65d409111f7ec508035751ba
   - released 2026-07-29 (commit 2026-07-29)
-- cachix/install-nix-action v31.11.1
+- cachix/install-nix-action v31.11.1 (REMOVED 2026-11-26 with the nix-flake-test job)
   - SHA 13d8dd58da0234aa297dedd986986ccb8e7f3e24
   - released 2026-08-13 (commit 2026-08-13)
   - v31.11.2+ (2026-10-14 onward) skipped: at/inside the cutoff
-- cachix/cachix-action v17
+- cachix/cachix-action v17 (REMOVED 2026-11-26 with the nix-flake-test job)
   - SHA 38b082610b782e7e93e209c35fd730d399dee866
   - released 2026-03-18; tag commit 2026-09-01 (no patch tags exist)
 - github/codeql-action (init, analyze) v4.38.3
