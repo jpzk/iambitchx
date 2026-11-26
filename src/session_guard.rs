@@ -153,9 +153,339 @@ impl SessionLock {
     }
 }
 
+/// What a proactive (before-expiry) refresh does, decided under the lock.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Proactive {
+    /// `session.json` holds different tokens (another process rotated):
+    /// adopt them instead of spending our (now stale) refresh token.
+    ReloadFromDisk,
+    /// Disk agrees with us and the tokens are due: refresh, persist.
+    Refresh,
+    /// Disk agrees with us but was written within `fresh_within` (e.g. the
+    /// sync loop's 401 recovery just refreshed): nothing to do, reschedule.
+    Skip,
+    /// Read-only mode, not logged in, or no refresh token: stop the task.
+    Stop,
+}
+
+/// Proactive refresh policy. `disk_age` is how long ago `session.json` was
+/// written (= when its access token was issued).
+pub fn decide_proactive(
+    mode: Mode,
+    in_use: Option<&SessionTokens>,
+    on_disk: Option<&SessionTokens>,
+    disk_age: Option<Duration>,
+    fresh_within: Duration,
+) -> Proactive {
+    if mode == Mode::ReadOnly {
+        return Proactive::Stop;
+    }
+    let Some(mine) = in_use else {
+        return Proactive::Stop;
+    };
+    match on_disk {
+        Some(disk) if !same_tokens(mine, disk) => Proactive::ReloadFromDisk,
+        _ if mine.refresh_token.is_none() => Proactive::Stop,
+        Some(_) if disk_age.is_some_and(|age| age < fresh_within) => Proactive::Skip,
+        _ => Proactive::Refresh,
+    }
+}
+
+/// The token operations [`recover_locked`] / [`proactive_locked`] drive.
+/// Implemented over the real client in `login.rs`, faked in tests.
+#[allow(async_fn_in_trait)]
+pub trait TokenOps {
+    /// Tokens the client is using now.
+    fn in_use(&self) -> Option<SessionTokens>;
+    /// Tokens in `session.json`, if readable.
+    fn on_disk(&self) -> Option<SessionTokens>;
+    /// Age of `session.json` (time since its tokens were issued).
+    fn disk_age(&self) -> Option<Duration>;
+    /// Adopt the tokens from `session.json`. `Ok(true)`: adopted;
+    /// `Ok(false)`: could not adopt but refreshed ourselves and persisted.
+    async fn adopt_disk(&self, on_disk: Option<&SessionTokens>) -> anyhow::Result<bool>;
+    /// Refresh with our refresh token and persist to `session.json` (0600).
+    async fn refresh(&self) -> anyhow::Result<()>;
+}
+
+/// What a locked recovery / proactive refresh did.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Done {
+    /// Adopted tokens another process wrote to `session.json`.
+    Reloaded,
+    /// Refreshed with our refresh token and persisted.
+    Refreshed,
+    /// Nothing to do this time.
+    Skipped,
+    /// Never refresh again (read-only, no refresh token).
+    Stopped,
+}
+
+/// How long to wait for another holder of `session.json.lock`.
+pub const LOCK_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Recover from `M_UNKNOWN_TOKEN` under the SessionLock (read, [`decide`],
+/// act). `Err` is the relogin hint (or a lock timeout).
+pub async fn recover_locked<O: TokenOps>(
+    ops: &O,
+    session_json: &Path,
+    mode: Mode,
+    attempts: u32,
+    lock_timeout: Duration,
+) -> anyhow::Result<Done> {
+    let relogin = || anyhow::anyhow!(relogin_hint(session_json));
+    if !mode.may_write() {
+        anyhow::bail!(smoke_rejected_msg(session_json));
+    }
+    let _lock = SessionLock::acquire_async(session_json.to_path_buf(), lock_timeout).await?;
+    let in_use = ops.in_use();
+    let on_disk = ops.on_disk();
+    match decide(mode, in_use.as_ref(), on_disk.as_ref(), attempts) {
+        Recovery::ReloadFromDisk => {
+            match ops.adopt_disk(on_disk.as_ref()).await {
+                Ok(true) => Ok(Done::Reloaded),
+                Ok(false) => Ok(Done::Refreshed),
+                Err(e) => {
+                    tracing::warn!("adopting session.json failed: {e}");
+                    Err(relogin())
+                },
+            }
+        },
+        Recovery::Refresh => {
+            match ops.refresh().await {
+                Ok(()) => Ok(Done::Refreshed),
+                Err(e) => {
+                    tracing::warn!("token refresh failed: {e}");
+                    Err(relogin())
+                },
+            }
+        },
+        Recovery::Relogin | Recovery::Fail => Err(relogin()),
+    }
+}
+
+/// Proactive refresh under the same SessionLock and disk comparison as
+/// [`recover_locked`]: adopt `session.json` if another process already
+/// rotated, skip if it was just refreshed, else refresh. Read-only mode
+/// returns [`Done::Stopped`] without touching the lock or the tokens.
+pub async fn proactive_locked<O: TokenOps>(
+    ops: &O,
+    session_json: &Path,
+    mode: Mode,
+    fresh_within: Duration,
+    lock_timeout: Duration,
+) -> anyhow::Result<Done> {
+    if !mode.may_write() {
+        return Ok(Done::Stopped);
+    }
+    let _lock = SessionLock::acquire_async(session_json.to_path_buf(), lock_timeout).await?;
+    let in_use = ops.in_use();
+    let on_disk = ops.on_disk();
+    let decision =
+        decide_proactive(mode, in_use.as_ref(), on_disk.as_ref(), ops.disk_age(), fresh_within);
+    match decision {
+        Proactive::ReloadFromDisk => {
+            ops.adopt_disk(on_disk.as_ref()).await.map(|adopted| {
+                if adopted {
+                    Done::Reloaded
+                } else {
+                    Done::Refreshed
+                }
+            })
+        },
+        Proactive::Refresh => ops.refresh().await.map(|()| Done::Refreshed),
+        Proactive::Skip => Ok(Done::Skipped),
+        Proactive::Stop => Ok(Done::Stopped),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+    use std::sync::atomic::{AtomicU32, Ordering};
+
     use super::*;
+
+    /// Fake client: counts adopt/refresh calls and records whether the
+    /// SessionLock was held while they ran.
+    struct FakeOps {
+        path: PathBuf,
+        mine: Mutex<Option<SessionTokens>>,
+        disk: Option<SessionTokens>,
+        age: Option<Duration>,
+        adopts: AtomicU32,
+        refreshes: AtomicU32,
+        unlocked_calls: AtomicU32,
+    }
+
+    impl FakeOps {
+        fn new(path: &Path, mine: SessionTokens, disk: SessionTokens, age: u64) -> Self {
+            FakeOps {
+                path: path.to_path_buf(),
+                mine: Mutex::new(Some(mine)),
+                disk: Some(disk),
+                age: Some(Duration::from_secs(age)),
+                adopts: AtomicU32::new(0),
+                refreshes: AtomicU32::new(0),
+                unlocked_calls: AtomicU32::new(0),
+            }
+        }
+        fn check_locked(&self) {
+            if SessionLock::try_acquire(&self.path).unwrap().is_some() {
+                self.unlocked_calls.fetch_add(1, Ordering::SeqCst);
+            }
+        }
+    }
+
+    impl TokenOps for FakeOps {
+        fn in_use(&self) -> Option<SessionTokens> {
+            self.mine.lock().unwrap().clone()
+        }
+        fn on_disk(&self) -> Option<SessionTokens> {
+            self.disk.clone()
+        }
+        fn disk_age(&self) -> Option<Duration> {
+            self.age
+        }
+        async fn adopt_disk(&self, on_disk: Option<&SessionTokens>) -> anyhow::Result<bool> {
+            self.check_locked();
+            self.adopts.fetch_add(1, Ordering::SeqCst);
+            *self.mine.lock().unwrap() = on_disk.cloned();
+            Ok(true)
+        }
+        async fn refresh(&self) -> anyhow::Result<()> {
+            self.check_locked();
+            self.refreshes.fetch_add(1, Ordering::SeqCst);
+            *self.mine.lock().unwrap() = Some(toks("new", Some("newr")));
+            Ok(())
+        }
+    }
+
+    const FRESH: Duration = Duration::from_secs(235);
+
+    #[test]
+    fn test_decide_proactive() {
+        let mine = toks("a", Some("r"));
+        let other = toks("b", Some("s"));
+        let age = |s| Some(Duration::from_secs(s));
+        let d = |m, i, o, a| decide_proactive(m, i, o, a, FRESH);
+        // read-only never refreshes or reloads
+        for (i, o) in [
+            (Some(&mine), Some(&mine)),
+            (Some(&mine), Some(&other)),
+            (None, None),
+        ] {
+            assert_eq!(d(Mode::ReadOnly, i, o, age(999)), Proactive::Stop);
+        }
+        // disk newer (another process rotated): reload, never spend our refresh token
+        assert_eq!(d(Mode::Live, Some(&mine), Some(&other), age(1)), Proactive::ReloadFromDisk);
+        assert_eq!(d(Mode::Live, Some(&mine), Some(&other), age(999)), Proactive::ReloadFromDisk);
+        // same tokens, due: refresh; just written: skip
+        assert_eq!(d(Mode::Live, Some(&mine), Some(&mine), age(240)), Proactive::Refresh);
+        assert_eq!(d(Mode::Live, Some(&mine), Some(&mine), age(10)), Proactive::Skip);
+        assert_eq!(d(Mode::Live, Some(&mine), None, None), Proactive::Refresh);
+        // nothing to refresh with
+        let no_rt = toks("a", None);
+        assert_eq!(d(Mode::Live, Some(&no_rt), Some(&no_rt), age(999)), Proactive::Stop);
+        assert_eq!(d(Mode::Live, None, Some(&mine), age(999)), Proactive::Stop);
+    }
+
+    #[tokio::test]
+    async fn test_proactive_readonly_never_refreshes() {
+        let d = tmpdir("ro");
+        let s = d.join("session.json");
+        let ops = FakeOps::new(&s, toks("a", Some("r")), toks("a", Some("r")), 999);
+        let done = proactive_locked(&ops, &s, Mode::ReadOnly, FRESH, LOCK_TIMEOUT)
+            .await
+            .unwrap();
+        assert_eq!(done, Done::Stopped);
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst), 0);
+        assert_eq!(ops.adopts.load(Ordering::SeqCst), 0);
+        // read-only does not even create the lock file
+        assert!(!lock_path(&s).exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[tokio::test]
+    async fn test_proactive_refresh_waits_for_lock() {
+        let d = tmpdir("plock");
+        let s = d.join("session.json");
+        let ops = FakeOps::new(&s, toks("a", Some("r")), toks("a", Some("r")), 240);
+        // another process holds the lock: no refresh happens, timeout error
+        let held = SessionLock::acquire(&s, Duration::from_millis(10)).unwrap();
+        let err = proactive_locked(&ops, &s, Mode::Live, FRESH, Duration::from_millis(100)).await;
+        assert!(err.is_err());
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst), 0);
+        drop(held);
+        // free: refreshes, and the lock was held during the refresh
+        let done = proactive_locked(&ops, &s, Mode::Live, FRESH, LOCK_TIMEOUT).await.unwrap();
+        assert_eq!(done, Done::Refreshed);
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst), 1);
+        assert_eq!(ops.adopts.load(Ordering::SeqCst), 0);
+        assert_eq!(ops.unlocked_calls.load(Ordering::SeqCst), 0);
+        // lock released afterwards
+        assert!(SessionLock::try_acquire(&s).unwrap().is_some());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[tokio::test]
+    async fn test_proactive_reloads_when_disk_newer() {
+        let d = tmpdir("preload");
+        let s = d.join("session.json");
+        let disk = toks("b", Some("s"));
+        let ops = FakeOps::new(&s, toks("a", Some("r")), disk.clone(), 5);
+        let done = proactive_locked(&ops, &s, Mode::Live, FRESH, LOCK_TIMEOUT).await.unwrap();
+        assert_eq!(done, Done::Reloaded);
+        assert_eq!(
+            ops.refreshes.load(Ordering::SeqCst),
+            0,
+            "must not spend the stale refresh token"
+        );
+        assert_eq!(ops.adopts.load(Ordering::SeqCst), 1);
+        assert_eq!(ops.unlocked_calls.load(Ordering::SeqCst), 0);
+        assert_eq!(ops.in_use(), Some(disk));
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[tokio::test]
+    async fn test_proactive_skips_when_just_refreshed() {
+        let d = tmpdir("pskip");
+        let s = d.join("session.json");
+        let ops = FakeOps::new(&s, toks("a", Some("r")), toks("a", Some("r")), 3);
+        let done = proactive_locked(&ops, &s, Mode::Live, FRESH, LOCK_TIMEOUT).await.unwrap();
+        assert_eq!(done, Done::Skipped);
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst) + ops.adopts.load(Ordering::SeqCst), 0);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[tokio::test]
+    async fn test_recover_locked_paths() {
+        let d = tmpdir("rec");
+        let s = d.join("session.json");
+        // disk differs: reload under the lock
+        let ops = FakeOps::new(&s, toks("a", Some("r")), toks("b", Some("s")), 1);
+        assert_eq!(
+            recover_locked(&ops, &s, Mode::Live, 0, LOCK_TIMEOUT).await.unwrap(),
+            Done::Reloaded
+        );
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst), 0);
+        // disk same: refresh under the lock
+        let ops = FakeOps::new(&s, toks("a", Some("r")), toks("a", Some("r")), 1);
+        assert_eq!(
+            recover_locked(&ops, &s, Mode::Live, 0, LOCK_TIMEOUT).await.unwrap(),
+            Done::Refreshed
+        );
+        assert_eq!(ops.unlocked_calls.load(Ordering::SeqCst), 0);
+        // second rejection: relogin; read-only: smoke message, nothing touched
+        let err = recover_locked(&ops, &s, Mode::Live, 1, LOCK_TIMEOUT).await.unwrap_err();
+        assert!(err.to_string().contains("log in again"));
+        let err = recover_locked(&ops, &s, Mode::ReadOnly, 0, LOCK_TIMEOUT)
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("read-only"));
+        assert_eq!(ops.refreshes.load(Ordering::SeqCst), 1);
+        let _ = std::fs::remove_dir_all(&d);
+    }
 
     fn toks(at: &str, rt: Option<&str>) -> SessionTokens {
         SessionTokens {

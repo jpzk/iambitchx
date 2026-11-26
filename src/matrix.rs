@@ -336,6 +336,9 @@ pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<Stamped>> 
 /// adopt it or refresh, retry once) and resumes; otherwise it prints the
 /// relogin hint and stops.
 pub fn spawn_sync(client: Client, tx: Tx, app_settings: ApplicationSettings) {
+    // live client only (`--smoke` never gets here): refresh before expiry;
+    // the 401 recovery below stays as the safety net
+    crate::token_refresh::spawn(client.clone(), app_settings.clone(), Mode::Live);
     tokio::spawn(async move {
         let me = client.user_id().expect("logged in").to_owned();
         let attempts = Arc::new(AtomicU32::new(0));

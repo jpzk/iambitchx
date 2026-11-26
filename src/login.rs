@@ -4,7 +4,7 @@
 //! restores a saved session or walks the user through an interactive login,
 //! and keeps `session.json` up to date when tokens are refreshed.
 use std::io::Write as _;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use anyhow::Context;
 use gethostname::gethostname;
@@ -18,7 +18,7 @@ use url::Url;
 use crate::config::ApplicationSettings;
 use crate::device_link::device_link_login;
 use crate::oauth::oauth_login;
-use crate::session_guard::{self, Mode, Recovery, SessionLock};
+use crate::session_guard::{self, Done, Mode, SessionLock};
 
 const ENCRYPTION_SETTINGS: EncryptionSettings = EncryptionSettings {
     auto_enable_cross_signing: true,
@@ -37,8 +37,9 @@ async fn build(
     settings: &ApplicationSettings,
 ) -> Result<Client, ClientBuildError> {
     // No `handle_refresh_tokens()`: the SDK would refresh on its own, outside
-    // the session.json lock. Live mode refreshes in [`recover`] under the
-    // lock; `--smoke` never refreshes at all.
+    // the session.json lock. Live mode refreshes under the lock, proactively
+    // before expiry ([`crate::token_refresh`]) and in [`recover`] after a
+    // 401 (safety net); `--smoke` never refreshes at all.
     let timeout = Duration::from_secs(settings.request_timeout);
     let http = reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -181,8 +182,57 @@ fn set_callbacks(client: &Client, settings: &ApplicationSettings) -> anyhow::Res
     Ok(())
 }
 
-/// Recover from `M_UNKNOWN_TOKEN` / soft logout. Holds the SessionLock for
-/// the whole read-decide-refresh-write sequence so two processes never rotate
+/// [`session_guard::TokenOps`] over the real client + `session.json`.
+pub struct ClientOps<'a> {
+    pub client: &'a Client,
+    pub settings: &'a ApplicationSettings,
+}
+
+impl session_guard::TokenOps for ClientOps<'_> {
+    fn in_use(&self) -> Option<SessionTokens> {
+        self.client.session_tokens()
+    }
+
+    fn on_disk(&self) -> Option<SessionTokens> {
+        disk_tokens(self.settings)
+    }
+
+    fn disk_age(&self) -> Option<Duration> {
+        session_written_at(self.settings).and_then(|t| SystemTime::now().duration_since(t).ok())
+    }
+
+    async fn adopt_disk(&self, on_disk: Option<&SessionTokens>) -> anyhow::Result<bool> {
+        // With the cross-process guard, the SDK sees the session hash
+        // changed and adopts the tokens from our reload callback
+        // (session.json) instead of spending our stale refresh token.
+        let res = self.client.refresh_access_token().await;
+        if self.client.session_tokens().as_ref() == on_disk {
+            Ok(true)
+        } else if res.is_ok() {
+            // no hash change seen, but our own refresh worked: keep those
+            write_current_tokens(self.client, self.settings).map(|()| false)
+        } else {
+            anyhow::bail!("could not adopt session.json")
+        }
+    }
+
+    async fn refresh(&self) -> anyhow::Result<()> {
+        self.client.refresh_access_token().await?;
+        // persist under our lock (the save callback may have already)
+        write_current_tokens(self.client, self.settings)
+    }
+}
+
+/// When `session.json` was last written, i.e. when the tokens in it were
+/// issued (every refresh rewrites it).
+pub fn session_written_at(settings: &ApplicationSettings) -> Option<SystemTime> {
+    let path = saved_session_path(settings)?;
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+/// Recover from `M_UNKNOWN_TOKEN` / soft logout via
+/// [`session_guard::recover_locked`]: the SessionLock is held for the whole
+/// read-decide-refresh-write sequence so two processes never rotate
 /// concurrently. `Ok(Some(line))` is a ` iamBitchX:` line for the user;
 /// `Err` carries the relogin hint.
 pub async fn recover(
@@ -191,43 +241,16 @@ pub async fn recover(
     mode: Mode,
     attempts: u32,
 ) -> anyhow::Result<Option<String>> {
-    if !mode.may_write() {
-        anyhow::bail!(session_guard::smoke_rejected_msg(&settings.session_json));
-    }
-    let _lock =
-        SessionLock::acquire_async(settings.session_json.clone(), Duration::from_secs(30)).await?;
-
-    let in_use = client.session_tokens();
-    let on_disk = disk_tokens(settings);
-    let relogin = || anyhow::anyhow!(session_guard::relogin_hint(&settings.session_json));
-
-    match session_guard::decide(mode, in_use.as_ref(), on_disk.as_ref(), attempts) {
-        Recovery::ReloadFromDisk => {
-            // With the cross-process guard, the SDK sees the session hash
-            // changed and adopts the tokens from our reload callback
-            // (session.json) instead of spending our stale refresh token.
-            let res = client.refresh_access_token().await;
-            if client.session_tokens() == on_disk {
-                Ok(Some(session_guard::RELOADED_MSG.to_string()))
-            } else if res.is_ok() {
-                // no hash change seen, but our own refresh worked: keep those
-                write_current_tokens(client, settings).map(|()| None)
-            } else {
-                Err(relogin())
-            }
-        },
-        Recovery::Refresh => {
-            match client.refresh_access_token().await {
-                // persist under our lock (the save callback may have already)
-                Ok(()) => write_current_tokens(client, settings).map(|()| None),
-                Err(e) => {
-                    tracing::warn!("token refresh failed: {e}");
-                    Err(relogin())
-                },
-            }
-        },
-        Recovery::Relogin | Recovery::Fail => Err(relogin()),
-    }
+    let ops = ClientOps { client, settings };
+    let done = session_guard::recover_locked(
+        &ops,
+        &settings.session_json,
+        mode,
+        attempts,
+        session_guard::LOCK_TIMEOUT,
+    )
+    .await?;
+    Ok((done == Done::Reloaded).then(|| session_guard::RELOADED_MSG.to_string()))
 }
 
 fn ask(question: &str) -> String {
@@ -351,7 +374,20 @@ fn write_current_tokens(client: &Client, settings: &ApplicationSettings) -> anyh
             settings.write_session(matrix.session().context("no Matrix session")?)
         },
         _ => anyhow::bail!("no session to save"),
+    }?;
+    restrict_session_perms(settings)
+}
+
+/// `session.json` holds tokens: owner read/write only (the umask already
+/// gives 0600; this keeps it so if the file pre-existed with wider bits).
+fn restrict_session_perms(settings: &ApplicationSettings) -> anyhow::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        let perms = std::fs::Permissions::from_mode(0o600);
+        std::fs::set_permissions(&settings.session_json, perms)?;
     }
+    Ok(())
 }
 
 /// Write a fresh login to `session.json` under the SessionLock.
