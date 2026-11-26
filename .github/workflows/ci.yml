@@ -2,14 +2,21 @@ on:
   push:
     branches:
       - main
+      - 'feat/**'
   pull_request:
     branches:
       - main
 
 name: CI
 
+# least privilege by default; jobs only ever read the repo
+permissions:
+  contents: read
+
 jobs:
   test:
+    permissions:
+      contents: read
     strategy:
       matrix:
         platform: [ubuntu-latest, windows-latest, macos-latest]
@@ -19,49 +26,89 @@ jobs:
       RUSTC_WRAPPER: "sccache"
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: true
+        persist-credentials: false
     - name: Install Rust (1.96 w/ clippy)
-      uses: dtolnay/rust-toolchain@1.96
-      with:
-          components: clippy
+      shell: bash
+      run: |
+        rustup toolchain install 1.96 --profile minimal --component clippy
+        rustup default 1.96
     - name: Install Rust (nightly w/ rustfmt)
-      run: rustup toolchain install nightly --component rustfmt
+      run: rustup toolchain install nightly --profile minimal --component rustfmt
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
     - name: Run sccache-cache
-      uses: mozilla-actions/sccache-action@v0.0.9
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
     - name: Check formatting
       run: cargo +nightly fmt --all -- --check
     - name: Check imports formatting
+      shell: bash
       run: find src -name '*.rs' | xargs ./.github/workflows/check-imports-format.sh
     - name: Check Clippy
       if: matrix.platform == 'ubuntu-latest'
-      uses: giraffate/clippy-action@v1
-      with:
-        github_token: ${{ secrets.GITHUB_TOKEN }}
-        reporter: 'github-check'
-        clippy_flags: --all-targets -- -D warnings
+      run: cargo clippy --locked --all-targets -- -D warnings
     - name: Run tests
       run: cargo test --locked
 
+  sbom:
+    name: SBOM + vulnerability report
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - name: Install Rust (stable)
+      run: |
+        rustup toolchain install stable --profile minimal
+        rustup default stable
+    - name: Install pinned SBOM/audit tools
+      # versions + publish dates: docs/ci-supply-chain.md
+      run: |
+        cargo install cargo-cyclonedx --version 0.5.9 --locked
+        cargo install cargo-audit --version 0.22.2 --locked
+    - name: Generate CycloneDX SBOM (JSON, spec 1.5)
+      run: .github/workflows/sbom.sh "$GITHUB_SHA" dist
+    - name: Vulnerability scan (RustSec, never fails the job)
+      run: .github/workflows/vuln.sh dist/vuln.json
+    - name: Upload SBOM artifact
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: sbom
+        path: dist/*.cdx.json
+        if-no-files-found: error
+    - name: Upload vulnerability report artifact
+      if: always()
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: vuln
+        path: dist/vuln.json
+        if-no-files-found: error
+
   nix-flake-test:
     name: Flake checks ❄️
+    permissions:
+      contents: read
     strategy:
       matrix:
         platform: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
-      - uses: cachix/install-nix-action@v31
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: cachix/install-nix-action@13d8dd58da0234aa297dedd986986ccb8e7f3e24 # v31.11.1
         with:
           github_access_token: ${{ secrets.GITHUB_TOKEN }}
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
         with:
           name: iambitchx-prs
           authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
@@ -69,4 +116,3 @@ jobs:
         run: |
           nix flake show
           nix flake check --print-build-logs
-
