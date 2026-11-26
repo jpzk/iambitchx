@@ -17,7 +17,9 @@ the handful of rules that turn CI red when ignored.
   there is no `tests/` directory.
 - origin: `https://github.com/jpzk/iambitchx.git`, base upstream commit
   `fbc4700` (upstream history is intact; only our own commits are ours).
-- Working branch: `feat/bitchx-v2` (design of record: `docs/v2-design.md`).
+- Work happens on **`main`**. Every `feat/*` branch is merged into it
+  (design of record for the frontend: `docs/v2-design.md`). The old
+  `feat/bitchx-v2` tip is kept as a remote branch; `main` is the trunk.
 
 ## Tree map
 
@@ -184,7 +186,7 @@ non-default profile). `--smoke` is the headless self-check.
 
 ## Branches and worktrees
 
-    /workspace/iambitchx   feat/bitchx-v2      main working tree
+    /workspace/iambitchx   main               main working tree (trunk)
     /workspace/dbg-wt      feat/dbg-mode      protocol debug tap
     /workspace/pres-wt     feat/presence      presence UI
     /workspace/ui-wt       feat/ui-fixes      UI/security fixes
