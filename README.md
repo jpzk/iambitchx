@@ -18,7 +18,8 @@ Channels, not rooms. `/join #channel`, `/msg`, `/whois`, `/away`, `/set` —
 like back in the day, with end-to-end encryption underneath.
 
 Under the hood, iamBitchX runs on the Matrix backend of
-[iamb](https://github.com/ulyssa/iamb) by Ulyssa (sync, E2EE, store, on top of
+[iamb](https://github.com/ulyssa/iamb) by Ulyssa — [iamb.chat](https://iamb.chat)
+is the project home (sync, E2EE, store, on top of
 [matrix-rust-sdk](https://github.com/matrix-org/matrix-rust-sdk)). The
 frontend is new (the Vim UI is gone, BitchX took its place), and login and
 token handling were reworked (OAuth, device link, proactive refresh).
@@ -62,6 +63,11 @@ More: [docs/bitchx-frontend.md](docs/bitchx-frontend.md),
 
 ## Credits & license
 
+- **Shoutout to [iamb.chat](https://iamb.chat) and to Ulyssa.** iamBitchX is a
+  fork of [iamb](https://github.com/ulyssa/iamb) — iamb's Matrix engine, its
+  sync loop, its E2EE stack and its store are what make this client possible.
+  We swapped the Vim frontend for a BitchX one and reworked login and token
+  handling; the hard parts are all still Ulyssa's. Go support the project.
 - The "Why BitchX?" and "History" texts are taken from
   [prime001/BitchX](https://github.com/prime001/BitchX).
 - iamBitchX is a fork of [iamb](https://github.com/ulyssa/iamb) by Ulyssa,
