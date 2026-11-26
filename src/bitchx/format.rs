@@ -225,6 +225,20 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
                 sp(format!(" invited {target} to {chan}"), n()),
             ])]
         },
+        // FORMAT_SET (default bx): `$G    %K$tolower($[27]0) %w$1-`;
+        // FORMAT_SET_NOVALUE: `$G    %K$tolower($0) has no value`.
+        Line::SetVar { name, value } => {
+            let name = name.to_lowercase();
+            vec![g_line(match value {
+                Some(v) => {
+                    vec![
+                        sp(format!("    {name:<27} "), k()),
+                        sp(v.clone(), fg(Color::Gray)),
+                    ]
+                },
+                None => vec![sp(format!("    {name} has no value"), k())],
+            })]
+        },
         Line::Info(text) => text.split('\n').map(|t| g_line(vec![sp(t, n())])).collect(),
         // ` iamBitchX: text` ("iamBitchX" bold), as for client errors.
         Line::Error(text) => {
