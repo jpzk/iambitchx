@@ -345,6 +345,13 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
                 bold(Color::Blue).add_modifier(Modifier::ITALIC),
             ))]
         },
+        // The logo's shadow/fade rows: blue, dimmed, no italic.
+        Line::LogoDim(text) => {
+            vec![TLine::from(sp(
+                text.clone(),
+                fg(Color::Blue).add_modifier(Modifier::DIM),
+            ))]
+        },
         // ` [Users(#chan:n/m)]` (capture 25).
         Line::Users { chan, shown, total } => {
             let gr = fg(Color::Green);

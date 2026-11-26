@@ -72,21 +72,93 @@ pub const STATUS_NAME: &str = "status";
 pub const STATUS_REFNUM: usize = 1;
 
 /// The iamBitchX logo shown in the status window, drawn in block characters:
-/// full blocks for the wordmark, a half-block drop shadow under it.
-/// Rendered italic where the terminal supports it.
+/// full blocks for the wordmark.
 ///
 /// The ASCII slant could not be converted: its strokes are one character
 /// wide, so every block mapping (full-block doubling, half-block pairing,
 /// quadrant bridging) turned the letterforms into mush. The wordmark is
 /// therefore drawn in a block font instead.
-pub const BANNER_BLOCKS: [&str; 6] = [
+pub const BANNER_BLOCKS: [&str; 5] = [
     "█  ███ █████████ █  █   ███ █    █   █",
     "  █   ██ █ ██   █   █  █    █     █ █ ",
     "█ █   ██ █ █████ █ ███ █    ████   █  ",
     "█ █   ██ █ ██   ██  █  █    █   █ █ █ ",
     "█  ███ █ █ █████ █  ███ ███ █   ██   █",
-    " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
 ];
+
+/// The logo's drop shadow: a half-block row (hard edge) and a light-shade
+/// dither row fading it out, offset one column to the right.
+pub const BANNER_SHADOW: [&str; 2] = [
+    " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
+    " ░  ░░░ ░ ░ ░░░░░ ░  ░░░ ░░░ ░   ░░   ░",
+];
+
+/// The ASCII fallback logo, in figlet `slant` style (47 columns). Used when
+/// the terminal cannot render the UTF-8 block wordmark.
+pub const BANNER_ASCII: [&str; 5] = [
+    r"    _               ____  _ __       __   _  __",
+    r"   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /",
+    r"  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /",
+    r" / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |",
+    r"/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|",
+];
+
+/// Can this terminal render the UTF-8 block wordmark (`TERM` + locale)?
+///
+/// `TERM` decides first: `dumb` and the legacy `vt1xx`/`ansi` names mean no,
+/// names carrying `utf`/`256`/`color` mean yes. For everything else the
+/// locale decides (`LC_ALL`/`LC_CTYPE`/`LANG` containing `UTF-8`).
+pub fn utf8_terminal() -> bool {
+    let term = std::env::var("TERM").unwrap_or_default();
+    let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
+        .iter()
+        .find_map(|k| std::env::var(k).ok())
+        .unwrap_or_default();
+    utf8_supported(&term, &locale)
+}
+
+/// The pure decision behind [`utf8_terminal`], so it can be tested.
+pub fn utf8_supported(term: &str, locale: &str) -> bool {
+    let term = term.to_ascii_lowercase();
+    if !term.is_empty() {
+        if term.contains("utf") || term.contains("256") || term.contains("color") {
+            return true;
+        }
+        if term == "dumb" ||
+            term == "ansi" ||
+            term.starts_with("vt1") ||
+            term.starts_with("vt2") ||
+            term.starts_with("vt3") ||
+            term.contains("ascii")
+        {
+            return false;
+        }
+        // Modern terminals that are UTF-8 by default.
+        if [
+            "xterm",
+            "screen",
+            "tmux",
+            "rxvt",
+            "kitty",
+            "alacritty",
+            "wezterm",
+            "foot",
+            "ghostty",
+            "konsole",
+            "gnome",
+            "iterm",
+            "vte",
+            "st-",
+        ]
+        .iter()
+        .any(|k| term.contains(k))
+        {
+            return true;
+        }
+    }
+    let loc = locale.to_ascii_uppercase();
+    loc.contains("UTF-8") || loc.contains("UTF8")
+}
 
 /// F37: the line `spawn_sync` sends when the sync loop breaks for good.
 fn is_sync_death(line: &Line) -> bool {
@@ -96,7 +168,10 @@ fn is_sync_death(line: &Line) -> bool {
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, the iamb credit line, logo with its `[ version]` credit, then
 /// ` iamBitchX:` lines.
-pub fn startup_lines(nick: &str) -> Vec<Line> {
+///
+/// `utf8` picks the logo: the block wordmark with its dither shadow, or the
+/// ASCII slant for terminals that cannot render it.
+pub fn startup_lines_for(nick: &str, utf8: bool) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
     let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
@@ -104,11 +179,23 @@ pub fn startup_lines(nick: &str) -> Vec<Line> {
         Line::Raw("iamBitchX - Matrix client in the style of BitchX by panasync".into()),
         Line::Raw(format!("Version (iambitchx-{ver}) -- Commit ({sha}).")),
         Line::Raw(format!("Process [{}]", std::process::id())),
-        Line::Raw(format!("Using terminal type [{term}]")),
+        Line::Raw(format!(
+            "Using terminal type [{term}]{}",
+            if utf8 {
+                " (utf8 logo)"
+            } else {
+                " (ascii logo)"
+            }
+        )),
         Line::Raw(String::new()),
     ];
     v.push(Line::Raw("    based on iamb - https://iamb.chat - by Ulyssa".into()));
-    v.extend(BANNER_BLOCKS.iter().map(|b| Line::Logo(format!("    {b}"))));
+    if utf8 {
+        v.extend(BANNER_BLOCKS.iter().map(|b| Line::Logo(format!("    {b}"))));
+        v.extend(BANNER_SHADOW.iter().map(|b| Line::LogoDim(format!("    {b}"))));
+    } else {
+        v.extend(BANNER_ASCII.iter().map(|b| Line::Logo(format!("    {b}"))));
+    }
     v.push(Line::Logo(format!("    [ iamBitchX-{ver}]           Matrix edition")));
     v.push(Line::Raw(String::new()));
     v.push(Line::Error(format!("Auto Response is set to - {nick}")));
@@ -356,9 +443,19 @@ pub enum Probe {
 
 impl App {
     pub fn new(me: OwnedUserId) -> Self {
+        Self::new_with_logo(me, utf8_terminal())
+    }
+
+    /// [`App::new`] with an explicit logo mode (UTF-8 blocks or ASCII).
+    pub fn new_with_logo(me: OwnedUserId, utf8: bool) -> Self {
+        let lines = startup_lines_for(me.localpart(), utf8);
+        Self::with_startup(me, lines)
+    }
+
+    fn with_startup(me: OwnedUserId, lines: Vec<Line>) -> Self {
         register_me(&me);
         let mut status = Window::default();
-        for line in startup_lines(me.localpart()) {
+        for line in lines {
             status.push(None, line);
         }
 
@@ -1997,7 +2094,7 @@ pub mod tests {
 
     /// An app with the status window and three rooms.
     pub fn app() -> App {
-        let mut app = App::new(owned_user_id!("@carla:example.org"));
+        let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), true);
         app.clock = Some("09:24pm".into());
         app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
         app.handle_mx(MxEvent::Room(room("!b:example.org", "#other")));
@@ -3837,5 +3934,62 @@ pub mod tests {
         let l = line1(&app);
         assert!(l.contains("[Query: armin(+e)]"), "{l}");
         assert!(!l.contains("[]"), "{l}");
+    }
+
+    #[test]
+    fn test_utf8_detection() {
+        // TERM names that carry utf/256/color, or modern terminals: yes.
+        for t in [
+            "xterm-256color",
+            "screen",
+            "tmux-256color",
+            "kitty",
+            "alacritty",
+            "foot",
+            "st-256color",
+        ] {
+            assert!(utf8_supported(t, ""), "{t} should be utf8");
+        }
+        // Legacy/dumb terminals: no, whatever the locale says.
+        for t in ["dumb", "vt100", "vt220", "ansi", "vt100-ansi"] {
+            assert!(!utf8_supported(t, "en_US.UTF-8"), "{t} should be ascii");
+        }
+        // No TERM: the locale decides.
+        assert!(utf8_supported("", "en_US.UTF-8"));
+        assert!(utf8_supported("", "C.UTF-8"));
+        assert!(!utf8_supported("", "C"));
+        assert!(!utf8_supported("", ""));
+        // An unknown TERM falls back to the locale.
+        assert!(utf8_supported("linux", "en_US.UTF-8"));
+        assert!(!utf8_supported("linux", "C"));
+    }
+
+    #[test]
+    fn test_startup_logo_falls_back_to_ascii() {
+        let utf8 = startup_lines_for("carla", true);
+        let ascii = startup_lines_for("carla", false);
+        let text = |ls: &[Line]| {
+            ls.iter()
+                .map(|l| {
+                    match l {
+                        Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) => t.clone(),
+                        _ => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let u = text(&utf8);
+        let a = text(&ascii);
+        assert!(u.iter().any(|l| l.contains('\u{2588}')), "utf8 logo has blocks");
+        assert!(u.iter().any(|l| l.contains('\u{2591}')), "utf8 logo has a dither fade");
+        assert!(!a.iter().any(|l| l.contains('\u{2588}')), "ascii logo has no blocks");
+        assert!(a.iter().any(|l| l.contains("____  _ __")), "ascii logo is the slant art");
+        // Both variants carry the iamb credit line.
+        for l in [&u, &a] {
+            assert!(l.iter().any(|x| x.contains("iamb.chat")), "{l:?}");
+        }
+        // The header says which logo was chosen.
+        assert!(u[3].contains("utf8 logo"), "{:?}", u[3]);
+        assert!(a[3].contains("ascii logo"), "{:?}", a[3]);
     }
 }

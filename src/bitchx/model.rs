@@ -60,6 +60,8 @@ pub enum Line {
     Raw(String),
     /// One row of the startup logo: no prefix, bold blue.
     Logo(String),
+    /// One row of the startup logo's shadow: no prefix, dim blue.
+    LogoDim(String),
     /// NAMES header: ` [Users(#chan:n/m)]`.
     Users { chan: String, shown: usize, total: usize },
     /// One NAMES grid row: `[@nick ] [ nick (zZzZ 4h) ]`, cells padded to `width`.

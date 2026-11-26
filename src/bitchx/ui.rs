@@ -32,7 +32,7 @@ pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static
         .flat_map(|(l, ts)| {
             let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
             // `%@`: the stamp leads the first row, in the default colours.
-            let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_));
+            let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_));
             if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped) &&
                 let Some(first) = out.first_mut()
             {
@@ -320,18 +320,26 @@ mod tests {
         // Credit line over the logo: iamb (iamb.chat) by Ulyssa is the base.
         assert!(r[5].starts_with("    based on iamb"), "{:?}", r[5]);
         assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
-        // Block wordmark: full blocks plus a half-block drop shadow.
+        // Block wordmark: full blocks plus a half-block + dither shadow.
         for (i, l) in crate::bitchx::app::BANNER_BLOCKS.iter().enumerate() {
             assert!(l.chars().count() <= 70);
             assert!(r[6 + i].starts_with(&format!("    {l}")), "{:?}", r[6 + i]);
         }
-        // The wordmark rows are blocks, the last one a half-block shadow.
+        for (i, l) in crate::bitchx::app::BANNER_SHADOW.iter().enumerate() {
+            assert!(r[11 + i].starts_with(&format!("    {l}")), "{:?}", r[11 + i]);
+        }
+        // The wordmark rows are full blocks, the shadow a half block and a
+        // light-shade dither fade.
         assert!(r[6].contains('\u{2588}'), "full block: {:?}", r[6]);
         assert!(r[11].contains('\u{2580}'), "half-block shadow: {:?}", r[11]);
+        assert!(r[12].contains('\u{2591}'), "dither fade: {:?}", r[12]);
         // Buffer indexing is (x, y): column 8, row 6 = first logo line.
         assert_eq!(buf[(8, 6)].fg, Color::Blue);
         assert!(buf[(8, 6)].modifier.contains(Modifier::ITALIC));
-        assert!(r[12].starts_with("    [ iamBitchX-"), "{:?}", r[12]);
+        // The shadow rows are dimmed, not italic.
+        assert!(buf[(8, 11)].modifier.contains(Modifier::DIM));
+        assert!(!buf[(8, 11)].modifier.contains(Modifier::ITALIC));
+        assert!(r[13].starts_with("    [ iamBitchX-"), "{:?}", r[13]);
         assert!(
             r.iter()
                 .any(|l| l.starts_with(" iamBitchX: Auto Response is set to - carla"))
