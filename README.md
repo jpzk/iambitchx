@@ -1,10 +1,3 @@
-<div align="center">
-
-[![Build Status](https://github.com/jpzk/iambitchx/actions/workflows/ci.yml/badge.svg)](https://github.com/jpzk/iambitchx/actions?query=workflow%3ACI+)
-[![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
-
-</div>
-
 ```
     _               ____  _ __       __   _  __
    (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /
