@@ -10,9 +10,9 @@ iamBitchX is a fork of [iamb](https://github.com/ulyssa/iamb) by Ulyssa
 (`fbc4700`) is iamb's work and is not listed here — see iamb's own history
 for that.
 
-> **Versioning note:** the first iamBitchX release is planned as `v0.1.0`.
-> The `0.14.0-alpha.1` currently in `Cargo.toml` is inherited from iamb and
-> is bumped at tag time.
+> **Versioning note:** the first iamBitchX release is `v0.1.0`. The
+> `0.14.0-alpha.1` we inherited from iamb is gone: our version line starts
+> at `0.1.0`, independently of iamb's.
 
 ## [Unreleased]
 

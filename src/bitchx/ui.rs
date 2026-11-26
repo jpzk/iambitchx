@@ -320,7 +320,7 @@ mod tests {
         assert!(art.contains("Awe/Cia"), "{art}");
         assert!(art.contains('\u{2584}'), "{art}");
         // The version slot is filled in, and the header names the art.
-        assert!(art.contains("0.14.0"), "{art}");
+        assert!(art.contains(env!("CARGO_PKG_VERSION")), "{art}");
         assert!(r[3].contains("original bitchx logo"), "{:?}", r[3]);
         // The iamb credit line is still above the art.
         assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
