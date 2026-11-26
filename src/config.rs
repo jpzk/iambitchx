@@ -75,6 +75,16 @@ pub struct Session {
     client_id: Option<ClientId>,
 }
 
+impl Session {
+    /// The access + refresh token pair.
+    pub fn tokens(&self) -> SessionTokens {
+        SessionTokens {
+            access_token: self.access_token.clone(),
+            refresh_token: self.refresh_token.clone(),
+        }
+    }
+}
+
 impl From<Session> for AuthSession {
     fn from(session: Session) -> Self {
         let meta = SessionMeta {
@@ -365,9 +375,18 @@ impl ApplicationSettings {
         Ok(serde_json::from_reader(reader)?)
     }
 
+    /// Write `session.json` atomically (temp file + rename), so a concurrent
+    /// reader never sees a half-written file. Callers hold the
+    /// [`crate::session_guard::SessionLock`].
     pub fn write_session(&self, session: impl Into<Session>) -> anyhow::Result<()> {
-        let writer = BufWriter::new(File::create(&self.session_json)?);
-        serde_json::to_writer(writer, &session.into())?;
+        let tmp = self.session_json.with_extension("json.tmp");
+        {
+            let mut writer = BufWriter::new(File::create(&tmp)?);
+            serde_json::to_writer(&mut writer, &session.into())?;
+            writer.flush()?;
+            writer.get_ref().sync_all()?;
+        }
+        std::fs::rename(&tmp, &self.session_json)?;
         Ok(())
     }
 

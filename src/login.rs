@@ -11,12 +11,14 @@ use gethostname::gethostname;
 use matrix_sdk::authentication::matrix::MatrixSession;
 use matrix_sdk::config::RequestConfig;
 use matrix_sdk::encryption::{BackupDownloadStrategy, EncryptionSettings};
-use matrix_sdk::{AuthApi, AuthSession, Client, ClientBuildError, reqwest};
+use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::{AuthApi, AuthSession, Client, ClientBuildError, SessionTokens, reqwest};
 use url::Url;
 
 use crate::config::ApplicationSettings;
 use crate::device_link::device_link_login;
 use crate::oauth::oauth_login;
+use crate::session_guard::{self, Mode, Recovery, SessionLock};
 
 const ENCRYPTION_SETTINGS: EncryptionSettings = EncryptionSettings {
     auto_enable_cross_signing: true,
@@ -34,6 +36,9 @@ async fn build(
     homeserver: Option<&Url>,
     settings: &ApplicationSettings,
 ) -> Result<Client, ClientBuildError> {
+    // No `handle_refresh_tokens()`: the SDK would refresh on its own, outside
+    // the session.json lock. Live mode refreshes in [`recover`] under the
+    // lock; `--smoke` never refreshes at all.
     let timeout = Duration::from_secs(settings.request_timeout);
     let http = reqwest::Client::builder()
         .user_agent(USER_AGENT)
@@ -46,7 +51,6 @@ async fn build(
     let builder = Client::builder()
         .http_client(http)
         .sqlite_store_with_cache_path(&settings.sqlite_dir, &settings.sqlite_cache_dir, None)
-        .handle_refresh_tokens()
         .request_config(RequestConfig::new().timeout(timeout).retry_limit(8))
         .with_encryption_settings(ENCRYPTION_SETTINGS);
 
@@ -73,23 +77,157 @@ pub async fn create_client(settings: &ApplicationSettings) -> anyhow::Result<Cli
     Ok(client)
 }
 
-/// Restore the saved session. Returns `false` if there is none.
-pub async fn restore(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<bool> {
-    let path = if settings.session_json.is_file() {
-        &settings.session_json
+/// Whether an SDK error is `M_UNKNOWN_TOKEN` (soft logout included).
+pub fn is_unknown_token_http(e: &matrix_sdk::HttpError) -> bool {
+    matches!(e.client_api_error_kind(), Some(ErrorKind::UnknownToken(_)))
+}
+
+/// [`is_unknown_token_http`] for the SDK's top-level error (e.g. from sync).
+pub fn is_unknown_token(e: &matrix_sdk::Error) -> bool {
+    matches!(e.client_api_error_kind(), Some(ErrorKind::UnknownToken(_)))
+}
+
+fn saved_session_path(settings: &ApplicationSettings) -> Option<&std::path::Path> {
+    if settings.session_json.is_file() {
+        Some(&settings.session_json)
     } else if settings.session_json_old.is_file() {
-        &settings.session_json_old
+        Some(&settings.session_json_old)
     } else {
+        None
+    }
+}
+
+/// The tokens currently in `session.json`, if readable.
+fn disk_tokens(settings: &ApplicationSettings) -> Option<SessionTokens> {
+    let path = saved_session_path(settings)?;
+    settings.read_session(path).ok().map(|s| s.tokens())
+}
+
+/// Restore the saved session. Returns `false` if there is none.
+///
+/// [`Mode::ReadOnly`] (`--smoke`) only reads `session.json`: no refresh, no
+/// write; a rejected access token is an error. [`Mode::Live`] installs the
+/// locked save/reload callbacks and recovers a rejected token via [`recover`].
+pub async fn restore(
+    client: &Client,
+    settings: &ApplicationSettings,
+    mode: Mode,
+) -> anyhow::Result<bool> {
+    let Some(path) = saved_session_path(settings) else {
         return Ok(false);
     };
 
     let session: AuthSession = settings.read_session(path)?.into();
+    if mode.may_write() {
+        install_session_callbacks(client, settings, &session).await?;
+    }
     client.restore_session(session).await.context("restoring session")?;
-    client.whoami().await.context(
-        "the homeserver rejected the saved session; delete session.json to log in again",
-    )?;
 
-    Ok(true)
+    let mut attempts = 0;
+    loop {
+        match client.whoami().await {
+            Ok(_) => return Ok(true),
+            Err(e) if is_unknown_token_http(&e) => {
+                if !mode.may_write() {
+                    anyhow::bail!(session_guard::smoke_rejected_msg(&settings.session_json));
+                }
+                if let Some(msg) = recover(client, settings, mode, attempts).await? {
+                    println!("iamBitchX: {msg}");
+                }
+                attempts += 1;
+            },
+            Err(e) => {
+                return Err(e).context("checking the saved session with the homeserver");
+            },
+        }
+    }
+}
+
+/// Live mode: let the SDK reload tokens from `session.json` and persist
+/// refreshed ones. For OAuth sessions this also enables the SDK's
+/// cross-process refresh guard, whose session-hash check is what lets a
+/// running client adopt tokens another process rotated.
+async fn install_session_callbacks(
+    client: &Client,
+    settings: &ApplicationSettings,
+    session: &AuthSession,
+) -> anyhow::Result<()> {
+    set_callbacks(client, settings)?;
+    if matches!(session, AuthSession::OAuth(_)) {
+        client
+            .oauth()
+            .enable_cross_process_refresh_lock(format!("iambitchx-{}", std::process::id()))
+            .await?;
+    }
+    Ok(())
+}
+
+fn set_callbacks(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<()> {
+    let reload = settings.clone();
+    let save = settings.clone();
+    client.set_session_callbacks(
+        Box::new(move |_| {
+            // Called by the SDK inside `refresh_access_token`, i.e. from
+            // `recover` which already holds the SessionLock; writes are atomic
+            // renames, so a plain read is consistent.
+            disk_tokens(&reload).ok_or_else(|| "session.json unreadable".into())
+        }),
+        Box::new(move |client| {
+            // Same: only reached from `recover` (the sole refresh path, the
+            // SDK's own auto-refresh is off) which holds the SessionLock.
+            write_current_tokens(&client, &save).map_err(|e| e.to_string().into())
+        }),
+    )?;
+    Ok(())
+}
+
+/// Recover from `M_UNKNOWN_TOKEN` / soft logout. Holds the SessionLock for
+/// the whole read-decide-refresh-write sequence so two processes never rotate
+/// concurrently. `Ok(Some(line))` is a ` iamBitchX:` line for the user;
+/// `Err` carries the relogin hint.
+pub async fn recover(
+    client: &Client,
+    settings: &ApplicationSettings,
+    mode: Mode,
+    attempts: u32,
+) -> anyhow::Result<Option<String>> {
+    if !mode.may_write() {
+        anyhow::bail!(session_guard::smoke_rejected_msg(&settings.session_json));
+    }
+    let _lock =
+        SessionLock::acquire_async(settings.session_json.clone(), Duration::from_secs(30)).await?;
+
+    let in_use = client.session_tokens();
+    let on_disk = disk_tokens(settings);
+    let relogin = || anyhow::anyhow!(session_guard::relogin_hint(&settings.session_json));
+
+    match session_guard::decide(mode, in_use.as_ref(), on_disk.as_ref(), attempts) {
+        Recovery::ReloadFromDisk => {
+            // With the cross-process guard, the SDK sees the session hash
+            // changed and adopts the tokens from our reload callback
+            // (session.json) instead of spending our stale refresh token.
+            let res = client.refresh_access_token().await;
+            if client.session_tokens() == on_disk {
+                Ok(Some(session_guard::RELOADED_MSG.to_string()))
+            } else if res.is_ok() {
+                // no hash change seen, but our own refresh worked: keep those
+                write_current_tokens(client, settings).map(|()| None)
+            } else {
+                Err(relogin())
+            }
+        },
+        Recovery::Refresh => {
+            match client.refresh_access_token().await {
+                // persist under our lock (the save callback may have already)
+                Ok(()) => write_current_tokens(client, settings).map(|()| None),
+                Err(e) => {
+                    tracing::warn!("token refresh failed: {e}");
+                    Err(relogin())
+                },
+            }
+        },
+        Recovery::Relogin | Recovery::Fail => Err(relogin()),
+    }
 }
 
 fn ask(question: &str) -> String {
@@ -114,7 +252,7 @@ async fn password_login(
         login = login.device_id(device.device_id().as_str());
     }
     let resp = login.send().await?;
-    settings.write_session(MatrixSession::from(&resp))
+    persist_login(settings, MatrixSession::from(&resp)).await
 }
 
 async fn sso_login(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<()> {
@@ -130,12 +268,12 @@ async fn sso_login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
         .initial_device_display_name(&initial_devname())
         .send()
         .await?;
-    settings.write_session(MatrixSession::from(&resp))
+    persist_login(settings, MatrixSession::from(&resp)).await
 }
 
 /// Restore the session or log in interactively on the terminal.
 pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<()> {
-    if restore(client, settings).await? {
+    if restore(client, settings, Mode::Live).await? {
         return Ok(());
     }
 
@@ -167,7 +305,7 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
                 {
                     Ok(()) => {
                         match client.oauth().full_session() {
-                            Some(s) => settings.write_session(s),
+                            Some(s) => persist_login(settings, s).await,
                             None => Err(anyhow::anyhow!("no OAuth session after login")),
                         }
                     },
@@ -182,7 +320,7 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
                 )
                 .await
                 {
-                    Ok(s) => settings.write_session(s),
+                    Ok(s) => persist_login(settings, s).await,
                     Err(e) => Err(e),
                 }
             },
@@ -193,37 +331,35 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
         };
 
         match res {
-            Ok(()) => return Ok(()),
+            Ok(()) => {
+                set_callbacks(client, settings)?;
+                return Ok(());
+            },
             Err(e) => println!("Login failed: {e}"),
         }
     }
 }
 
-/// Write the current tokens to `session.json`.
-pub fn save_tokens(client: &Client, settings: &ApplicationSettings) {
-    let res = match client.auth_api() {
-        Some(AuthApi::OAuth(oauth)) => oauth.full_session().map(|s| settings.write_session(s)),
-        Some(AuthApi::Matrix(matrix)) => matrix.session().map(|s| settings.write_session(s)),
-        _ => None,
-    };
-
-    if let Some(Err(e)) = res {
-        tracing::warn!("failed to persist session: {e}");
+/// Write the client's current tokens to `session.json`. The caller holds the
+/// SessionLock; `--smoke` never gets here.
+fn write_current_tokens(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<()> {
+    match client.auth_api() {
+        Some(AuthApi::OAuth(oauth)) => {
+            settings.write_session(oauth.full_session().context("no OAuth session")?)
+        },
+        Some(AuthApi::Matrix(matrix)) => {
+            settings.write_session(matrix.session().context("no Matrix session")?)
+        },
+        _ => anyhow::bail!("no session to save"),
     }
 }
 
-/// Persist refreshed tokens for as long as the client lives.
-pub fn spawn_token_saver(client: Client, settings: ApplicationSettings) {
-    tokio::spawn(async move {
-        let mut changes = client.subscribe_to_session_changes();
-
-        while let Ok(change) = changes.recv().await {
-            match change {
-                matrix_sdk::SessionChange::TokensRefreshed => save_tokens(&client, &settings),
-                matrix_sdk::SessionChange::UnknownToken(t) => {
-                    tracing::warn!("unknown token (soft logout = {})", t.soft_logout);
-                },
-            }
-        }
-    });
+/// Write a fresh login to `session.json` under the SessionLock.
+async fn persist_login(
+    settings: &ApplicationSettings,
+    session: impl Into<crate::config::Session>,
+) -> anyhow::Result<()> {
+    let _lock =
+        SessionLock::acquire_async(settings.session_json.clone(), Duration::from_secs(30)).await?;
+    settings.write_session(session)
 }

@@ -54,7 +54,17 @@ pub fn encryption_report(app: &App) -> Vec<String> {
 }
 
 pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
-    client.sync_once(SyncSettings::default()).await?;
+    // read-only: a rejected token is fatal here, never refreshed
+    client.sync_once(SyncSettings::default()).await.map_err(|e| {
+        if crate::login::is_unknown_token(&e) {
+            anyhow::anyhow!(
+                "--smoke: the homeserver rejected the access token (M_UNKNOWN_TOKEN); \
+                 --smoke is read-only and does not refresh it"
+            )
+        } else {
+            e.into()
+        }
+    })?;
 
     app.status_info(format!("Connected to {} as {}", client.homeserver(), app.me));
     crate::tui::seed(&mut app, &client).await;

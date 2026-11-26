@@ -4,6 +4,8 @@
 //! [`Line`]s, room snapshots for the windows, history backfill, and the
 //! executor for the [`Effect`]s the UI asks for. Everything it learns goes
 //! to the UI as [`MxEvent`]s over a channel.
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
 
 use matrix_sdk::config::SyncSettings;
@@ -43,6 +45,9 @@ use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, nick_of};
+use crate::config::ApplicationSettings;
+use crate::login;
+use crate::session_guard::Mode;
 
 pub type Tx = UnboundedSender<MxEvent>;
 
@@ -281,55 +286,87 @@ pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<(Option<St
     Ok(out)
 }
 
-/// Run the sync loop forever, feeding the UI.
-pub fn spawn_sync(client: Client, tx: Tx) {
+/// Run the sync loop forever, feeding the UI. On `M_UNKNOWN_TOKEN` / soft
+/// logout it runs [`login::recover`] (re-read session.json under the lock,
+/// adopt it or refresh, retry once) and resumes; otherwise it prints the
+/// relogin hint and stops.
+pub fn spawn_sync(client: Client, tx: Tx, app_settings: ApplicationSettings) {
     tokio::spawn(async move {
         let me = client.user_id().expect("logged in").to_owned();
-        let settings = SyncSettings::default().timeout(Duration::from_secs(30));
-        let res = client
-            .sync_with_callback(settings, |resp| {
-                let client = client.clone();
-                let tx = tx.clone();
-                let me = me.clone();
-                async move {
-                    for (room_id, update) in resp.rooms.joined {
-                        let Some(room) = client.get_room(&room_id) else {
-                            continue;
-                        };
-                        let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
-                        let mut lines = vec![];
-                        for ev in &update.timeline.events {
-                            lines.extend(convert(&me, ev));
-                        }
-                        if !lines.is_empty() {
-                            let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: false });
-                        }
-                    }
-                    for room_id in resp.rooms.left.into_keys() {
-                        let _ = tx.send(MxEvent::Left(room_id));
-                    }
-                    for room_id in resp.rooms.invited.into_keys() {
-                        let line = Line::Info(format!(
-                            "You have been invited to {room_id} -- /join {room_id}"
-                        ));
-                        let _ = tx.send(MxEvent::Info { room_id: None, line });
-                    }
-                    if tx.is_closed() {
-                        LoopCtrl::Break
-                    } else {
-                        LoopCtrl::Continue
-                    }
-                }
-            })
-            .await;
-
-        if let Err(e) = res {
-            let _ = tx.send(MxEvent::Info {
-                room_id: None,
-                line: Line::Error(format!("sync: {e}")),
-            });
+        let attempts = Arc::new(AtomicU32::new(0));
+        loop {
+            let err = match sync_until_error(&client, &me, &tx, &attempts).await {
+                Ok(()) => break,
+                Err(e) if login::is_unknown_token(&e) => e,
+                Err(e) => {
+                    let line = Line::Error(format!("sync: {e}"));
+                    let _ = tx.send(MxEvent::Info { room_id: None, line });
+                    break;
+                },
+            };
+            tracing::warn!("sync: {err}");
+            let n = attempts.fetch_add(1, Ordering::SeqCst);
+            match login::recover(&client, &app_settings, Mode::Live, n).await {
+                Ok(None) => {},
+                Ok(Some(msg)) => {
+                    let _ = tx.send(MxEvent::Info { room_id: None, line: Line::Error(msg) });
+                },
+                Err(e) => {
+                    let line = Line::Error(format!("{e}"));
+                    let _ = tx.send(MxEvent::Info { room_id: None, line });
+                    break;
+                },
+            }
         }
     });
+}
+
+/// One `sync_with_callback` run: returns when a sync request fails or the UI
+/// is gone. Every sync response resets the recovery `attempts` counter.
+async fn sync_until_error(
+    client: &Client,
+    me: &OwnedUserId,
+    tx: &Tx,
+    attempts: &Arc<AtomicU32>,
+) -> Result<(), matrix_sdk::Error> {
+    let settings = SyncSettings::default().timeout(Duration::from_secs(30));
+    client
+        .sync_with_callback(settings, |resp| {
+            let client = client.clone();
+            let tx = tx.clone();
+            let me = me.clone();
+            attempts.store(0, Ordering::SeqCst);
+            async move {
+                for (room_id, update) in resp.rooms.joined {
+                    let Some(room) = client.get_room(&room_id) else {
+                        continue;
+                    };
+                    let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
+                    let mut lines = vec![];
+                    for ev in &update.timeline.events {
+                        lines.extend(convert(&me, ev));
+                    }
+                    if !lines.is_empty() {
+                        let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: false });
+                    }
+                }
+                for room_id in resp.rooms.left.into_keys() {
+                    let _ = tx.send(MxEvent::Left(room_id));
+                }
+                for room_id in resp.rooms.invited.into_keys() {
+                    let line = Line::Info(format!(
+                        "You have been invited to {room_id} -- /join {room_id}"
+                    ));
+                    let _ = tx.send(MxEvent::Info { room_id: None, line });
+                }
+                if tx.is_closed() {
+                    LoopCtrl::Break
+                } else {
+                    LoopCtrl::Continue
+                }
+            }
+        })
+        .await
 }
 
 /// Measure the round trip to the homeserver every minute (`[Lag n]`).

@@ -21,6 +21,7 @@ use tokio::sync::mpsc::unbounded_channel;
 use crate::bitchx::app::App;
 use crate::bitchx::model::{Effect, MxEvent};
 use crate::bitchx::ui::draw;
+use crate::config::ApplicationSettings;
 use crate::matrix;
 
 fn restore() {
@@ -52,7 +53,11 @@ pub async fn seed(app: &mut App, client: &Client) {
     }
 }
 
-pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
+pub async fn run(
+    client: Client,
+    mut app: App,
+    settings: ApplicationSettings,
+) -> anyhow::Result<()> {
     let (tx, mut rx) = unbounded_channel();
 
     seed(&mut app, &client).await;
@@ -61,7 +66,7 @@ pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
         app.status_info(format!("Device {device}"));
     }
     crate::e2ee::register_verification_handlers(&client, tx.clone());
-    matrix::spawn_sync(client.clone(), tx.clone());
+    matrix::spawn_sync(client.clone(), tx.clone(), settings);
     matrix::spawn_lag(client.clone(), tx.clone());
 
     let mut term = setup()?;

@@ -15,6 +15,7 @@ use tracing_subscriber::{EnvFilter, FmtSubscriber};
 
 use crate::bitchx::app::App;
 use crate::config::{ApplicationSettings, Cli};
+use crate::session_guard::Mode;
 
 mod bitchx;
 mod config;
@@ -23,6 +24,7 @@ mod e2ee;
 mod login;
 mod matrix;
 mod oauth;
+mod session_guard;
 mod smoke;
 mod tui;
 
@@ -57,14 +59,13 @@ async fn run(settings: ApplicationSettings, smoke: bool) -> anyhow::Result<()> {
     let client = login::create_client(&settings).await?;
 
     if smoke {
-        if !login::restore(&client, &settings).await? {
+        // read-only: never refreshes tokens, never writes session.json
+        if !login::restore(&client, &settings, Mode::ReadOnly).await? {
             anyhow::bail!("--smoke needs a saved session ({})", settings.session_json.display());
         }
     } else {
         login::login(&client, &settings).await?;
     }
-    login::save_tokens(&client, &settings);
-    login::spawn_token_saver(client.clone(), settings.clone());
 
     let me = client.user_id().unwrap_or(&settings.user_id).to_owned();
     let app = App::new(me);
@@ -72,7 +73,7 @@ async fn run(settings: ApplicationSettings, smoke: bool) -> anyhow::Result<()> {
     if smoke {
         smoke::run(client, app).await
     } else {
-        tui::run(client, app).await
+        tui::run(client, app, settings).await
     }
 }
 
