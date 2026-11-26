@@ -11,7 +11,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 
 use clap::Parser;
 use tracing::level_filters::LevelFilter;
-use tracing_subscriber::{EnvFilter, FmtSubscriber};
+use tracing_subscriber::EnvFilter;
+use tracing_subscriber::prelude::*;
 
 use crate::bitchx::app::App;
 use crate::bitchx::vars::Vars;
@@ -20,6 +21,7 @@ use crate::session_guard::Mode;
 
 mod bitchx;
 mod config;
+mod debug_tap;
 mod device_link;
 mod e2ee;
 mod login;
@@ -48,11 +50,10 @@ fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocki
             process::exit(2);
         });
 
-    let subscriber = FmtSubscriber::builder()
-        .with_writer(appender)
-        .with_ansi(false)
-        .with_env_filter(filter)
-        .finish();
+    let fmt = tracing_subscriber::fmt::layer().with_writer(appender).with_ansi(false);
+    let subscriber = tracing_subscriber::registry()
+        .with(fmt.with_filter(filter))
+        .with(debug_tap::layer());
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     guard

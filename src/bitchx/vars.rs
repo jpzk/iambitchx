@@ -20,6 +20,10 @@
 //! nick, mxid and display name always highlight) and `BEEP` (bool, default
 //! ON, `source/vars.c` BEEP): see [`crate::bitchx::mention`].
 //!
+//! `DEBUG` (bool, default OFF), `DEBUG_FILTER` (comma list of
+//! [`DEBUG_CATEGORIES`], default `all`) and `DEBUG_RAW` (bool, default OFF):
+//! the protocol debug mode, see [`crate::debug_tap`].
+//!
 //! Values persist in `config.toml` under `[settings.bitchx]`.
 use std::fmt::Write as _;
 use std::path::Path;
@@ -40,6 +44,9 @@ pub const NAMES: &[&str] = &[
     "AWAY_MSG",
     "AWAY_NICK",
     "BEEP",
+    "DEBUG",
+    "DEBUG_FILTER",
+    "DEBUG_RAW",
     "TIMESTAMP",
     "TIMESTAMP_STRING",
 ];
@@ -101,6 +108,9 @@ pub struct BitchxConfig {
     pub away_nick: Option<String>,
     pub away_nick_orig: Option<String>,
     pub beep: Option<bool>,
+    pub debug: Option<bool>,
+    pub debug_filter: Option<String>,
+    pub debug_raw: Option<bool>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
 }
@@ -116,6 +126,9 @@ impl BitchxConfig {
             away_nick: self.away_nick.or(other.away_nick),
             away_nick_orig: self.away_nick_orig.or(other.away_nick_orig),
             beep: self.beep.or(other.beep),
+            debug: self.debug.or(other.debug),
+            debug_filter: self.debug_filter.or(other.debug_filter),
+            debug_raw: self.debug_raw.or(other.debug_raw),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
         }
@@ -139,6 +152,12 @@ pub struct Vars {
     pub away_nick_orig: Option<String>,
     /// Ring the terminal bell on a mention.
     pub beep: bool,
+    /// Protocol debug mode (DBG lines).
+    pub debug: bool,
+    /// Normalized category list, `all` = every category.
+    pub debug_filter: String,
+    /// Also print the (redacted, truncated) raw event JSON.
+    pub debug_raw: bool,
     pub timestamp: bool,
     pub timestamp_string: String,
 }
@@ -154,10 +173,61 @@ impl Default for Vars {
             away_nick: DEFAULT_AWAY_NICK.to_string(),
             away_nick_orig: None,
             beep: true,
+            debug: false,
+            debug_filter: DEBUG_ALL.to_string(),
+            debug_raw: false,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
         }
     }
+}
+
+/// `DEBUG_FILTER` categories, in display order (`ephemeral` = receipts and
+/// typing, `todevice` = to-device events).
+pub const DEBUG_CATEGORIES: &[&str] = &[
+    "http",
+    "sync",
+    "event",
+    "auth",
+    "crypto",
+    "presence",
+    "ephemeral",
+    "todevice",
+];
+/// `DEBUG_FILTER` value meaning every category.
+pub const DEBUG_ALL: &str = "all";
+
+/// Normalize a `DEBUG_FILTER` value: a comma (or space) separated list of
+/// [`DEBUG_CATEGORIES`], any case, deduplicated and in canonical order.
+/// Empty, `all` or `*` mean every category and normalize to `all`, as does a
+/// list naming all of them.
+pub fn parse_debug_filter(value: &str) -> Result<String, String> {
+    let mut on = [false; 8];
+    let mut any = false;
+    for w in value.split([',', ' ']).map(str::trim).filter(|w| !w.is_empty()) {
+        let w = w.to_lowercase();
+        if w == DEBUG_ALL || w == "*" {
+            return Ok(DEBUG_ALL.to_string());
+        }
+        let Some(i) = DEBUG_CATEGORIES.iter().position(|c| *c == w) else {
+            return Err(format!(
+                "Unknown debug category \"{w}\" (one of {}, all)",
+                DEBUG_CATEGORIES.join(",")
+            ));
+        };
+        on[i] = true;
+        any = true;
+    }
+    if !any || on.iter().all(|b| *b) {
+        return Ok(DEBUG_ALL.to_string());
+    }
+    let cats: Vec<&str> = DEBUG_CATEGORIES
+        .iter()
+        .zip(on)
+        .filter(|(_, b)| *b)
+        .map(|(c, _)| *c)
+        .collect();
+    Ok(cats.join(","))
 }
 
 /// `do_boolean`: ON, OFF or TOGGLE, any case.
@@ -207,6 +277,13 @@ impl Vars {
             away_nick: c.away_nick.clone().unwrap_or(d.away_nick),
             away_nick_orig: c.away_nick_orig.clone().filter(|s| !s.is_empty()),
             beep: c.beep.unwrap_or(d.beep),
+            debug: c.debug.unwrap_or(d.debug),
+            debug_filter: c
+                .debug_filter
+                .as_deref()
+                .and_then(|s| parse_debug_filter(s).ok())
+                .unwrap_or(d.debug_filter),
+            debug_raw: c.debug_raw.unwrap_or(d.debug_raw),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
         }
@@ -222,6 +299,9 @@ impl Vars {
             "AWAY_MSG" => Some(self.away_msg.clone()).filter(|s| !s.is_empty()),
             "AWAY_NICK" => Some(self.away_nick.clone()).filter(|s| !s.is_empty()),
             "BEEP" => Some(if self.beep { "ON" } else { "OFF" }.to_string()),
+            "DEBUG" => Some(if self.debug { "ON" } else { "OFF" }.to_string()),
+            "DEBUG_FILTER" => Some(self.debug_filter.clone()),
+            "DEBUG_RAW" => Some(if self.debug_raw { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -253,6 +333,15 @@ impl Vars {
             "BEEP" => {
                 self.beep =
                     boolean(value, self.beep).ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
+            "DEBUG" => {
+                self.debug =
+                    boolean(value, self.debug).ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
+            "DEBUG_FILTER" => self.debug_filter = parse_debug_filter(value)?,
+            "DEBUG_RAW" => {
+                self.debug_raw = boolean(value, self.debug_raw)
+                    .ok_or("Value must be either ON, OFF, or TOGGLE")?;
             },
             "AWAY_MSG" => self.away_msg = value.to_string(),
             "AWAY_NICK" => {
@@ -316,6 +405,9 @@ impl Vars {
         bx.insert("away_nick".into(), Value::String(self.away_nick.clone()));
         bx.insert("auto_reply".into(), Value::String(self.auto_reply.clone()));
         bx.insert("beep".into(), Value::Boolean(self.beep));
+        bx.insert("debug".into(), Value::Boolean(self.debug));
+        bx.insert("debug_filter".into(), Value::String(self.debug_filter.clone()));
+        bx.insert("debug_raw".into(), Value::Boolean(self.debug_raw));
         match &self.away_nick_orig {
             Some(orig) => bx.insert("away_nick_orig".into(), Value::String(orig.clone())),
             None => bx.remove("away_nick_orig"),
@@ -429,6 +521,9 @@ mod tests {
             away_nick_orig: Some("Carla".into()),
             auto_reply: "creed,bx".into(),
             beep: false,
+            debug: true,
+            debug_filter: "http,sync".into(),
+            debug_raw: true,
         };
         v.persist(&path).unwrap();
 
@@ -519,5 +614,66 @@ mod tests {
             ..Default::default()
         };
         assert_eq!(Vars::from_config(&c).away_nick_orig, None);
+    }
+    #[test]
+    fn test_debug_filter_parsing() {
+        assert_eq!(parse_debug_filter(""), Ok("all".into()));
+        assert_eq!(parse_debug_filter("ALL"), Ok("all".into()));
+        assert_eq!(parse_debug_filter("*"), Ok("all".into()));
+        assert_eq!(parse_debug_filter("http"), Ok("http".into()));
+        assert_eq!(parse_debug_filter(" Sync , http,http "), Ok("http,sync".into()));
+        assert_eq!(parse_debug_filter("todevice ephemeral"), Ok("ephemeral,todevice".into()));
+        assert_eq!(
+            parse_debug_filter("http,sync,event,auth,crypto,presence,ephemeral,todevice"),
+            Ok("all".into())
+        );
+        assert!(parse_debug_filter("http,bogus").unwrap_err().contains("bogus"));
+    }
+
+    #[test]
+    fn test_debug_vars() {
+        let v = Vars::default();
+        assert!(!v.debug && !v.debug_raw, "debug mode defaults to OFF");
+        assert_eq!(v.get("DEBUG_FILTER").as_deref(), Some("all"));
+        assert_eq!(lookup("debug"), Ok("DEBUG"), "exact match beats the prefix");
+        assert_eq!(lookup("debug_f"), Ok("DEBUG_FILTER"));
+        assert_eq!(lookup("debug_r"), Ok("DEBUG_RAW"));
+        let mut v = Vars::default();
+        v.set("DEBUG", "on").unwrap();
+        v.set("DEBUG_RAW", "toggle").unwrap();
+        v.set("DEBUG_FILTER", "sync,HTTP").unwrap();
+        assert_eq!(v.get("DEBUG").as_deref(), Some("ON"));
+        assert_eq!(v.get("DEBUG_RAW").as_deref(), Some("ON"));
+        assert_eq!(v.get("DEBUG_FILTER").as_deref(), Some("http,sync"));
+        assert!(v.set("DEBUG", "loud").is_err());
+        assert!(v.set("DEBUG_FILTER", "nope").is_err());
+        assert_eq!(v.debug_filter, "http,sync", "a bad filter keeps the old one");
+        // A bad value in the file falls back to the default.
+        let c = BitchxConfig {
+            debug: Some(true),
+            debug_filter: Some("garbage".into()),
+            ..Default::default()
+        };
+        let v = Vars::from_config(&c);
+        assert!(v.debug);
+        assert_eq!(v.debug_filter, "all");
+    }
+
+    #[test]
+    fn test_debug_persistence() {
+        let dir = std::env::temp_dir().join(format!("bx-dbgvars-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let mut v = Vars::default();
+        v.set("DEBUG", "on").unwrap();
+        v.set("DEBUG_FILTER", "http,presence").unwrap();
+        v.persist(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let cfg = crate::config::Config::parse_toml(&text).unwrap();
+        let back = Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap());
+        assert!(back.debug && !back.debug_raw);
+        assert_eq!(back.debug_filter, "http,presence");
+        assert_eq!(back, v);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

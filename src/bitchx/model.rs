@@ -82,6 +82,9 @@ pub enum Line {
     /// WHOIS field row n (1-based): `{lead}{key:<8} : value`, the lead
     /// alternating ` `/`|` and fading green to grey, `:` on the last row.
     WhoisRow { row: u8, last: bool, key: String, value: String },
+    /// Protocol debug line (`/set debug on`): ` DBG cat text`, magenta tag;
+    /// `cat` empty for the flood guard's `DBG (suppressed N)`.
+    Debug { cat: String, text: String },
 }
 
 /// IRC-style nick for a Matrix user: the mxid localpart (`@carla:x` ->
@@ -392,6 +395,8 @@ pub enum MxEvent {
         search: Option<String>,
         entries: Vec<ListEntry>,
     },
+    /// A protocol debug line from [`crate::debug_tap`] (`/set debug on`).
+    Debug(crate::debug_tap::DbgLine),
 }
 
 /// Something the UI wants the Matrix side to do.

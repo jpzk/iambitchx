@@ -314,6 +314,14 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
                 })
                 .collect()
         },
+        Line::Debug { cat, text } => {
+            let mut spans = vec![sp("DBG", fg(Color::Magenta).add_modifier(Modifier::BOLD))];
+            if !cat.is_empty() {
+                spans.push(sp(format!(" {cat}"), fg(Color::Magenta)));
+            }
+            spans.push(sp(format!(" {text}"), fg(Color::DarkGray)));
+            vec![g_line(spans)]
+        },
         Line::Undecryptable { nick, reason } => {
             vec![g_line(vec![
                 sp("[", k()),

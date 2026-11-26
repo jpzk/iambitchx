@@ -407,6 +407,7 @@ async fn sync_run(
             let tx = tx.clone();
             let me = me.clone();
             attempts.store(0, Ordering::SeqCst);
+            crate::debug_tap::on_sync(&resp, &tx);
             let away_changed = away_rx.has_changed().unwrap_or(false);
             async move {
                 for (room_id, update) in resp.rooms.joined {

@@ -114,6 +114,14 @@ pub fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// The flood guard's ` DBG (suppressed N)`.
+fn suppressed_line(n: u32) -> Line {
+    Line::Debug {
+        cat: String::new(),
+        text: format!("(suppressed {n})"),
+    }
+}
+
 /// One numbered window: the status window (no room) or a room.
 #[derive(Clone, Debug, Default)]
 pub struct Window {
@@ -311,7 +319,15 @@ pub struct App {
     /// A live mention arrived and `BEEP` is on: ring the bell once at the
     /// next draw (see [`Self::take_bell`]).
     pub bell: bool,
+    /// Debug tap settings last pushed to [`crate::debug_tap::configure`]
+    /// (starts at the tap's own defaults: off, all, raw off).
+    dbg_applied: (bool, String, bool),
+    /// DBG flood guard per window: (second, lines this second, suppressed).
+    dbg_flood: HashMap<usize, (i64, u32, u32)>,
 }
+
+/// DBG flood guard: at most this many DBG lines per second per window.
+pub const DBG_PER_SEC: u32 = 20;
 
 /// The connect-time self-whois: its lines are swallowed, the `ircname` row
 /// becomes [`App::display_name`].
@@ -367,6 +383,8 @@ impl App {
             display_name: None,
             probe: Probe::Start,
             bell: false,
+            dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
+            dbg_flood: HashMap::new(),
         }
     }
 
@@ -540,7 +558,9 @@ impl App {
 
     pub fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
         let ev = clean_event(ev);
+        self.apply_debug();
         match ev {
+            MxEvent::Debug(line) => self.debug_line(line),
             MxEvent::Room(snap) => return self.upsert_room(snap),
             MxEvent::Lines { room_id, lines, backfill } => {
                 let Some(idx) = self.window_of(&room_id) else {
@@ -719,6 +739,7 @@ impl App {
     /// AUTO_AWAY_TIME seconds without a keypress, go away with
     /// `Auto-Away after N mins`, unless already away (by hand or not).
     pub fn tick(&mut self) -> Vec<Effect> {
+        self.flush_debug();
         let secs = self.vars.auto_away_time;
         let now = self.now();
         if !self.auto_away_armed ||
@@ -862,6 +883,68 @@ impl App {
         self.error(format!(
             "Display name is still the away nick {cur}: type /back to restore {orig}"
         ));
+    }
+
+    /// Push `DEBUG` / `DEBUG_FILTER` / `DEBUG_RAW` to the debug tap when they
+    /// differ from what it has (cheap; runs before every Matrix event and
+    /// after `/set`).
+    pub fn apply_debug(&mut self) {
+        let v = &self.vars;
+        let want = (v.debug, v.debug_filter.clone(), v.debug_raw);
+        if want != self.dbg_applied {
+            crate::debug_tap::configure(want.0, &want.1, want.2);
+            self.dbg_applied = want;
+        }
+    }
+
+    /// A DBG line: room-scoped lines go to that room's window, the rest to
+    /// the status window; at most [`DBG_PER_SEC`] per window and second,
+    /// then one `DBG (suppressed N)` when the next second starts.
+    fn debug_line(&mut self, line: crate::debug_tap::DbgLine) {
+        let idx = line
+            .room
+            .as_deref()
+            .and_then(|r| OwnedRoomId::try_from(r).ok())
+            .and_then(|r| self.window_of(&r))
+            .unwrap_or(0);
+        let sec = self.now().div_euclid(1000);
+        let st = self.dbg_flood.entry(idx).or_insert((sec, 0, 0));
+        let mut suppressed = 0;
+        if st.0 != sec {
+            suppressed = st.2;
+            *st = (sec, 0, 0);
+        }
+        let show = st.1 < DBG_PER_SEC;
+        if show {
+            st.1 += 1;
+        } else {
+            st.2 += 1;
+        }
+        if suppressed > 0 {
+            self.windows[idx].push(None, suppressed_line(suppressed));
+        }
+        if show {
+            let cat = line.cat.name().to_string();
+            self.windows[idx].push(None, Line::Debug { cat, text: line.text });
+        }
+    }
+
+    /// Print the pending `DBG (suppressed N)` of windows whose second is over
+    /// (from [`Self::tick`], so a burst's tail is not lost).
+    fn flush_debug(&mut self) {
+        let sec = self.now().div_euclid(1000);
+        let mut out = vec![];
+        for (idx, st) in &mut self.dbg_flood {
+            if st.0 != sec && st.2 > 0 {
+                out.push((*idx, st.2));
+                *st = (sec, 0, 0);
+            }
+        }
+        for (idx, n) in out {
+            if let Some(w) = self.windows.get_mut(idx) {
+                w.push(None, suppressed_line(n));
+            }
+        }
     }
 
     /// Persist [`Self::vars`] (the away nick original) if there is a
@@ -1180,6 +1263,7 @@ impl App {
         if let Err(e) = self.vars.set(name, &value) {
             return self.info(e);
         }
+        self.apply_debug();
         let shown = self.vars.get(name).unwrap_or_else(|| "<EMPTY>".into());
         self.info(format!("Value of {name} set to {shown}"));
         match self.config_toml.clone() {
@@ -3026,6 +3110,112 @@ pub mod tests {
         assert_eq!(vars.auto_reply, "creed,bx");
         assert!(!vars.beep);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ---- protocol debug mode (DBG lines) --------------------------------
+
+    fn dbg(room: Option<&str>, text: &str) -> MxEvent {
+        MxEvent::Debug(crate::debug_tap::DbgLine {
+            cat: crate::debug_tap::Cat::Http,
+            room: room.map(str::to_owned),
+            text: text.into(),
+        })
+    }
+
+    fn dbg_texts(w: &Window) -> Vec<String> {
+        w.lines
+            .iter()
+            .filter_map(|l| {
+                match l {
+                    Line::Debug { cat, text } if cat.is_empty() => Some(text.clone()),
+                    Line::Debug { cat, text } => Some(format!("{cat} {text}")),
+                    _ => None,
+                }
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_debug_routing_and_flood_guard() {
+        const T0: i64 = 1_800_000_000_000;
+        let mut app = app();
+        app.fake_now = Some(T0);
+        let a = app.window_of(&owned_room_id!("!a:example.org")).unwrap();
+        app.handle_mx(dbg(None, "GET /_matrix/client/v3/sync 200 1.2s"));
+        app.handle_mx(dbg(Some("!nope:example.org"), "unknown room"));
+        assert_eq!(
+            dbg_texts(&app.windows[0]),
+            vec![
+                "http GET /_matrix/client/v3/sync 200 1.2s",
+                "http unknown room"
+            ],
+            "non-room / unknown-room lines go to the status window"
+        );
+        assert!(dbg_texts(&app.windows[a]).is_empty());
+
+        for i in 0..25 {
+            app.handle_mx(dbg(Some("!a:example.org"), &format!("l{i}")));
+        }
+        let shown = dbg_texts(&app.windows[a]);
+        assert_eq!(shown.len(), DBG_PER_SEC as usize);
+        assert_eq!(shown.last().unwrap(), "http l19");
+        // the status window has its own budget
+        app.handle_mx(dbg(None, "status still flows"));
+        assert_eq!(dbg_texts(&app.windows[0]).len(), 3);
+
+        // next second: the suppressed count first, then the line
+        app.fake_now = Some(T0 + 1000);
+        app.handle_mx(dbg(Some("!a:example.org"), "next"));
+        let shown = dbg_texts(&app.windows[a]);
+        assert_eq!(shown[20..], ["(suppressed 5)".to_string(), "http next".to_string()]);
+
+        // a burst's tail is flushed by the timer
+        for i in 0..22 {
+            app.handle_mx(dbg(Some("!a:example.org"), &format!("m{i}")));
+        }
+        app.fake_now = Some(T0 + 2500);
+        app.tick();
+        let shown = dbg_texts(&app.windows[a]);
+        assert_eq!(shown.last().unwrap(), "(suppressed 3)");
+        assert_eq!(shown.len(), 22 + 19 + 1);
+        app.tick();
+        assert_eq!(dbg_texts(&app.windows[a]).len(), 42, "flushed once");
+
+        let tl = crate::bitchx::format::format_line(
+            &Line::Debug {
+                cat: "sync".into(),
+                text: "next_batch=s1.. joined=3".into(),
+            },
+            "#r",
+        );
+        let s: String = tl
+            .iter()
+            .flat_map(|l| l.spans.iter())
+            .map(|s| s.content.as_ref())
+            .collect();
+        assert_eq!(s, " DBG sync next_batch=s1.. joined=3");
+        let tag = tl[0].spans.iter().find(|s| s.content == "DBG").unwrap();
+        assert_eq!(tag.style.fg, Some(ratatui::style::Color::Magenta));
+    }
+
+    #[test]
+    fn test_set_debug_configures_tap() {
+        let _tap = crate::debug_tap::tests::harness();
+        let mut app = app();
+        assert!(!crate::debug_tap::on());
+        typed(&mut app, "/set debug on");
+        assert!(crate::debug_tap::on());
+        assert!(crate::debug_tap::wants(crate::debug_tap::Cat::Sync));
+        typed(&mut app, "/set debug_filter http,auth");
+        assert!(crate::debug_tap::wants(crate::debug_tap::Cat::Http));
+        assert!(crate::debug_tap::wants(crate::debug_tap::Cat::Auth));
+        assert!(!crate::debug_tap::wants(crate::debug_tap::Cat::Sync));
+        typed(&mut app, "/set debug_raw on");
+        assert!(crate::debug_tap::raw());
+        typed(&mut app, "/set debug off");
+        assert!(!crate::debug_tap::on());
+        assert!(!crate::debug_tap::wants(crate::debug_tap::Cat::Http));
+        crate::debug_tap::configure(false, "all", false);
     }
 
     // ---- AUTO_AWAY (fake clock) -----------------------------------------
