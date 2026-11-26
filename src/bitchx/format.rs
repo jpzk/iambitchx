@@ -254,7 +254,12 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             ])]
         },
         Line::Raw(text) => vec![TLine::from(sp(text.clone(), n()))],
-        Line::Logo(text) => vec![TLine::from(sp(text.clone(), bold(Color::Blue)))],
+        Line::Logo(text) => {
+            vec![TLine::from(sp(
+                text.clone(),
+                bold(Color::Blue).add_modifier(Modifier::ITALIC),
+            ))]
+        },
         // ` [Users(#chan:n/m)]` (capture 25).
         Line::Users { chan, shown, total } => {
             let gr = fg(Color::Green);

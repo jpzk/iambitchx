@@ -102,7 +102,7 @@ mod tests {
     use ratatui::Terminal;
     use ratatui::backend::TestBackend;
     use ratatui::buffer::Buffer;
-    use ratatui::style::Color;
+    use ratatui::style::{Color, Modifier};
 
     use super::*;
     use crate::bitchx::app::tests::{alt, app};
@@ -219,9 +219,14 @@ mod tests {
         assert!(r[1].starts_with("Version (iambitchx-"), "{:?}", r[1]);
         assert!(r[2].starts_with("Process ["), "{:?}", r[2]);
         assert!(r[3].starts_with("Using terminal type ["), "{:?}", r[3]);
-        assert!(r[5].starts_with("     _                   ____  _ _"), "{:?}", r[5]);
-        assert!(r[6].starts_with("    (_) __ _ _ __ ___   | __ )"), "{:?}", r[6]);
-        assert_eq!(buf[(5, 5)].fg, Color::Blue);
+        // Slanted iamBitchX logo, verbatim, full word including the X.
+        for (i, l) in crate::bitchx::app::BANNER.iter().enumerate() {
+            assert!(l.len() <= 70);
+            assert!(r[5 + i].starts_with(&format!("    {l}")), "{:?}", r[5 + i]);
+        }
+        assert!(r[9].trim_end().ends_with("/_/|_|"), "X glyph: {:?}", r[9]);
+        assert_eq!(buf[(8, 5)].fg, Color::Blue);
+        assert!(buf[(8, 5)].modifier.contains(Modifier::ITALIC));
         assert!(r[10].starts_with("    [ iamBitchX-"), "{:?}", r[10]);
         assert!(
             r.iter()

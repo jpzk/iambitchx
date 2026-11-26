@@ -24,16 +24,14 @@ use crate::bitchx::status::{BxStatus, UserCounts};
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
 
-/// The iamBitchX logo shown in the status window: the original BitchX
-/// figlet art with an `iam` prefix (49 columns, fits 70 with the indent).
-/// ASCII rather than the original's CP437 art, which is mojibake in a
-/// UTF-8 terminal (recon 7).
+/// The iamBitchX logo shown in the status window, in figlet `slant` style
+/// (47 columns). Rendered italic where the terminal supports it.
 pub const BANNER: [&str; 5] = [
-    r" _                   ____  _ _       _     __  __",
-    r"(_) __ _ _ __ ___   | __ )(_) |_ ___| |__  \ \/ /",
-    r"| |/ _` | '_ ` _ \  |  _ \| | __/ __| '_ \  \  / ",
-    r"| | (_| | | | | | | | |_) | | || (__| | | | /  \ ",
-    r"|_|\__,_|_| |_| |_| |____/|_|\__\___|_| |_|/_/\_\",
+    r"    _               ____  _ __       __   _  __",
+    r"   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /",
+    r"  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /",
+    r" / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |",
+    r"/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|",
 ];
 
 /// The startup lines of window 1, as in recon captures 00/01: version
