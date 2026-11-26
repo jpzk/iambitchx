@@ -45,7 +45,7 @@ pub enum Line {
     Invite { nick: String, target: String },
     /// Any other ` text` line (server/login info, command output).
     Info(String),
-    /// An error line: ` BitchX: text`.
+    /// An error line: ` iamBitchX: text`.
     Error(String),
     /// An event we could not decrypt: ` [unable to decrypt: reason]`.
     Undecryptable { nick: String, reason: String },
@@ -131,7 +131,7 @@ pub enum MxEvent {
     /// Switch to this room's window (after /join, /query).
     Focus(OwnedRoomId),
     /// Our /join of this room completed in `millis`: focus it, print NAMES
-    /// and ` BitchX: Join to #chan was synched in X secs!!`.
+    /// and ` iamBitchX: Join to #chan was synched in X secs!!`.
     Synched { room_id: OwnedRoomId, millis: u64 },
     /// A `-:-` line for a room window, or the status window.
     Info { room_id: Option<OwnedRoomId>, line: Line },

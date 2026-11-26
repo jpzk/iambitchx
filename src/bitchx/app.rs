@@ -24,31 +24,33 @@ use crate::bitchx::status::{BxStatus, UserCounts};
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
 
-/// The BitchX logo shown in the status window. ASCII rather than the
-/// original's CP437 art, which is mojibake in a UTF-8 terminal (recon 7).
+/// The iamBitchX logo shown in the status window: the original BitchX
+/// figlet art with an `iam` prefix (49 columns, fits 70 with the indent).
+/// ASCII rather than the original's CP437 art, which is mojibake in a
+/// UTF-8 terminal (recon 7).
 pub const BANNER: [&str; 5] = [
-    r" ____  _ _       _     __  __",
-    r"| __ )(_) |_ ___| |__  \ \/ /",
-    r"|  _ \| | __/ __| '_ \  \  / ",
-    r"| |_) | | || (__| | | | /  \ ",
-    r"|____/|_|\__\___|_| |_|/_/\_\",
+    r" _                   ____  _ _       _     __  __",
+    r"(_) __ _ _ __ ___   | __ )(_) |_ ___| |__  \ \/ /",
+    r"| |/ _` | '_ ` _ \  |  _ \| | __/ __| '_ \  \  / ",
+    r"| | (_| | | | | | | | |_) | | || (__| | | | /  \ ",
+    r"|_|\__,_|_| |_| |_| |____/|_|\__\___|_| |_|/_/\_\",
 ];
 
 /// The startup lines of window 1, as in recon captures 00/01: version
-/// header, logo with its `[ version]` credit, then ` BitchX:` lines.
+/// header, logo with its `[ version]` credit, then ` iamBitchX:` lines.
 pub fn startup_lines(nick: &str) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
     let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
     let mut v = vec![
-        Line::Raw("BitchX - Based on EPIC Software Labs epic ircII (1998).".into()),
+        Line::Raw("iamBitchX - Matrix client in the style of BitchX by panasync".into()),
         Line::Raw(format!("Version (iambitchx-{ver}) -- Commit ({sha}).")),
         Line::Raw(format!("Process [{}]", std::process::id())),
         Line::Raw(format!("Using terminal type [{term}]")),
         Line::Raw(String::new()),
     ];
     v.extend(BANNER.iter().map(|b| Line::Logo(format!("    {b}"))));
-    v.push(Line::Logo(format!("    [ iambitchx-{ver}]           Matrix edition")));
+    v.push(Line::Logo(format!("    [ iamBitchX-{ver}]           Matrix edition")));
     v.push(Line::Raw(String::new()));
     v.push(Line::Error(format!("Auto Response is set to - {nick}")));
     v.push(Line::Error("Type /help for help".into()));
@@ -735,14 +737,17 @@ impl App {
             BitchxCommand::Op { target } => self.power(&target, 50),
             BitchxCommand::Deop { target } => self.power(&target, 0),
             BitchxCommand::Help => {
-                self.info(format!("Commands: /{}", COMMAND_NAMES.join(" /")));
+                self.info(format!("iamBitchX commands: /{}", COMMAND_NAMES.join(" /")));
                 self.info(
                     "Keys: Alt-1..9 window, Ctrl-N/Ctrl-P next/prev, PgUp/PgDn scroll, Tab nick",
                 );
                 vec![]
             },
             BitchxCommand::Version => {
-                self.info(format!("iambitchx {}", env!("CARGO_PKG_VERSION")));
+                self.info(format!(
+                    "iamBitchX {} (iambitchx) - in the style of BitchX by panasync",
+                    env!("CARGO_PKG_VERSION")
+                ));
                 vec![]
             },
             BitchxCommand::Encrypt => self.encrypt(),

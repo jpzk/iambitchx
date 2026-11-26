@@ -226,12 +226,12 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             ])]
         },
         Line::Info(text) => text.split('\n').map(|t| g_line(vec![sp(t, n())])).collect(),
-        // ` BitchX: text` ("BitchX" bold), as for client errors.
+        // ` iamBitchX: text` ("iamBitchX" bold), as for client errors.
         Line::Error(text) => {
             text.split('\n')
                 .map(|t| {
                     g_line(vec![
-                        sp("BitchX", n().add_modifier(Modifier::BOLD)),
+                        sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
                         sp(format!(": {t}"), n()),
                     ])
                 })
@@ -500,9 +500,9 @@ mod tests {
         assert_eq!(style_of(&format_line(&l, "#r"), "bob"), fg(Color::Magenta));
         // Capture 30: ` BitchX: Unknown command: FOO`, "BitchX" bold.
         let e = Line::Error("Unknown command: FOO".into());
-        assert_eq!(text(&e), " BitchX: Unknown command: FOO");
+        assert_eq!(text(&e), " iamBitchX: Unknown command: FOO");
         assert!(
-            style_of(&format_line(&e, "#r"), "BitchX")
+            style_of(&format_line(&e, "#r"), "iamBitchX")
                 .add_modifier
                 .contains(Modifier::BOLD)
         );

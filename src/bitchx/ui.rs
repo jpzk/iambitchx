@@ -15,7 +15,7 @@ use crate::bitchx::format::{format_line, n, sanitize, sp, wrap};
 use crate::bitchx::status::status_bg;
 
 /// `STATUS_FORMAT3`, the top bar shown with `/window split on` (capture 19).
-pub const TOP_BAR: &str = "BitchX by panasync";
+pub const TOP_BAR: &str = "iamBitchX (BitchX by panasync)";
 
 /// The scrollback rows of the current window that fit in `rows` x `width`,
 /// honouring (and clamping) its scroll offset. Top-aligned when short.
@@ -211,14 +211,22 @@ mod tests {
 
         assert_no_box_glyphs(&buf);
         // Recon 00/01: version header first, then the logo.
-        assert!(r[0].starts_with("BitchX - Based on EPIC"), "{:?}", r[0]);
+        assert!(
+            r[0].starts_with("iamBitchX - Matrix client in the style of BitchX by panasync"),
+            "{:?}",
+            r[0]
+        );
         assert!(r[1].starts_with("Version (iambitchx-"), "{:?}", r[1]);
         assert!(r[2].starts_with("Process ["), "{:?}", r[2]);
         assert!(r[3].starts_with("Using terminal type ["), "{:?}", r[3]);
-        assert!(r[5].starts_with("     ____  _ _"), "{:?}", r[5]);
+        assert!(r[5].starts_with("     _                   ____  _ _"), "{:?}", r[5]);
+        assert!(r[6].starts_with("    (_) __ _ _ __ ___   | __ )"), "{:?}", r[6]);
         assert_eq!(buf[(5, 5)].fg, Color::Blue);
-        assert!(r[10].starts_with("    [ iambitchx-"), "{:?}", r[10]);
-        assert!(r.iter().any(|l| l.starts_with(" BitchX: Auto Response is set to - carla")));
+        assert!(r[10].starts_with("    [ iamBitchX-"), "{:?}", r[10]);
+        assert!(
+            r.iter()
+                .any(|l| l.starts_with(" iamBitchX: Auto Response is set to - carla"))
+        );
         // Room list numbered by window, server-list style.
         assert!(r.iter().any(|l| l.starts_with("      2) #room [")), "{r:?}");
         assert!(
@@ -294,7 +302,7 @@ mod tests {
 
     #[test]
     fn test_window_split_top_bar() {
-        // Capture 19: `/window split on` puts `BitchX by panasync` (bold white
+        // Capture 19: `/window split on` puts TOP_BAR (bold white
         // on blue) on row 0 and pushes the output down one row.
         let mut app = room_app();
         let before = render(&mut app, 80, 12);
