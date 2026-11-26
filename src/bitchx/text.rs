@@ -127,12 +127,15 @@ pub fn clean_line(line: Line) -> Line {
         Line::Users { chan, shown, total } => Line::Users { chan: o(chan), shown, total },
         Line::Names { cells, width } => {
             Line::Names {
-                cells: cells.into_iter().map(|(f, n)| (f, o(n))).collect(),
+                cells: cells.into_iter().map(|(f, n, p)| (f, o(n), p)).collect(),
                 width,
             }
         },
         Line::WhoisNick { nick, mxid, info } => {
             Line::WhoisNick { nick: o(nick), mxid: o(mxid), info: o(info) }
+        },
+        Line::WhoisMark { nick, mxid, info, mark } => {
+            Line::WhoisMark { nick: o(nick), mxid: o(mxid), info: o(info), mark }
         },
         Line::WhoisRow { row, last, key, value } => {
             Line::WhoisRow { row, last, key: o(key), value: o(value) }

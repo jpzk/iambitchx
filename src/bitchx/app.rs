@@ -46,8 +46,9 @@ fn clean_event(ev: MxEvent) -> MxEvent {
         MxEvent::Info { room_id, line } => MxEvent::Info { room_id, line: clean_line(line) },
         MxEvent::OwnDisplayName(n) => MxEvent::OwnDisplayName(one_line(&n)),
         MxEvent::Away(a) => MxEvent::Away(a.map(|a| one_line(&a))),
-        MxEvent::Presence { user, away } => {
-            MxEvent::Presence { user, away: away.map(|a| one_line(&a)) }
+        MxEvent::Presence { user, mut presence } => {
+            presence.status_msg = presence.status_msg.map(|m| one_line(&m));
+            MxEvent::Presence { user, presence }
         },
         MxEvent::Verify { user, update: VerifyUpdate::Cancelled(r) } => {
             MxEvent::Verify {
