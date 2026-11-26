@@ -1,5 +1,4 @@
 <div align="center">
-    <h1><img width="200" height="200" src="docs/iambitchx.svg"></h1>
 
 [![Build Status](https://github.com/jpzk/iambitchx/actions/workflows/ci.yml/badge.svg)](https://github.com/jpzk/iambitchx/actions?query=workflow%3ACI+)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
@@ -17,6 +16,12 @@
 **iamBitchX** is a BitchX-style Matrix client for the terminal.
 Channels, not rooms. `/join #channel`, `/msg`, `/whois`, `/away`, `/set` —
 like back in the day, with end-to-end encryption underneath.
+
+Under the hood, iamBitchX runs on the Matrix backend of
+[iamb](https://github.com/ulyssa/iamb) by Ulyssa (sync, E2EE, store, on top of
+[matrix-rust-sdk](https://github.com/matrix-org/matrix-rust-sdk)). The
+frontend is new (the Vim UI is gone, BitchX took its place), and login and
+token handling were reworked (OAuth, device link, proactive refresh).
 
 ## Why BitchX?
 
