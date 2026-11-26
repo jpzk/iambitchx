@@ -90,7 +90,6 @@ assets = [
     ["iambitchx.desktop", "usr/share/applications/iambitchx.desktop", "644"],
     ["config.example.toml", "usr/share/iambitchx/config.example.toml", "644"],
     ["config.full.toml", "usr/share/iambitchx/config.full.toml", "644"],
-    ["docs/iambitchx.svg", "usr/share/icons/hicolor/scalable/apps/iambitchx.svg", "644"],
     ["docs/iambitchx.metainfo.xml", "usr/share/metainfo/iambitchx.metainfo.xml", "644"],
 ]
 
@@ -108,7 +107,6 @@ assets = [
     { source = "iambitchx.desktop", dest = "/usr/share/applications/iambitchx.desktop", mode = "644" },
     { source = "config.example.toml", dest = "/usr/share/iambitchx/config.example.toml", mode = "644"},
     { source = "config.full.toml", dest = "/usr/share/iambitchx/config.full.toml", mode = "644"},
-    { source = "docs/iambitchx.svg", dest = "/usr/share/icons/hicolor/scalable/apps/iambitchx.svg", mode = "644"},
     { source = "docs/iambitchx.metainfo.xml", dest = "/usr/share/metainfo/iambitchx.metainfo.xml", mode = "644"},
 ]
 
@@ -128,6 +126,5 @@ assets = [
     { source = "iambitchx.desktop", dest = "assets/iambitchx.desktop", mode = "644" },
     { source = "config.example.toml", dest = "assets/config.example.toml", mode = "644"},
     { source = "config.full.toml", dest = "assets/config.full.toml", mode = "644"},
-    { source = "docs/iambitchx.svg", dest = "assets/iambitchx.svg", mode = "644"},
     { source = "docs/iambitchx.metainfo.xml", dest = "assets/iambitchx.metainfo.xml", mode = "644"},
 ]

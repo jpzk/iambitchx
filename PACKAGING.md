@@ -35,9 +35,6 @@ you'll want to install as part of a package:
 | /config.example.toml    | /usr/share/iambitchx/config.example.toml             |
 | /config.full.toml       | /usr/share/iambitchx/config.full.toml                |
 | /themes/                | /usr/share/iambitchx/themes/                         |
-| /docs/iambitchx-256x256.png  | /usr/share/icons/hicolor/256x256/apps/iambitchx.png  |
-| /docs/iambitchx-512x512.png  | /usr/share/icons/hicolor/512x512/apps/iambitchx.png  |
-| /docs/iambitchx.svg          | /usr/share/icons/hicolor/scalable/apps/iambitchx.svg |
 | /docs/iambitchx.1            | /usr/share/man/man1/iambitchx.1                      |
 | /docs/iambitchx.5            | /usr/share/man/man5/iambitchx.5                      |
 | /docs/iambitchx.metainfo.xml | /usr/share/metainfo/iambitchx.metainfo.xml           |

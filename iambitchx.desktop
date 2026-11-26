@@ -6,7 +6,6 @@ MimeType=x-scheme-handler/matrix
 GenericName=Matrix Client
 Keywords=Matrix;matrix.org;chat;communications;talk;
 Name=iambitchx
-Icon=iambitchx
 StartupNotify=false
 Terminal=true
 TryExec=iambitchx
