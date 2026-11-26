@@ -1,217 +1,230 @@
-# AGENTS.md — iamBitchX code index
+# AGENTS.md — iamBitchX agent guide
 
-An index, not a tutorial. What this repo is, where each piece lives, and
-the handful of rules that turn CI red when ignored.
+BitchX 1.x-style Matrix client for the terminal. Fork of iamb. Read the
+hard rules, then jump to the recipe you need.
 
-## What this is
+## Hard rules (skim these if nothing else)
 
-- A **BitchX 1.x-style Matrix client** for the terminal: `/join #chan`,
-  `/msg`, `/whois`, `/away`, `/set`, `/names`, `/mode` — IRC vocabulary over
-  Matrix, E2EE underneath.
-- **Fork of [iamb](https://github.com/ulyssa/iamb)** (Apache-2.0, by Ulyssa).
-  The Matrix backend (sync, E2EE, store, `matrix-rust-sdk` 0.20) is iamb's.
-  The Vim frontend is **gone**; the BitchX frontend is new. Login/token
-  handling was reworked (OAuth + device link + proactive refresh).
-- Rust 2024 edition, toolchain pinned to **1.96** (`rust-toolchain.toml`).
-  Binary `iambitchx`. ~200 unit tests, all inline `#[cfg(test)]` modules —
-  there is no `tests/` directory.
-- origin: `https://github.com/jpzk/iambitchx.git`, base upstream commit
-  `fbc4700` (upstream history is intact; only our own commits are ours).
-- Work happens on **`main`**. Every `feat/*` branch is merged into it
-  (design of record for the frontend: `docs/v2-design.md`). The old
-  `feat/bitchx-v2` tip is kept as a remote branch; `main` is the trunk.
+1. **`src/bitchx/**` is pure** — no SDK types, no terminal I/O, no clock,
+   no network, no randomness. Anything impure goes behind an `Effect`.
+2. **Remote text never reaches the screen raw** — every nick, name, body,
+   topic, reason goes through `src/bitchx/text.rs` (F30/F31 are security
+   fixes). New `MxEvent` fields carrying remote strings → `clean_event()`.
+3. **Secrets never logged or printed** — `Secret` in `device_link.rs`,
+   redaction helpers in `debug_tap.rs`, `/recover` never echoes the key.
+4. **CI gate before every commit** — see *Definition of done* below. CI
+   red = not done. Never `--no-verify`, never skip `--locked`.
+5. **Never force-push `main`** without first writing a backup bundle to
+   `/workspace/backup/`. Never touch `/workspace/recon/`, `/workspace/ref/`,
+   `.github/workflows/*` pins, or `Cargo.lock` (unless bumping deps).
+
+One heavy build at a time on this box: all worktrees share one target
+dir, 4 cores, little disk. Long cargo runs go through `cs-job`.
+
+## Live facts — run, don't memorise
+
+Numbers in docs rot. Ask the repo instead:
+
+    git -C /workspace/iambitchx status -sb      # branch, ahead/behind
+    git worktree list                           # all worktrees + branches
+    git log --oneline -1 main                   # trunk tip
+    wc -l src/*.rs src/bitchx/*.rs | sort -n    # file sizes
+    grep -L 'cfg(test)' src/*.rs src/bitchx/*.rs  # files with no tests
+    grep -c '#\[test\]' src/*.rs src/bitchx/*.rs | awk -F: '{s+=$2}END{print s}'
+    ls themes | wc -l                           # packaged themes
+    df -h /workspace                            # disk (scarce!)
+
+At v0.1.0 (`c53d2b6`) `main` and `feat/bitchx-v2` point at the same
+commit; the main checkout sits on `feat/bitchx-v2`. Commit to the branch
+you are on; trunk is `main`.
+
+Files with no `#[cfg(test)]` (re-check with the grep above): `login.rs`,
+`main.rs`, `e2ee.rs`, `oauth.rs`, `tui.rs`, `src/bitchx/status.rs`, plus
+`src/bitchx/mod.rs` (module list only). A real gap — do not copy it.
 
 ## Tree map
 
-    src/            the binary (25 .rs files, ~15k lines)
+    src/            the binary: Matrix side + wiring
     src/bitchx/     the frontend: pure state machine + renderer
-    docs/           design docs, man pages, supply-chain notes (see map below)
-    themes/         62 packaged TOML themes
-    site/           GitHub Pages landing page (site/index.html)
-    .github/workflows/  CI: ci.yml, release.yml, binaries.yml, codeql.yml, pages.yml
-    flake.nix       nix build
-    Cargo.toml      deps, features (bundled sqlite), deb/rpm/tar packaging metadata
+    docs/           design docs, man pages, supply-chain notes
+    themes/         iamb-format TOML themes (packaged only, see below)
+    site/           GitHub Pages landing page
+    .github/workflows/  ci, release, binaries, codeql, pages + scripts
 
-Sibling dirs in `/workspace` are **not** part of this repo:
-
-    recon/          BitchX 1.3 reference material + captures (read-only)
-    ref/            upstream sources fetched for reference (read-only)
-    goal/           autopilot goal ledger dirs (history, not source)
-    bin/, scripts/  helper scripts (CI gate, dashboard) — outside the repo
-    *-wt/           git worktrees of this repo (see branches below)
+Outside the repo (in `/workspace`): `recon/`, `ref/` (read-only
+reference), `goal/` (goal ledgers), `bin/` + `scripts/` (CI gate,
+dashboards), `*-wt/` (worktrees), `backup/` (rollback bundles).
 
 ## Module index
 
-### Frontend — `src/bitchx/` (pure: no SDK, no terminal, no I/O)
+Frontend, `src/bitchx/` (pure):
 
-- `mod.rs` — module list only; `bitchx-frontend.md` + `bitchx-formats.md` are
-  the spec.
-- `app.rs` (4180 ln) — **the state machine**. `App` holds the numbered
-  `windows`, the input line, away state, `/set` vars, presence map,
-  verification state, the splash logo. Keys and Matrix events go in,
-  `Effect`s come out. Owns slash dispatch, `/window`, paging, the CP437
-  splash-logo renderer (`Logo::pick`, `App::fit_logo`).
-- `model.rs` — plain data shared by both sides: `Line`, `RoomSnapshot`,
-  `Member`, `Presence`, and the two boundary enums **`MxEvent`**
-  (Matrix→UI) and **`Effect`** (UI→Matrix). No SDK or terminal types here.
-- `commands.rs` — parser for the text after a leading `/`. Pure; dispatch
-  lives in `app.rs`.
-- `channels.rs` — `/join` target normalisation (`#x` → `#x:<own homeserver>`,
-  `matrix.to` links, `!ids`) and the `/list` directory lines.
-- `format.rs` — renders `Line`s with BitchX 1.3 "default bx" FSETs from
-  `include/color.h`. Ported formats, cited by file+line in comments.
-- `status.rs` — the two blue status lines (`STATUS_FORMAT1`/`2`,
-  `DOUBLE_STATUS_LINE`).
-- `ui.rs` — the screen: scrollback from row 0, two status lines, input line
-  on the last row. No borders, no box drawing.
-- `input.rs` — small readline: cursor, Ctrl-A/E/U/K/W, history, Tab nick
-  completion. Works on `char`s; display width belongs to the renderer.
-- `text.rs` — **remote-text hygiene**. Every nick, display name, body,
-  topic, room name and reason passes through here: F30 drops Unicode `Cf`
-  format chars (bidi, zero-width); F31 replaces control/line-separator chars
-  in one-line fields with spaces. Bodies keep their newlines.
-- `mention.rs` — BitchX `AUTO_REPLY` highlight detection (own nick, mxid,
-  display name, extra words; word-boundary, case-insensitive).
-- `vars.rs` — the `/set` variables: `TIMESTAMP`, `TIMESTAMP_STRING`,
-  `AUTO_AWAY`, `AUTO_AWAY_TIME`, `AWAY_NICK`, `AWAY_MSG`, `AUTO_AWAY_MSG`,
-  `AUTO_REPLY`, `BEEP`, `DEBUG`, `DEBUG_FILTER`, `DEBUG_RAW`.
-- `e2ee.rs` — pure text for the E2EE `-:-` lines (SAS emoji, decrypt
-  failures, in-room `m.key.verification.*`).
+- `app.rs` — **the state machine** and by far the biggest file. `App`
+  owns windows, input, away, `/set` vars, presence, verification,
+  splash logo. `handle_key`/`handle_mx` in, `Vec<Effect>` out;
+  `command()` is the slash dispatch. Test helpers `app()`, `typed()`.
+- `model.rs` — plain data (`Line`, `RoomSnapshot`, `Member`) and the two
+  boundary enums `MxEvent` (Matrix→UI) and `Effect` (UI→Matrix).
+- `commands.rs` — `parse()` for text after `/` → `BitchxCommand`;
+  `COMMAND_NAMES` feeds `/help`.
+- `channels.rs` — `/join` target normalisation, `/list` lines.
+- `format.rs` — BitchX 1.3 FSETs, cited by upstream file:line.
+- `status.rs` — the two blue status lines. `ui.rs` — the screen.
+- `input.rs` — readline (cursor, Ctrl-keys, history, Tab completion).
+- `text.rs` — remote-text hygiene (rule 2). `mention.rs` — highlights.
+- `vars.rs` — `/set` variables: `NAMES`, `Vars`, `BitchxConfig`, persist.
+- `e2ee.rs` — pure text for E2EE `-:-` lines.
 
-### Matrix side — `src/`
+Matrix side, `src/`:
 
-- `main.rs` — CLI parse, logging setup, tokio runtime (2 worker threads),
-  `umask(0o077)`, module wiring.
-- `login.rs` — builds the client (sqlite state + crypto store), restores or
-  creates a session, keeps `session.json` current.
-- `oauth.rs` — redirect-based OAuth login.
-- `device_link.rs` — OAuth 2.0 Device Authorization Grant (RFC 8628),
-  headless login. Secrets wrapped in `Secret` (redacted `Debug`, no
-  `Display`).
-- `session_guard.rs` — `session.json.lock` advisory lock around every
-  refresh and every write; `decide()` is the pure `M_UNKNOWN_TOKEN`
-  recovery policy; `--smoke` runs as `Mode::ReadOnly`.
-- `token_refresh.rs` — proactive refresh `REFRESH_MARGIN` before access
-  token expiry (SDK auto-refresh is off on purpose: it would rotate the
-  refresh token outside the lock).
-- `matrix.rs` — the sync loop: timeline → `Line`s, room snapshots,
-  history backfill, the `Effect` executor. Emits `MxEvent`s over a channel.
-- `e2ee.rs` — verification handlers (to-device + in-room), SAS flow,
-  `/devices`, `/trust`, `/recover`, `/encrypt`.
-- `debug_tap.rs` — protocol debug tap (`/set debug on`): `tracing` layer
-  for http/auth/crypto + sync hooks; redaction helpers strip query strings,
-  `Authorization`, token/secret/key-ish JSON fields, and mask bare
-  `mat_`/`mar_`/`syt_` tokens. Never blocks; drops on a full channel.
-- `config.rs` — TOML/JSON config: profiles (`user_id`, `url`), directories
-  for session / sqlite store / logs, `[settings]`, `[bitchx]`. Legacy `iamb`
-  app dir is still read.
-- `smoke.rs` — `--smoke`: restore session, one sync, render to a ratatui
-  `TestBackend`, print as text. Never refreshes, never writes.
-- `tui.rs` — raw mode + alternate screen; crossterm `EventStream` and the
-  Matrix channel multiplexed in one `select!`.
+- `main.rs` — CLI, logging, tokio runtime, `umask(0o077)`.
+- `tui.rs` — event loop: keys + `MxEvent` channel + tick in one
+  `select!`; hands each `Effect` to `matrix::spawn_effect`.
+- `matrix.rs` — sync loop, timeline → `Line`, snapshots, backfill, and
+  `run()`, the **`Effect` executor**.
+- `e2ee.rs` — verification, SAS, `/devices`, `/trust`, `/recover`.
+- `login.rs`, `oauth.rs`, `device_link.rs` — login paths.
+- `session_guard.rs` — `session.json.lock`; `decide()` = token-loss policy.
+- `token_refresh.rs` — proactive refresh (SDK auto-refresh is off on
+  purpose: it would rotate the refresh token outside the lock).
+- `debug_tap.rs` — `/set debug on` protocol tap, with redaction.
+- `config.rs` — profiles, dirs, `[settings]`, `[settings.bitchx]`.
+- `smoke.rs` — `--smoke`: one sync, render to text, never writes.
 
-## The one architectural rule
+Known purity exception: `App::set` calls `Vars::persist` (writes the
+config file) directly. Do not add more.
 
-`src/bitchx/**` is **pure**. No SDK types, no terminal I/O, no clock, no
-filesystem, no randomness. It is driven entirely by `App` + the two enums:
+## Recipe: add a /slash command
 
-- UI → Matrix: `Effect` (in `model.rs`)
-- Matrix → UI: `MxEvent` (in `model.rs`)
+1. `src/bitchx/commands.rs` — add a `BitchxCommand` variant; add the
+   word to `COMMAND_NAMES` (keeps `/help` honest); add an arm in
+   `parse()` using `Args` (`word`, `required_word`, `rest`, `finish`,
+   `none`). Test in the same file's `mod tests` via `ok("...")`.
+2. `src/bitchx/app.rs` — add the arm in `App::command()`. Purely local?
+   mutate `self`, emit lines via `info`/`error`, return `vec![]`.
+   Needs Matrix? return an `Effect` (next recipe). Not meaningful on
+   Matrix? add it to the "Not supported on Matrix" arm.
+3. Test in app.rs `mod tests`: `assert_eq!(typed(&mut app, "/foo x"),
+   vec![Effect::Foo(..)])` — see `test_commands_to_effects`.
+4. If BitchX has it, cite the upstream source (`source/*.c:line`).
 
-Anything that needs the network, the clock or the disk goes behind an
-`Effect` variant. Time and randomness enter through `App`'s `clock`,
-`fake_now`, `fake_mono` fields — that is how the UI is testable at all.
+## Recipe: add an Effect or MxEvent variant
 
-## Rules that turn CI red
+Effect (UI → Matrix):
 
-1. **Import order** — `use std::…` / blank line / other crates / blank
-   line / `use crate::…`. A braced `use` may pull from **one** module
-   only (no `foo::{bar, baz::qux}`). Enforced by
-   `.github/workflows/check-imports-format.sh`; it is a shell script, read
-   it before guessing.
-2. **`cargo +nightly fmt --all -- --check`** — nightly, because
-   `.rustfmt.toml` uses unstable options (`imports_layout`,
-   `force_multiline_blocks`, …). `max_width = 100`.
-3. **`cargo clippy --locked --all-targets -- -D warnings`** — no warnings.
-4. **`cargo test --locked`** — `Cargo.lock` is committed; always `--locked`.
-5. CI runs on ubuntu/windows/macos; clippy only on ubuntu.
+1. `src/bitchx/model.rs` — add the variant to `Effect`. Plain data only:
+   ruma id types are fine, SDK handles (`Room`, `Client`) are not.
+2. Emit it from `App` (usually in `command()`).
+3. `src/matrix.rs` — add the arm in `run()`. Report results back with
+   `tx.send(MxEvent::...)`; errors bubble as `anyhow` and are shown.
+   E2EE work lives in `src/e2ee.rs`; call it from the arm.
+4. Test the emit side in app.rs; test pure helpers in matrix.rs.
+
+MxEvent (Matrix → UI):
+
+1. Add the variant to `MxEvent` in `src/bitchx/model.rs`.
+2. Send it from `src/matrix.rs` (sync loop or an `Effect` arm).
+3. Handle it in `App::handle_mx()` in app.rs.
+4. Carries remote strings? sanitise them in `clean_event()` (rule 2).
+5. Test: feed `app.handle_mx(MxEvent::...)` and assert on lines/effects.
+
+## Recipe: add a /set variable
+
+All in `src/bitchx/vars.rs` unless noted:
+
+1. Add the UPPERCASE name to `NAMES` (sorted — it is the listing order).
+2. Add an `Option<..>` field to `BitchxConfig` (the config section).
+3. Add the field to `Vars` + its BitchX default in `Default` (cite
+   `include/config.h` / `source/vars.c` for the default).
+4. Wire `from_config`, `get`, `set` (use `boolean()` for ON/OFF/TOGGLE)
+   and the `persist` insert so the value round-trips.
+5. Read it where it matters in app.rs via `self.vars`.
+6. Test in vars.rs: set/get, bad value rejected, persist round-trip.
+
+## Recipe: add a theme
+
+`themes/` holds iamb-format TOML (`[theme.users]`, `[theme.default]`,
+…). Nothing in `src/` reads them today — the BitchX frontend hardcodes
+the `include/color.h` palette in `format.rs`/`status.rs`. They are only
+packaged (deb/rpm/tar globs in `Cargo.toml`). So:
+
+1. Copy an existing file, e.g. `themes/ayu-dark.toml`, keep the header
+   comment block (palette legend), rename, recolour.
+2. No code change; packaging picks it up via the glob.
+3. Making themes actually apply is a feature, not a recipe — design it
+   in `docs/` first.
+
+## Definition of done
+
+Run from the repo root (long ones as a `cs-job`):
+
+- [ ] /workspace/bin/bx-ci.sh quick — nightly fmt check + clippy, no
+      codegen. Use while iterating.
+- [ ] `cargo +nightly fmt --all -- --check` (nightly: `.rustfmt.toml`
+      uses unstable options; `max_width = 100`).
+- [ ] `cargo clippy --locked --all-targets -- -D warnings`
+- [ ] `cargo test --locked` (or bx-ci.sh testall).
+- [ ] `.github/workflows/check-imports-format.sh` — import order:
+      `std` / blank / external crates / blank / `crate::`. A braced
+      `use` pulls from ONE module only. Read the script, don't guess.
+- [ ] New behaviour has a test in the same file's `#[cfg(test)]`.
+- [ ] Remote strings sanitised, no secrets in logs (rules 2–3).
+- [ ] Docs touched if behaviour changed (`docs/bitchx-frontend.md`,
+      man pages `docs/iambitchx.1` / `docs/iambitchx.5`).
+
+CI also runs windows + macos; clippy only on ubuntu
+(`.github/workflows/ci.yml`).
+
+## Commit and push conventions
+
+- Identity: `jpzk <jendrik@madewithtea.com>` — check `git config
+  user.email` in a fresh worktree before committing.
+- Messages: `area: lowercase summary` (`docs:`, `ci:`, `startup:`,
+  `release:` …) — see `git log --oneline`.
+- **Same-length rename rule**: renaming a fixture/identifier? use a
+  replacement of the same length and sort slot, or fmt reflows and a
+  dozen tests go red. History scrubs use the same rule.
+- Never force-push `main`. If a rewrite is unavoidable: `git bundle
+  create /workspace/backup/iambitchx-<what>-<date>.bundle --all`
+  first, verify it, then push.
+- Don't push unless asked; leave the branch ahead of origin.
 
 ## Commands
 
-    cargo build                          # dev build
-    cargo build --release                # release binary
-    cargo +nightly fmt --all             # format
-    cargo clippy --all-targets -- -D warnings
-    cargo test --locked
+    cargo build --locked                    # dev build
+    cargo build --release --locked          # ./target/release/iambitchx
+    cargo +nightly fmt --all                # format
+    /workspace/bin/bx-ci.sh quick|test|testall|clippy|build|fmt
+    ./target/release/iambitchx -P <profile> # run
+    ./target/release/iambitchx --smoke      # headless self-check
 
-The local fast gate lives **outside the repo**: `/workspace/bin/bx-ci.sh`
-(`fmt` / `quick` / `test` / `testall` / `clippy` / `build`). `quick` =
-fmt + clippy check-only, no codegen — use it while iterating. `test` is
-slow (codegen + link) and holds the shared build lock.
+bx-ci.sh `test` = only bitchx tests; `testall` = everything. It forces
+incremental on and has a disk guard that prunes caches when low.
 
-Run the app: `./target/release/iambitchx` (add `-P <profile>` for a
-non-default profile). `--smoke` is the headless self-check.
+## Conventions
 
-## Conventions worth keeping
+- **BitchX fidelity**: ported formats cite upstream file+line
+  (`include/color.h:199`, `source/parse.c:596`). Keep the citation.
+- Time/randomness enter via `App`'s `clock`, `fake_now`, `fake_mono`.
+- Comments say *why* and cite sources; code says what.
+- Tests live next to the code; there is no `tests/` dir.
 
-- **BitchX fidelity**: ported formats cite the upstream file and line
-  (`include/color.h:199`, `source/parse.c:596`). Keep the citation when
-  touching them — it is the only link to the original.
-- **Remote text never reaches the screen raw** — route it through
-  `bitchx/text.rs`. F30/F31 are security fixes, not cosmetics.
-- **Secrets stay secret** — tokens, device codes and recovery keys are
-  never logged or printed; use `Secret` in `device_link.rs` and the
-  redaction helpers in `debug_tap.rs`.
-- **Renames are semantic changes**: fixtures need same-length, same-sort-slot
-  replacement names or `cargo fmt --check` and a dozen tests go red.
-- **Tests live next to the code** — add a `#[cfg(test)]` module in the same
-  file. `status.rs`, `tui.rs`, `oauth.rs`, `login.rs` and `e2ee.rs`
-  currently have none; that is a real gap, not an oversight to copy.
-- Comments explain *why* and cite sources; the code says what.
+## Docs map
 
-## Docs map (`docs/`)
+- `docs/project.md` — working notes and lessons. **Start here.**
+- `docs/v2-design.md` — frontend design of record.
+- `docs/bitchx-frontend.md` — frontend spec; `docs/bitchx-formats.md`
+  — FSETs with upstream citations.
+- `docs/bitchx-recon.md`, `docs/polish-diff.md` — real BitchX 1.3
+  behaviour vs ours.
+- `docs/ui-fixes.md` — F-numbered UI/security findings.
+- `docs/ci-supply-chain.md` — workflow pins and why.
+- `docs/release.md` — release pipeline; `docs/sdk-0.20-e2e.md` — e2e.
+- `docs/vuln-bump.md`, `docs/vuln-f03.md`, `docs/vuln-lock-versions.md`.
 
-- `project.md` — working notes: what it is, the CP437 splash-logo bug, the
-  history rewrite, lessons. **Start here.**
-- `v2-design.md` — design of record for `feat/bitchx-v2`.
-- `bitchx-frontend.md` — the frontend spec of record.
-- `bitchx-formats.md` — BitchX 1.3 default FSETs, with upstream citations.
-- `bitchx-recon.md`, `polish-diff.md` — recon of real BitchX 1.3 behaviour
-  and where v2 diverges.
-- `ui-fixes.md` — UI security/display findings (F-numbers) and their fix status.
-- `ci-supply-chain.md` — what the workflows pin and why.
-- `release.md` — release pipeline; `sdk-0.20-e2e.md` — live e2e checklist.
-- `vuln-bump.md`, `vuln-f03.md`, `vuln-lock-versions.md` — RustSec work.
-- `iambitchx.1`, `iambitchx.5` — man pages (packaged).
+## This machine
 
-## Branches and worktrees
-
-    /workspace/iambitchx   main               main working tree (trunk)
-    /workspace/dbg-wt      feat/dbg-mode      protocol debug tap
-    /workspace/pres-wt     feat/presence      presence UI
-    /workspace/ui-wt       feat/ui-fixes      UI/security fixes
-    /workspace/rel-wt      feat/release-attest release attestation
-    /workspace/sdk-wt      feat/sdk-0.20      matrix-sdk 0.20 upgrade
-
-All worktrees share one `CARGO_TARGET_DIR` (`/workspace/iambitchx/target`) —
-never run two cargo builds at once on this box.
-
-## This machine (read before building)
-
-- 4 cores, ~4 GB RAM, ~1.8 GB free disk on `/workspace` (76% used).
-- Toolchain lives in `/workspace/.cargo` (HOME=`/workspace`); symlinks in
-  `/usr/local/bin` survive, the rest does not after a VM restart.
-- Disk is the scarce resource: incremental caches grow per worktree.
-  `bx-ci.sh` has a disk guard that prunes them under 1.5 GB free — do not
-  disable incremental compilation.
-- Long builds must run as a background job (`cs-job`), never in the
-  foreground of a turn.
-- Only `/workspace` survives a VM restart.
-
-## Never touch
-
-- `target/`, `Cargo.lock` (unless a dependency bump is the task),
-  `.github/workflows/*` pins.
-- `/workspace/recon/` and `/workspace/ref/` — read-only reference material
-  (fetched upstream BitchX sources, captures).
-- `backup/*.bundle` — the rollback bundles for the history rewrite.
+- 4 cores, ~4 GB RAM; disk is the scarce resource (`df -h /workspace`).
+- Toolchain in `/workspace/.cargo` (HOME=`/workspace`), pinned in
+  `rust-toolchain.toml`. Only `/workspace` survives a VM restart.
+- Never disable incremental; never run two cargo builds at once.
