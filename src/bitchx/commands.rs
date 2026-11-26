@@ -378,7 +378,16 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             let reason = args.rest();
             BitchxCommand::Part { room, reason }
         },
-        "leave" => args.none(BitchxCommand::Leave)?,
+        // BitchX: /leave is an alias of /part, so it takes the same arguments.
+        "leave" if args.peek_word().is_none() => BitchxCommand::Leave,
+        "leave" => {
+            let room = match args.peek_word() {
+                Some(w) if is_room_ref(w) => args.word(),
+                _ => None,
+            };
+            let reason = args.rest();
+            BitchxCommand::Part { room, reason }
+        },
         "quit" => BitchxCommand::Quit { reason: args.rest() },
         "nick" => BitchxCommand::Nick { nick: args.required_rest("nick")? },
         "topic" => BitchxCommand::Topic { topic: args.required_rest("topic")? },
@@ -611,7 +620,11 @@ mod tests {
         });
         assert_eq!(ok("leave"), BitchxCommand::Leave);
         assert_eq!(ok("LEAVE"), BitchxCommand::Leave);
-        assert_eq!(parse("leave #a:b"), Err(invalid("leave", "#a:b")));
+        assert_eq!(ok("leave #a:b"), BitchxCommand::Part { room: Some(s("#a:b")), reason: None });
+        assert_eq!(ok("leave #a:b bye"), BitchxCommand::Part {
+            room: Some(s("#a:b")),
+            reason: Some(s("bye"))
+        });
     }
 
     #[test]
