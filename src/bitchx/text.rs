@@ -12,7 +12,7 @@
 //!   bodies keep their newlines (multi-line messages are legitimate); the
 //!   formatter indents their continuation rows under the text.
 
-use crate::bitchx::model::{Line, RoomSnapshot};
+use crate::bitchx::model::{Line, RoomSnapshot, Run};
 
 /// Unicode general category `Cf` (format characters, Unicode 15.1): bidi
 /// embeddings/overrides/isolates and marks, zero-width space/joiners,
@@ -144,6 +144,11 @@ pub fn clean_line(line: Line) -> Line {
         Line::Raw(t) => Line::Raw(o(t)),
         Line::Logo(t) => Line::Logo(o(t)),
         Line::LogoDim(t) => Line::LogoDim(o(t)),
+        Line::LogoRuns(runs) => {
+            Line::LogoRuns(
+                runs.iter().map(|r| Run { text: o(r.text.clone()), ..r.clone() }).collect(),
+            )
+        },
         Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
         l @ Line::WhoisRule => l,
     }

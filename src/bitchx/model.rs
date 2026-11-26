@@ -9,6 +9,28 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 use crate::bitchx::channels::{JoinTarget, ListArgs, ListEntry};
 pub use crate::bitchx::commands::Secret;
 
+/// A terminal colour, for the splash art.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Ink {
+    Default,
+    Black,
+    Red,
+    Blue,
+    Magenta,
+    Cyan,
+    White,
+}
+
+/// One run of the splash art: text with a foreground, a background and a
+/// bold flag.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct Run {
+    pub text: String,
+    pub fg: Ink,
+    pub bg: Ink,
+    pub bold: bool,
+}
+
 /// One scrollback line, already translated from Matrix into IRC terms.
 /// The channel name is filled in by the formatter from the window.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -62,6 +84,10 @@ pub enum Line {
     Logo(String),
     /// One row of the startup logo's shadow: no prefix, dim blue.
     LogoDim(String),
+    /// One row of the startup art in the original's own colours: a run of
+    /// text per colour change (the BitchX logo shades its 3D with
+    /// background colours).
+    LogoRuns(Vec<Run>),
     /// NAMES header: ` [Users(#chan:n/m)]`.
     Users { chan: String, shown: usize, total: usize },
     /// One NAMES grid row: `[@nick ] [ nick (zZzZ 4h) ]`, cells padded to `width`.

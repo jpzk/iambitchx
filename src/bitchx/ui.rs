@@ -32,7 +32,8 @@ pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static
         .flat_map(|(l, ts)| {
             let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
             // `%@`: the stamp leads the first row, in the default colours.
-            let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_));
+            let stamped =
+                !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_) | Line::LogoRuns(_));
             if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped) &&
                 let Some(first) = out.first_mut()
             {
@@ -323,6 +324,24 @@ mod tests {
         assert!(r[3].contains("original bitchx logo"), "{:?}", r[3]);
         // The iamb credit line is still above the art.
         assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
+
+        // The art is drawn in the original's colours: magenta/blue strokes
+        // and background shading.
+        let mut magenta = false;
+        let mut shaded = false;
+        for y in 6..30u16 {
+            for x in 0..120u16 {
+                let c = buf[(x, y)].clone();
+                if c.fg == Color::Magenta {
+                    magenta = true;
+                }
+                if c.bg != Color::Reset && c.bg != Color::Blue {
+                    shaded = true;
+                }
+            }
+        }
+        assert!(magenta, "the art has magenta strokes");
+        assert!(shaded, "the art has background shading");
     }
 
     #[test]

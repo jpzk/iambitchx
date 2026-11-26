@@ -6,7 +6,7 @@ use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line as TLine, Span};
 use unicode_width::UnicodeWidthChar;
 
-use crate::bitchx::model::{Line, PresenceMark};
+use crate::bitchx::model::{Ink, Line, PresenceMark};
 
 pub fn fg(c: Color) -> Style {
     Style::default().fg(c)
@@ -44,6 +44,19 @@ pub fn sanitize(s: &str) -> String {
 
 pub fn sp(text: impl Into<String>, style: Style) -> Span<'static> {
     Span::styled(sanitize(&text.into()), style)
+}
+
+/// The terminal colour for an [`Ink`]; `Default` keeps the terminal's own.
+pub fn ink_color(ink: Ink) -> Option<Color> {
+    Some(match ink {
+        Ink::Default => return None,
+        Ink::Black => Color::Black,
+        Ink::Red => Color::Red,
+        Ink::Blue => Color::Blue,
+        Ink::Magenta => Color::Magenta,
+        Ink::Cyan => Color::Cyan,
+        Ink::White => Color::White,
+    })
 }
 
 /// The leading glyph of every client/event line: a single (dark-grey) space,
@@ -351,6 +364,26 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
                 text.clone(),
                 fg(Color::Blue).add_modifier(Modifier::DIM),
             ))]
+        },
+        // The splash art in the original's own colours: one span per run.
+        Line::LogoRuns(runs) => {
+            let spans: Vec<Span<'static>> = runs
+                .iter()
+                .map(|r| {
+                    let mut st = Style::default();
+                    if let Some(c) = ink_color(r.fg) {
+                        st = st.fg(c);
+                    }
+                    if let Some(c) = ink_color(r.bg) {
+                        st = st.bg(c);
+                    }
+                    if r.bold {
+                        st = st.add_modifier(Modifier::BOLD);
+                    }
+                    sp(r.text.clone(), st)
+                })
+                .collect();
+            vec![TLine::from(spans)]
         },
         // ` [Users(#chan:n/m)]` (capture 25).
         Line::Users { chan, shown, total } => {
