@@ -35,7 +35,7 @@ pub fn utd_reason(reason: &UnableToDecryptReason) -> String {
             format!("key withheld: {code}")
         },
         UnableToDecryptReason::MissingMegolmSession { withheld_code: None } => {
-            "missing room key".into()
+            "missing session key".into()
         },
         UnableToDecryptReason::UnknownMegolmMessageIndex => "unknown message index".into(),
         UnableToDecryptReason::MalformedEncryptedEvent => "malformed event".into(),
@@ -112,17 +112,17 @@ mod tests {
     #[test]
     fn test_utd_lines() {
         let r = UnableToDecryptReason::MissingMegolmSession { withheld_code: None };
-        assert_eq!(utd_reason(&r), "missing room key");
+        assert_eq!(utd_reason(&r), "missing session key");
         let r = UnableToDecryptReason::MissingMegolmSession {
             withheld_code: Some(WithheldCode::Unverified),
         };
         assert!(utd_reason(&r).starts_with("key withheld: "));
         let l = Line::Undecryptable {
             nick: "armin".into(),
-            reason: "missing room key".into(),
+            reason: "missing session key".into(),
         };
         let r = format_line(&l, "#r");
-        assert_eq!(text(&r[0]), " [unable to decrypt: missing room key] from armin");
+        assert_eq!(text(&r[0]), " [unable to decrypt: missing session key] from armin");
     }
 
     #[test]

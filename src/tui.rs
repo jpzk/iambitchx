@@ -44,11 +44,7 @@ fn setup() -> std::io::Result<Terminal<CrosstermBackend<Stdout>>> {
 /// Seed the app with the rooms the client already knows about.
 pub async fn seed(app: &mut App, client: &Client) {
     let me = app.me.clone();
-    // BitchX prints its numbered server list grouped by network; we print
-    // the joined rooms grouped by homeserver, numbered by window (recon 7).
-    app.status_info(format!("Current homeserver: {}", client.homeserver()));
-    app.status_info("Room list:");
-    app.status_info(format!("[{}]", me.server_name()));
+    app.channel_list_header(client.homeserver().as_str());
     let mut rooms = client.joined_rooms();
     rooms.sort_by_key(|r| r.room_id().to_owned());
     for room in rooms {
