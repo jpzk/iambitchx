@@ -5,7 +5,7 @@
 //! STATUS_FORMAT2 in BitchX1.3 `include/color.h`, with the expandos of
 //! `source/status.c`.
 use ratatui::style::{Color, Modifier as StyleModifier, Style};
-use ratatui::text::Line;
+use ratatui::text::{Line, Span};
 
 use crate::bitchx::format::sp;
 use crate::bitchx::model::PresenceMark;
@@ -82,7 +82,12 @@ pub struct BxStatus {
     pub voice: bool,
     /// `%C`; `None` in the status window and in query (DM) windows.
     pub channel: Option<String>,
-    /// `%Q`: the query target of a DM window.
+    /// The window name shown in `[%C]` when there is no channel: the status
+    /// window reads `[status]`, not an empty `[]`.
+    pub window: Option<String>,
+    /// `%Q`: the query target of a DM window. Its bracket also carries the
+    /// room modes (`[Query: x(+e)]` for an encrypted DM); a query window has
+    /// no `[%C]`.
     pub query: Option<String>,
     /// The query target's presence marker: `zZzZ 4h` (unavailable) or
     /// `off 2d` (offline); `None` while online or currently active.
@@ -138,26 +143,35 @@ impl BxStatus {
 
         s.push(sp("]", st_punct()));
 
-        // `[%C%+]`: BitchX prints `[]` when there is no channel (capture 02)
-        // and truncates the channel to 10 columns (`#bxrecon-0`).
-        s.push(sp(" [", st_punct()));
-        if let Some(chan) = &self.channel {
-            s.push(sp(truncate(chan, CHANNEL_WIDTH), st_text()));
-
+        let modes = |s: &mut Vec<Span<'static>>| {
             if !self.modes.is_empty() {
                 s.push(sp("(", st_bright()));
                 s.push(sp("+", st_punct()));
                 s.push(sp(self.modes.clone(), st_text()));
                 s.push(sp(")", st_bright()));
             }
-        }
-        s.push(sp("]", st_punct()));
+        };
 
-        // `%Q` (STATUS_QUERY ` [Query: %W%Q]`), after a double space.
+        // `[%C%+]`, the channel truncated to 10 columns (`#bxrecon-0`).
+        // BitchX prints `[]` when there is no channel (capture 02); we show
+        // the window name there (`[status]`). A query window has no `[%C]`.
+        if self.query.is_none() {
+            s.push(sp(" [", st_punct()));
+            if let Some(chan) = &self.channel {
+                s.push(sp(truncate(chan, CHANNEL_WIDTH), st_text()));
+                modes(&mut s);
+            } else if let Some(w) = &self.window {
+                s.push(sp(truncate(w, CHANNEL_WIDTH), st_text()));
+            }
+            s.push(sp("]", st_punct()));
+        }
+
+        // `%Q` (STATUS_QUERY ` [Query: %W%Q]`), with the room modes.
         if let Some(q) = &self.query {
-            s.push(sp("  [", st_punct()));
+            s.push(sp(" [", st_punct()));
             s.push(sp("Query: ", st_text()));
             s.push(sp(q.clone(), st_bright()));
+            modes(&mut s);
             if let Some(mark) = &self.query_away {
                 s.push(sp(" (", st_punct()));
                 let word = if mark.offline { st_text() } else { st_away() };

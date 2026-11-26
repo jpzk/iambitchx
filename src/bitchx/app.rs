@@ -9,7 +9,7 @@ use std::time::Instant;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
-use crate::bitchx::channels::{list_lines, normalize_join, short_name};
+use crate::bitchx::channels::{list_lines, normalize_join};
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, VerifyCmd, parse};
 use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
 use crate::bitchx::format::names_cell_width;
@@ -24,10 +24,48 @@ use crate::bitchx::model::{
     RoomSnapshot,
     VerifyAction,
     VerifyUpdate,
+    nick_of,
+    register_me,
+    same_localpart,
     whois_idle,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
+use crate::bitchx::text::{clean_line, clean_snapshot, one_line};
 use crate::bitchx::vars::{Vars, expand_auto_away_msg, expand_away_nick, lookup, strip_away_nick};
+
+/// F30/F31: everything from the Matrix side is remote text. Strip format
+/// characters everywhere and keep one-line fields on one line before any of
+/// it is stored or shown.
+fn clean_event(ev: MxEvent) -> MxEvent {
+    match ev {
+        MxEvent::Room(snap) => MxEvent::Room(clean_snapshot(snap)),
+        MxEvent::Lines { room_id, lines, backfill } => {
+            let lines = lines.into_iter().map(|(id, ts, l)| (id, ts, clean_line(l))).collect();
+            MxEvent::Lines { room_id, lines, backfill }
+        },
+        MxEvent::Info { room_id, line } => MxEvent::Info { room_id, line: clean_line(line) },
+        MxEvent::OwnDisplayName(n) => MxEvent::OwnDisplayName(one_line(&n)),
+        MxEvent::Away(a) => MxEvent::Away(a.map(|a| one_line(&a))),
+        MxEvent::Presence { user, away } => {
+            MxEvent::Presence { user, away: away.map(|a| one_line(&a)) }
+        },
+        MxEvent::Verify { user, update: VerifyUpdate::Cancelled(r) } => {
+            MxEvent::Verify {
+                user,
+                update: VerifyUpdate::Cancelled(one_line(&r)),
+            }
+        },
+        MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) } => {
+            let e = e.into_iter().map(|(a, b)| (one_line(&a), one_line(&b))).collect();
+            MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) }
+        },
+        ev => ev,
+    }
+}
+
+/// The status window's name, shown where a channel window shows its
+/// channel: prompt `[status]`, status bar `[status]`.
+pub const STATUS_NAME: &str = "status";
 
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
@@ -85,6 +123,10 @@ pub struct Window {
     /// Rows scrolled up from the bottom (PageUp/PageDown).
     pub scroll: usize,
     pub backfill_requested: bool,
+    /// F29: the room name cannot be trusted as a channel name (it clashes
+    /// with another window, or poses as an alias on our own server, which
+    /// real aliases never show): the room ID is shown instead.
+    pub spoof: bool,
 }
 
 impl Window {
@@ -94,7 +136,13 @@ impl Window {
 
     /// The `#channel` shown in the prompt and status line.
     pub fn channel(&self) -> Option<&str> {
-        self.room.room_id.as_ref().map(|_| self.room.name.as_str())
+        self.room.room_id.as_ref().map(|id| {
+            if self.spoof {
+                id.as_str()
+            } else {
+                self.room.name.as_str()
+            }
+        })
     }
 
     /// In a query (DM) window, `<nick>` lines become BitchX query lines:
@@ -155,18 +203,28 @@ impl Window {
         self.times.clear();
     }
 
-    fn member_by_nick(&self, nick: &str) -> Option<&Member> {
+    /// Members this nick may mean: the displayed (maybe qualified) nick or
+    /// the bare localpart, case-insensitively.
+    fn members_by_nick(&self, nick: &str) -> Vec<OwnedUserId> {
         let nick = nick.to_lowercase();
-        self.room
+        let exact: Vec<OwnedUserId> = self
+            .room
             .members
             .iter()
-            .find(|m| m.nick.to_lowercase() == nick)
-            .or_else(|| {
-                self.room
-                    .members
-                    .iter()
-                    .find(|m| m.user_id.localpart().to_lowercase() == nick)
-            })
+            .filter(|m| m.nick.to_lowercase() == nick)
+            .map(|m| m.user_id.clone())
+            .collect();
+        let local: Vec<OwnedUserId> = self
+            .room
+            .members
+            .iter()
+            .filter(|m| m.user_id.localpart().to_lowercase() == nick)
+            .map(|m| m.user_id.clone())
+            .collect();
+        // The shown nick is already disambiguated (`bob` next to
+        // `bob@evil.org`); a bare localpart shown nowhere (both users
+        // qualified) matches all of them.
+        if exact.is_empty() { local } else { exact }
     }
 }
 
@@ -262,6 +320,7 @@ pub enum Probe {
 
 impl App {
     pub fn new(me: OwnedUserId) -> Self {
+        register_me(&me);
         let mut status = Window::default();
         for line in startup_lines(me.localpart()) {
             status.push(None, line);
@@ -440,6 +499,7 @@ impl App {
             chanop: me.is_some_and(Member::is_op),
             voice: me.is_some_and(Member::is_voice),
             channel: win.channel().filter(|_| win.room.dm_peer.is_none()).map(str::to_string),
+            window: win.room.room_id.is_none().then(|| STATUS_NAME.to_string()),
             query: win.room.dm_peer.as_ref().map(|_| win.room.name.clone()),
             query_away: win
                 .room
@@ -459,13 +519,14 @@ impl App {
     pub fn prompt(&self) -> String {
         match self.cur().channel() {
             Some(c) => format!("[{c}] "),
-            None => "[0] ".to_string(),
+            None => format!("[{STATUS_NAME}] "),
         }
     }
 
     // ---- Matrix events ------------------------------------------------
 
     pub fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
+        let ev = clean_event(ev);
         match ev {
             MxEvent::Room(snap) => return self.upsert_room(snap),
             MxEvent::Lines { room_id, lines, backfill } => {
@@ -523,6 +584,7 @@ impl App {
                 if let Some(idx) = self.window_of(&room_id) {
                     let name = self.windows[idx].room.name.clone();
                     self.windows.remove(idx);
+                    self.mark_spoofs();
                     if self.current >= idx && self.current > 0 {
                         self.current -= 1;
                     }
@@ -584,20 +646,28 @@ impl App {
         vec![]
     }
 
-    fn upsert_room(&mut self, snap: RoomSnapshot) -> Vec<Effect> {
+    fn upsert_room(&mut self, mut snap: RoomSnapshot) -> Vec<Effect> {
         let Some(room_id) = snap.room_id.clone() else {
             return vec![];
         };
+        // F28: nicks are qualified only once every member is known.
+        for m in &snap.members {
+            nick_of(&m.user_id);
+        }
+        for m in &mut snap.members {
+            m.nick = nick_of(&m.user_id);
+        }
 
         if let Some(idx) = self.window_of(&room_id) {
             self.windows[idx].room = snap;
+            self.mark_spoofs();
             return vec![];
         }
 
         let refnum = self.windows.len() + 1;
         let what = match &snap.dm_peer {
             Some(peer) => format!("query with {peer}"),
-            None => format!("{} users", snap.members.len()),
+            None => format!("{} users, {room_id}", snap.members.len()),
         };
         self.status_info(format!("{refnum:>6}) {} [{what}]", snap.name));
 
@@ -610,6 +680,7 @@ impl App {
             win.push(None, Line::Topic { nick: None, topic });
         }
         self.windows.push(win);
+        self.mark_spoofs();
         vec![]
     }
 
@@ -934,35 +1005,125 @@ impl App {
         }
     }
 
-    /// Resolve `@user:server`, or a nick/localpart in the current window
-    /// (then any window), to a user ID.
+    /// Resolve `@user:server`, `nick@server`, or a nick/localpart in the
+    /// current window (then any window), to exactly one user ID.
+    ///
+    /// F28: a nick is only a localpart, unique per homeserver. When it fits
+    /// more than one user (in the current window, or across windows when it
+    /// is not in the current one) the command is refused with the
+    /// candidates rather than guessing: `/op`, `/kick`, `/msg` ... must hit
+    /// the user the operator meant.
     pub fn resolve_user(&self, target: &str) -> Result<OwnedUserId, String> {
         if target.starts_with('@') {
             return UserId::parse(target).map_err(|e| format!("Invalid user ID {target}: {e}"));
         }
+        if let Some((local, server)) = target.split_once('@') {
+            let id = format!("@{local}:{server}");
+            return UserId::parse(&id).map_err(|e| format!("Invalid nick {target}: {e}"));
+        }
 
-        std::iter::once(self.cur())
-            .chain(self.windows.iter())
-            .find_map(|w| w.member_by_nick(target))
-            .map(|m| m.user_id.clone())
-            .or_else(|| {
-                self.windows
-                    .iter()
-                    .find(|w| w.room.name.eq_ignore_ascii_case(target))
-                    .and_then(|w| w.room.dm_peer.clone())
-            })
-            .ok_or_else(|| format!("{target}: No such nick"))
+        let one = |cands: Vec<OwnedUserId>| -> Option<Result<OwnedUserId, String>> {
+            let mut cands = cands;
+            cands.sort();
+            cands.dedup();
+            match cands.len() {
+                0 => None,
+                1 => Some(Ok(cands.remove(0))),
+                _ => {
+                    let list: Vec<String> = cands.iter().map(ToString::to_string).collect();
+                    Some(Err(format!(
+                        "{target}: Ambiguous nick, matches {} -- use the full user ID",
+                        list.join(" ")
+                    )))
+                },
+            }
+        };
+        if let Some(r) = one(self.cur().members_by_nick(target)) {
+            return r;
+        }
+        let everywhere = self.windows.iter().flat_map(|w| w.members_by_nick(target));
+        let dms = self
+            .windows
+            .iter()
+            .filter(|w| w.room.name.eq_ignore_ascii_case(target))
+            .filter_map(|w| w.room.dm_peer.clone());
+        if let Some(r) = one(everywhere.chain(dms).collect()) {
+            return r;
+        }
+        // Not in any window: still refuse if we have seen several.
+        let seen = same_localpart(target);
+        if seen.len() > 1 &&
+            let Some(r) = one(seen)
+        {
+            return r;
+        }
+        Err(format!("{target}: No such nick"))
     }
 
-    /// Find a window by refnum, `#name`, room ID or alias.
+    /// Find a window by refnum, `#name`, room ID or alias. A name that fits
+    /// several windows finds none (see [`Self::window_clash`]).
     pub fn find_window(&self, target: &str) -> Option<usize> {
         if let Ok(n) = target.parse::<usize>() {
             return (n >= 1 && n <= self.windows.len()).then(|| n - 1);
         }
-        self.windows.iter().position(|w| {
-            w.room.name.eq_ignore_ascii_case(target) ||
-                w.room_id().is_some_and(|r| r.as_str() == target)
+        if let Some(i) = self
+            .windows
+            .iter()
+            .position(|w| w.room_id().is_some_and(|r| r.as_str() == target))
+        {
+            return Some(i);
+        }
+        let mut by_name = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| w.room.name.eq_ignore_ascii_case(target));
+        match (by_name.next(), by_name.next()) {
+            (Some((i, _)), None) => Some(i),
+            _ => None,
+        }
+    }
+
+    /// F29: room names are free text, so `#rust:matrix.org` may be the name
+    /// of more than one room. Commands that pick a window by name refuse
+    /// such a name and list the room IDs.
+    pub fn window_clash(&self, target: &str) -> Option<String> {
+        let ids: Vec<String> = self
+            .windows
+            .iter()
+            .enumerate()
+            .filter(|(_, w)| w.room.name.eq_ignore_ascii_case(target))
+            .filter_map(|(i, w)| w.room_id().map(|r| format!("{r} (window {})", i + 1)))
+            .collect();
+        (ids.len() > 1).then(|| {
+            format!(
+                "{target}: Ambiguous channel, matches {} -- use the room ID or window number",
+                ids.join(", ")
+            )
         })
+    }
+
+    /// [`Self::find_window`] for a command argument: prints the clash.
+    fn window_arg(&mut self, target: &str) -> Option<usize> {
+        if let Some(e) = self.window_clash(target) {
+            self.error(e);
+            return None;
+        }
+        self.find_window(target)
+    }
+
+    /// Recompute [`Window::spoof`] after rooms came or went.
+    fn mark_spoofs(&mut self) {
+        let own = format!(":{}", self.me.server_name());
+        let names: Vec<String> = self.windows.iter().map(|w| w.room.name.to_lowercase()).collect();
+        for (i, w) in self.windows.iter_mut().enumerate().skip(1) {
+            let name = w.room.name.to_lowercase();
+            let clash = names.iter().enumerate().any(|(j, n)| j != i && *n == name);
+            // Our own aliases are shown short (`#x`), so `#x:<our server>`
+            // is a room name dressed up as one.
+            let fake_own = name.starts_with('#') && name.ends_with(&own);
+            w.spoof = clash || fake_own;
+        }
     }
 
     fn user_cmd(&mut self, target: &str) -> Option<OwnedUserId> {
@@ -1018,9 +1179,14 @@ impl App {
         match cmd {
             BitchxCommand::Me { text } | BitchxCommand::Action { text } => self.say(text, true),
             BitchxCommand::Msg { target, text } => {
+                if let Some(e) = self.window_clash(&target) {
+                    self.error(e);
+                    return vec![];
+                }
                 if let Some(idx) = self.find_window(&target).filter(|i| *i > 0) {
                     let room_id = self.windows[idx].room_id().cloned().unwrap();
-                    self.info(format!("-> [{}] {text}", self.windows[idx].room.name));
+                    let chan = self.windows[idx].channel().unwrap_or_default().to_string();
+                    self.info(format!("-> [{chan}] {text}"));
                     return vec![Effect::Send { room_id, text, emote: false }];
                 }
                 match self.user_cmd(&target) {
@@ -1050,6 +1216,10 @@ impl App {
                 vec![]
             },
             BitchxCommand::Query { target: Some(target) } => {
+                if let Some(e) = self.window_clash(&target) {
+                    self.error(e);
+                    return vec![];
+                }
                 if let Some(idx) = self.find_window(&target).filter(|i| *i > 0) {
                     return self.switch(idx);
                 }
@@ -1058,7 +1228,7 @@ impl App {
             BitchxCommand::Join { room, .. } => self.join(&room),
             BitchxCommand::Part { room, reason } => {
                 let idx = match room {
-                    Some(r) => self.find_window(&r).filter(|i| *i > 0),
+                    Some(r) => self.window_arg(&r).filter(|i| *i > 0),
                     None => Some(self.current).filter(|i| *i > 0),
                 };
                 match idx.and_then(|i| self.windows[i].room_id().cloned()) {
@@ -1131,7 +1301,7 @@ impl App {
                 vec![]
             },
             BitchxCommand::Window { target: Some(t) } => {
-                match self.find_window(&t) {
+                match self.window_arg(&t) {
                     Some(idx) => self.switch(idx),
                     None => {
                         self.error(format!("No such window: {t}"));
@@ -1149,9 +1319,7 @@ impl App {
             BitchxCommand::PrevWindow => self.prev_window(),
             BitchxCommand::Invite { target, room } => {
                 let room_id = match room {
-                    Some(r) => {
-                        self.find_window(&r).and_then(|i| self.windows[i].room_id().cloned())
-                    },
+                    Some(r) => self.window_arg(&r).and_then(|i| self.windows[i].room_id().cloned()),
                     None => self.cur().room_id().cloned(),
                 };
                 let Some(room_id) = room_id else {
@@ -1376,7 +1544,7 @@ impl App {
 
     fn target_window(&mut self, target: Option<String>) -> Option<usize> {
         let idx = match target {
-            Some(t) => self.find_window(&t),
+            Some(t) => self.window_arg(&t),
             None => Some(self.current),
         };
         match idx.filter(|i| *i > 0) {
@@ -1492,8 +1660,10 @@ impl App {
         self.info(format!("End of /WHO list for {}", room.name));
     }
 
-    /// `/join`: an already joined channel just switches to its window;
-    /// otherwise ask the Matrix side, which opens a window on success.
+    /// `/join`: a room ID we are in just switches to its window; anything
+    /// else asks the Matrix side, which opens (or focuses) the window on
+    /// success. F29: an alias is always resolved by the server, never
+    /// matched against room names, which anyone can set to `#rust:x`.
     fn join(&mut self, target: &str) -> Vec<Effect> {
         let own = self.me.server_name().to_string();
         let t = match normalize_join(target, &own) {
@@ -1503,8 +1673,10 @@ impl App {
                 return vec![];
             },
         };
-        let short = short_name(&t.id, &own);
-        let idx = self.find_window(&short).or_else(|| self.find_window(&t.id));
+        let idx = self
+            .windows
+            .iter()
+            .position(|w| w.room_id().is_some_and(|r| r.as_str() == t.id));
         if let Some(idx) = idx.filter(|i| *i > 0) {
             return self.switch(idx);
         }
@@ -1846,7 +2018,7 @@ pub mod tests {
         assert_eq!(app.refnum(), STATUS_REFNUM);
         assert_eq!(app.windows[1].channel(), Some("#room"));
         assert_eq!(app.cur().channel(), None);
-        assert_eq!(app.prompt(), "[0] ");
+        assert_eq!(app.prompt(), "[status] ");
     }
 
     #[test]
@@ -2051,9 +2223,15 @@ pub mod tests {
             implicit_server: true,
             via: vec![],
         })]);
-        // Already joined (window name is the short alias): just switch.
+        // An alias always goes to the server (F29: room names can pose as
+        // aliases); a joined room ID just switches.
+        assert_eq!(typed(&mut app, "/join #other:example.org"), vec![Effect::Join(JoinTarget {
+            id: "#other:example.org".into(),
+            implicit_server: false,
+            via: vec![],
+        })]);
         assert!(
-            typed(&mut app, "/join #other:example.org")
+            typed(&mut app, "/join !b:example.org")
                 .iter()
                 .all(|e| !matches!(e, Effect::Join(_)))
         );
@@ -2965,5 +3143,210 @@ pub mod tests {
         app.config_toml = Some(path.to_path_buf());
         probe(&mut app, name);
         app
+    }
+
+    /// A room with `@f28bob:example.org` (our server), `@f28bob:evil.org`
+    /// and `@carla:evil.org` (our localpart on another server).
+    fn collision_app() -> App {
+        let mut app = App::new(owned_user_id!("@carla:example.org"));
+        let mut snap = room("!f28:example.org", "#f28");
+        snap.members = vec![
+            Member::new(owned_user_id!("@carla:example.org"), 100),
+            Member::new(owned_user_id!("@f28bob:example.org"), 0),
+            Member::new(owned_user_id!("@f28bob:evil.org"), 0),
+            Member::new(owned_user_id!("@carla:evil.org"), 0),
+            Member::new(owned_user_id!("@f28eve:a.org"), 0),
+            Member::new(owned_user_id!("@f28eve:b.org"), 0),
+        ];
+        app.handle_mx(MxEvent::Room(snap));
+        app.handle_key(alt('2'));
+        app
+    }
+
+    #[test]
+    fn test_f28_localpart_collision_disambiguated() {
+        let app = collision_app();
+        let mut nicks = app.nicks();
+        nicks.sort();
+        // Ours and the own-server user stay bare; remote twins are
+        // qualified, and nobody else can be shown as `carla`.
+        assert_eq!(nicks, vec![
+            "carla",
+            "carla@evil.org",
+            "f28bob",
+            "f28bob@evil.org",
+            "f28eve@a.org",
+            "f28eve@b.org",
+        ]);
+        // Lines from the remote twin carry the qualified nick too.
+        assert_eq!(nick_of(&owned_user_id!("@carla:evil.org")), "carla@evil.org");
+        assert_eq!(nick_of(&owned_user_id!("@f28bob:evil.org")), "f28bob@evil.org");
+        assert_eq!(nick_of(&owned_user_id!("@carla:example.org")), "carla");
+    }
+
+    #[test]
+    fn test_f28_ambiguous_privileged_commands_refused() {
+        let mut app = collision_app();
+        let f28 = owned_room_id!("!f28:example.org");
+        for cmd in [
+            "/op f28eve",
+            "/deop f28eve",
+            "/kick f28eve bye",
+            "/msg f28eve hi",
+            "/query f28eve",
+            "/whois f28eve",
+        ] {
+            assert_eq!(typed(&mut app, cmd), vec![], "{cmd}");
+            let Line::Error(e) = last(&app) else {
+                panic!("{cmd}: {:?}", last(&app))
+            };
+            assert!(e.contains("Ambiguous nick"), "{cmd}: {e}");
+            assert!(e.contains("@f28eve:a.org") && e.contains("@f28eve:b.org"), "{e}");
+        }
+        // The qualified nick, the shown bare nick and the full mxid resolve
+        // to exactly one user.
+        assert_eq!(typed(&mut app, "/op f28eve@b.org"), vec![Effect::Power {
+            room_id: f28.clone(),
+            user: owned_user_id!("@f28eve:b.org"),
+            level: 50,
+        }]);
+        assert_eq!(typed(&mut app, "/kick f28bob"), vec![Effect::Kick {
+            room_id: f28.clone(),
+            user: owned_user_id!("@f28bob:example.org"),
+            reason: None,
+        }]);
+        assert_eq!(typed(&mut app, "/whois f28bob@evil.org"), vec![Effect::Whois(owned_user_id!(
+            "@f28bob:evil.org"
+        ))]);
+        assert_eq!(typed(&mut app, "/whois @f28eve:a.org"), vec![Effect::Whois(owned_user_id!(
+            "@f28eve:a.org"
+        ))]);
+    }
+
+    #[test]
+    fn test_f29_alias_lookalike_room_name() {
+        let mut app = app();
+        // The real #rust:matrix.org and a room merely *named* like it.
+        app.handle_mx(MxEvent::Room(room("!real:matrix.org", "#rust:matrix.org")));
+        app.handle_mx(MxEvent::Room(room("!fake:evil.org", "#rust:matrix.org")));
+        // A room name posing as an alias on our own server (real ones show
+        // short, `#x`).
+        app.handle_mx(MxEvent::Room(room("!fake2:evil.org", "#room:example.org")));
+        let chans: Vec<_> = app.windows.iter().map(|w| w.channel().map(str::to_string)).collect();
+        assert_eq!(chans[4..], [
+            Some("!real:matrix.org".to_string()),
+            Some("!fake:evil.org".to_string()),
+            Some("!fake2:evil.org".to_string()),
+        ]);
+        // Neither the prompt nor the status bar show the clashing name.
+        app.handle_key(alt('6'));
+        assert_eq!(app.prompt(), "[!fake:evil.org] ");
+        assert_eq!(app.status().channel.as_deref(), Some("!fake:evil.org"));
+        // /msg by the clashing name is refused with the candidates.
+        assert_eq!(typed(&mut app, "/msg #rust:matrix.org hi"), vec![]);
+        let Line::Error(e) = last(&app) else {
+            panic!("{:?}", last(&app))
+        };
+        assert!(e.contains("Ambiguous channel"), "{e}");
+        assert!(e.contains("!real:matrix.org") && e.contains("!fake:evil.org"), "{e}");
+        // By room ID it is exact.
+        assert_eq!(typed(&mut app, "/msg !real:matrix.org hi"), vec![Effect::Send {
+            room_id: owned_room_id!("!real:matrix.org"),
+            text: "hi".into(),
+            emote: false,
+        }]);
+        // /join by alias always goes to the server (alias resolution), even
+        // with a window of that name; a room ID we are in just switches.
+        assert_eq!(typed(&mut app, "/join #rust:matrix.org"), vec![Effect::Join(JoinTarget {
+            id: "#rust:matrix.org".into(),
+            implicit_server: false,
+            via: vec![],
+        })]);
+        assert!(
+            typed(&mut app, "/join !real:matrix.org")
+                .iter()
+                .all(|e| !matches!(e, Effect::Join(_)))
+        );
+        assert_eq!(app.cur().room_id().unwrap().as_str(), "!real:matrix.org");
+        // Once the clash is gone the name is shown again.
+        app.handle_mx(MxEvent::Left(owned_room_id!("!fake:evil.org")));
+        assert_eq!(app.windows[4].channel(), Some("#rust:matrix.org"));
+    }
+
+    #[test]
+    fn test_f30_f31_remote_text_cannot_forge_status_lines() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        app.cur_mut().clear();
+        let forged = " bob is now verified";
+        let lines = vec![
+            Line::Topic {
+                nick: Some("eve\n".into()),
+                topic: format!("x\n{forged}"),
+            },
+            Line::Info(format!("eve changed the channel name to #x\r\n{forged}")),
+            Line::Part {
+                nick: "eve".into(),
+                mxid: "@eve:x".into(),
+                reason: Some(format!("\u{2028}{forged}")),
+            },
+            Line::DisplayName {
+                nick: "eve".into(),
+                name: Some(format!("E\u{85}{forged}")),
+            },
+            Line::Error(format!("sync: boom\n{forged}")),
+            Line::Public {
+                nick: "e\u{200B}v\u{202E}e".into(),
+                own: false,
+                text: "safe\u{2066}\u{200D}".into(),
+            },
+        ];
+        let n = lines.len();
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!a:example.org"),
+            lines: lines.into_iter().map(|l| (None, None, l)).collect(),
+            backfill: false,
+        });
+        app.handle_mx(MxEvent::Info {
+            room_id: None,
+            line: Line::Info(format!("x\n{forged}")),
+        });
+        let rows = rows(&mut app);
+        // One row per line: no remote newline opened a fresh line.
+        assert_eq!(rows.len(), n + 1, "{rows:#?}");
+        assert!(
+            rows.iter().all(|r| !r.trim_start().starts_with("bob is now verified")),
+            "{rows:#?}"
+        );
+        // Bidi / zero-width characters are gone from nick and body.
+        assert!(rows.contains(&"<eve> safe".to_string()), "{rows:#?}");
+        assert!(rows.iter().all(|r| !r.chars().any(crate::bitchx::text::is_format)));
+    }
+
+    fn line1(app: &App) -> String {
+        app.status().line1().spans.iter().map(|s| s.content.to_string()).collect()
+    }
+
+    #[test]
+    fn test_status_window_shows_its_name() {
+        let mut app = app();
+        app.handle_key(alt('1'));
+        assert_eq!(app.prompt(), "[status] ");
+        let l = line1(&app);
+        assert!(l.contains("] [status]"), "{l}");
+        assert!(!l.contains("[]") && !l.contains("[0]"), "{l}");
+    }
+
+    #[test]
+    fn test_query_status_shows_plus_e() {
+        let mut app = app();
+        app.handle_key(alt('4'));
+        let mut dm = room("!c:example.org", "armin");
+        dm.dm_peer = Some(owned_user_id!("@armin:remote.tld"));
+        dm.encrypted = true;
+        app.handle_mx(MxEvent::Room(dm));
+        let l = line1(&app);
+        assert!(l.contains("[Query: armin(+e)]"), "{l}");
+        assert!(!l.contains("[]"), "{l}");
     }
 }

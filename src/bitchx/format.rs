@@ -36,9 +36,10 @@ pub fn c() -> Style {
     fg(Color::Cyan)
 }
 
-/// Replace control characters (escape sequences, newlines) with spaces.
+/// Replace control characters (escape sequences, newlines) with spaces and
+/// drop invisible format characters (bidi controls, zero-width, F30).
 pub fn sanitize(s: &str) -> String {
-    s.chars().map(|c| if c.is_control() { ' ' } else { c }).collect()
+    crate::bitchx::text::one_line(s)
 }
 
 pub fn sp(text: impl Into<String>, style: Style) -> Span<'static> {

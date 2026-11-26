@@ -105,6 +105,7 @@ pub fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, Stri
 
 /// The window name a channel alias gets: `#x` on our own homeserver,
 /// `#x:server` elsewhere (matches `matrix::channel_name`).
+#[cfg(test)]
 pub fn short_name(alias: &str, own_server: &str) -> String {
     match alias.strip_suffix(own_server).and_then(|a| a.strip_suffix(':')) {
         Some(short) if short.starts_with('#') => short.to_string(),

@@ -86,8 +86,101 @@ pub enum Line {
 
 /// IRC-style nick for a Matrix user: the mxid localpart (`@carla:x` ->
 /// `carla`), never the display name, sanitized for the terminal.
+///
+/// F28: localparts are only unique per homeserver. When another known user
+/// shares the localpart (case-insensitively), the nick is qualified
+/// IRC-style as `localpart@server` -- except for ourselves and, when the
+/// localpart is not ours, for the user on our own homeserver. So with
+/// `@bob:own` and `@bob:evil.org` in sight they read `bob` and
+/// `bob@evil.org`, and a remote `@me:evil.org` can never show up as `me`.
 pub fn nick_of(user: &UserId) -> String {
-    crate::bitchx::format::sanitize(user.localpart())
+    nicks::nick(user)
+}
+
+/// Remember `me` as one of our own accounts (preferred bare nick, own
+/// homeserver).
+pub fn register_me(me: &UserId) {
+    nicks::with(|r| {
+        r.mine.insert(me.to_owned());
+        r.see(me);
+    });
+}
+
+/// All users seen with this (case-insensitive) localpart.
+pub fn same_localpart(localpart: &str) -> Vec<OwnedUserId> {
+    nicks::with(|r| r.by_local.get(&localpart.to_lowercase()).cloned().unwrap_or_default())
+        .into_iter()
+        .collect()
+}
+
+mod nicks {
+    use std::collections::{BTreeSet, HashMap, HashSet};
+
+    use matrix_sdk::ruma::{OwnedUserId, UserId};
+
+    /// Every user ID seen (members, senders), by lowercased localpart.
+    #[derive(Default)]
+    pub struct Registry {
+        pub mine: HashSet<OwnedUserId>,
+        pub by_local: HashMap<String, BTreeSet<OwnedUserId>>,
+    }
+
+    impl Registry {
+        pub fn see(&mut self, user: &UserId) {
+            self.by_local
+                .entry(user.localpart().to_lowercase())
+                .or_default()
+                .insert(user.to_owned());
+        }
+
+        /// The bare localpart is only shown when it cannot be confused.
+        fn bare(&self, user: &UserId) -> bool {
+            let key = user.localpart().to_lowercase();
+            let others = self.by_local.get(&key).is_some_and(|s| s.iter().any(|u| u != user));
+            if !others || self.mine.contains(user) {
+                return true;
+            }
+            // Someone else has this name. Ours wins; else the user on our
+            // own homeserver (unique there) keeps it.
+            let ours = |u: &OwnedUserId| self.mine.contains(u);
+            let taken_by_me = self.by_local[&key].iter().any(ours);
+            !taken_by_me && self.mine.iter().any(|m| m.server_name() == user.server_name())
+        }
+    }
+
+    // Tests run one thread per test: a thread-local registry keeps them
+    // independent. The real client renders on one thread and converts
+    // events on others, so it shares one registry.
+    #[cfg(test)]
+    thread_local! {
+        static REG: std::cell::RefCell<Registry> = std::cell::RefCell::new(Registry::default());
+    }
+
+    #[cfg(test)]
+    pub fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
+        REG.with(|r| f(&mut r.borrow_mut()))
+    }
+
+    #[cfg(not(test))]
+    pub fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
+        static REG: std::sync::LazyLock<std::sync::Mutex<Registry>> =
+            std::sync::LazyLock::new(Default::default);
+        let mut r = REG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        f(&mut r)
+    }
+
+    pub fn nick(user: &UserId) -> String {
+        let bare = with(|r| {
+            r.see(user);
+            r.bare(user)
+        });
+        let local = crate::bitchx::text::one_line(user.localpart());
+        if bare {
+            local
+        } else {
+            format!("{local}@{}", user.server_name())
+        }
+    }
 }
 
 /// Matrix presence state of another user.

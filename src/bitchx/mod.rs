@@ -12,5 +12,6 @@ pub mod input;
 pub mod mention;
 pub mod model;
 pub mod status;
+pub mod text;
 pub mod ui;
 pub mod vars;

@@ -336,11 +336,11 @@ mod tests {
         );
         assert_blue_row(&buf, 27);
         assert_blue_row(&buf, 28);
-        assert!(r[27].starts_with(" [09:24pm][carla] []"), "{:?}", r[27]);
+        assert!(r[27].starts_with(" [09:24pm][carla] [status]"), "{:?}", r[27]);
         assert!(r[28].starts_with(" [Lag ??]"), "{:?}", r[28]);
         assert!(r[28].trim_end().ends_with("[::::]"), "{:?}", r[28]);
-        // Recon 02: the idle prompt is `[0]`.
-        assert!(r[29].starts_with("[0] "), "{:?}", r[29]);
+        // Recon 02 shows `[0]`; we show the status window name instead.
+        assert!(r[29].starts_with("[status] "), "{:?}", r[29]);
     }
 
     /// IRC vocabulary: Matrix rooms are channels everywhere the user can see.
@@ -435,11 +435,11 @@ mod tests {
         assert_eq!(st(12).fg, Color::Gray); // nick, plain white
         assert!(!st(12).modifier.contains(ratatui::style::Modifier::BOLD));
 
-        // A DM window: `[]` for the channel, then `[Query: nick]`.
+        // A DM window: no `[%C]`, just `[Query: nick]`.
         app.handle_key(alt('4'));
         let buf = render(&mut app, 80, 12);
         let l1 = row(&buf, 9);
-        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
+        assert!(l1.starts_with(" [09:24pm][@carla] [Query: armin]"), "{l1:?}");
     }
 
     #[test]
@@ -495,7 +495,7 @@ mod tests {
         app.handle_key(alt('4'));
         let buf = render(&mut app, 80, 12);
         let l1 = row(&buf, 9);
-        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (zZzZ 4h)]"), "{l1:?}");
+        assert!(l1.starts_with(" [09:24pm][@carla] [Query: armin (zZzZ 4h)]"), "{l1:?}");
         let x = l1.find("zZzZ 4h").unwrap() as u16;
         assert_eq!(buf[(x, 9)].fg, Color::Green);
 
@@ -503,11 +503,11 @@ mod tests {
         let ev = crate::bitchx::model::away_of("offline", None, Some(D2), None, app.mono());
         app.handle_mx(MxEvent::Presence { user: armin.clone(), presence: ev });
         let l1 = row(&render(&mut app, 80, 12), 9);
-        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (off 2d)]"), "{l1:?}");
+        assert!(l1.starts_with(" [09:24pm][@carla] [Query: armin (off 2d)]"), "{l1:?}");
         let ev = crate::bitchx::model::away_of("online", None, Some(D2), None, app.mono());
         app.handle_mx(MxEvent::Presence { user: armin, presence: ev });
         let l1 = row(&render(&mut app, 80, 12), 9);
-        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin]"), "{l1:?}");
+        assert!(l1.starts_with(" [09:24pm][@carla] [Query: armin]"), "{l1:?}");
     }
 
     #[test]
