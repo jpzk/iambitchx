@@ -27,6 +27,7 @@ mod matrix;
 mod oauth;
 mod session_guard;
 mod smoke;
+mod token;
 mod tui;
 
 fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocking::WorkerGuard {
@@ -49,6 +50,7 @@ fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocki
 
     let subscriber = FmtSubscriber::builder()
         .with_writer(appender)
+        .with_ansi(false)
         .with_env_filter(filter)
         .finish();
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");

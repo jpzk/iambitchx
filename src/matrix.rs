@@ -58,7 +58,8 @@ use crate::bitchx::model::{
 };
 use crate::config::ApplicationSettings;
 use crate::login;
-use crate::session_guard::Mode;
+use crate::session_guard::{self, Mode};
+use crate::token::{Refresher, TokenCoordinator, with_retry};
 
 pub type Tx = UnboundedSender<MxEvent>;
 
@@ -331,15 +332,87 @@ pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<Stamped>> 
     Ok(out)
 }
 
+/// The live client's [`Refresher`]: `login::recover` under the session.json
+/// lock (the only writer of session.json). Its outcome is shown to the user
+/// once per refresh (coalesced callers share it).
+pub struct LiveRefresher {
+    client: Client,
+    settings: ApplicationSettings,
+    tx: Tx,
+}
+
+impl Refresher for LiveRefresher {
+    fn can_refresh(&self) -> bool {
+        self.client.session_tokens().is_some_and(|t| t.refresh_token.is_some())
+    }
+
+    async fn refresh(&self) -> Result<Option<Duration>, String> {
+        // sdk 0.19.1 does not expose the token response's expires_in
+        match login::recover(&self.client, &self.settings, Mode::Live, 0).await {
+            Ok(None) => Ok(None),
+            Ok(Some(msg)) => {
+                let _ = self.tx.send(MxEvent::Info { room_id: None, line: Line::Error(msg) });
+                Ok(None)
+            },
+            Err(e) => {
+                let line = Line::Error(format!("{e}"));
+                let _ = self.tx.send(MxEvent::Info { room_id: None, line });
+                Err(e.to_string())
+            },
+        }
+    }
+}
+
+/// The live client's single token coordinator.
+pub type Tokens = Arc<TokenCoordinator<LiveRefresher>>;
+
+/// Build the coordinator. The tokens were issued when session.json was last
+/// written (login / refresh), so a restored session that is already old gets
+/// its first proactive refresh right away instead of a 401.
+pub fn tokens(client: Client, settings: ApplicationSettings, tx: Tx) -> Tokens {
+    let now = Instant::now();
+    let issued = std::fs::metadata(&settings.session_json)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.elapsed().ok())
+        .and_then(|age| now.checked_sub(age))
+        .unwrap_or(now);
+    Arc::new(TokenCoordinator::new(LiveRefresher { client, settings, tx }, issued))
+}
+
+/// Refresh the access token shortly before it expires (see
+/// [`crate::token::refresh_delay`]). Stops after a failed refresh: the user
+/// has the relogin hint, and requests still retry through [`with_retry`].
+pub fn spawn_token_keeper(tokens: Tokens) {
+    tokio::spawn(async move {
+        loop {
+            let wait = tokens.until_due(Instant::now()).max(Duration::from_secs(1));
+            tokio::time::sleep(wait).await;
+            match tokens.proactive_tick(Instant::now()).await {
+                Some(Err(e)) => {
+                    tracing::warn!("proactive token refresh failed: {e}");
+                    break;
+                },
+                Some(Ok(_)) => tracing::debug!("access token refreshed proactively"),
+                // no refresh token (nothing to do) or not due yet
+                None if !tokens.can_refresh() => break,
+                None => {},
+            }
+        }
+    });
+}
+
 /// Run the sync loop forever, feeding the UI. On `M_UNKNOWN_TOKEN` / soft
-/// logout it runs [`login::recover`] (re-read session.json under the lock,
-/// adopt it or refresh, retry once) and resumes; otherwise it prints the
-/// relogin hint and stops.
-pub fn spawn_sync(client: Client, tx: Tx, app_settings: ApplicationSettings) {
+/// logout it refreshes through the [`Tokens`] coordinator (coalesced with
+/// one-shot requests and the proactive refresh) and resumes; a second
+/// rejection without a sync response in between prints the relogin hint and
+/// stops.
+pub fn spawn_sync(client: Client, tx: Tx, tokens: Tokens, app_settings: ApplicationSettings) {
     tokio::spawn(async move {
         let me = client.user_id().expect("logged in").to_owned();
         let attempts = Arc::new(AtomicU32::new(0));
         loop {
+            let seen = tokens.epoch();
             let err = match sync_until_error(&client, &me, &tx, &attempts).await {
                 Ok(()) => break,
                 Err(e) if login::is_unknown_token(&e) => e,
@@ -350,17 +423,14 @@ pub fn spawn_sync(client: Client, tx: Tx, app_settings: ApplicationSettings) {
                 },
             };
             tracing::warn!("sync: {err}");
-            let n = attempts.fetch_add(1, Ordering::SeqCst);
-            match login::recover(&client, &app_settings, Mode::Live, n).await {
-                Ok(None) => {},
-                Ok(Some(msg)) => {
-                    let _ = tx.send(MxEvent::Info { room_id: None, line: Line::Error(msg) });
-                },
-                Err(e) => {
-                    let line = Line::Error(format!("{e}"));
-                    let _ = tx.send(MxEvent::Info { room_id: None, line });
-                    break;
-                },
+            if attempts.fetch_add(1, Ordering::SeqCst) >= 1 {
+                let hint = session_guard::relogin_hint(&app_settings.session_json);
+                let _ = tx.send(MxEvent::Info { room_id: None, line: Line::Error(hint) });
+                break;
+            }
+            // the refresher already showed the relogin hint on failure
+            if tokens.refresh(seen).await.is_err() {
+                break;
             }
         }
     });
@@ -475,13 +545,24 @@ async fn dm_room(client: &Client, user: &UserId) -> anyhow::Result<Room> {
     }
 }
 
-async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> anyhow::Result<()> {
+/// Send a line; on an expired token it is resent once after the refresh, and
+/// if it still fails the error carries the text so the user does not lose it.
+async fn send(
+    tokens: &Tokens,
+    room: &Room,
+    me: &UserId,
+    text: String,
+    emote: bool,
+    tx: &Tx,
+) -> anyhow::Result<()> {
     let content = if emote {
         RoomMessageEventContent::emote_plain(text.clone())
     } else {
         RoomMessageEventContent::text_plain(text.clone())
     };
-    let resp = room.send(content).await?;
+    let resp = with_retry(tokens, || room.send(content.clone()))
+        .await
+        .map_err(|e| anyhow::anyhow!("{e} -- not sent: {text}"))?;
     let nick = nick_of(me);
     let line = if emote {
         Line::Action { nick, own: true, text }
@@ -542,14 +623,21 @@ pub async fn public_channels(
     Ok(out)
 }
 
-async fn list(client: &Client, me: &UserId, args: ListArgs, tx: &Tx) -> anyhow::Result<()> {
-    let entries = public_channels(client, args.server.as_deref(), args.search.as_deref()).await?;
+async fn list(
+    client: &Client,
+    tokens: &Tokens,
+    me: &UserId,
+    args: ListArgs,
+    tx: &Tx,
+) -> anyhow::Result<()> {
+    let (server, search) = (args.server.as_deref(), args.search.as_deref());
+    let entries = with_retry(tokens, || public_channels(client, server, search)).await?;
     let server = args.server.unwrap_or_else(|| me.server_name().to_string());
     let _ = tx.send(MxEvent::List { server, search: args.search, entries });
     Ok(())
 }
 
-async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
+async fn run(client: &Client, tokens: &Tokens, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
     let me = client
         .user_id()
         .ok_or_else(|| anyhow::anyhow!("not logged in"))?
@@ -557,7 +645,7 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
 
     match effect {
         Effect::Send { room_id, text, emote } => {
-            send(&room_of(client, &room_id)?, &me, text, emote, tx).await?;
+            send(tokens, &room_of(client, &room_id)?, &me, text, emote, tx).await?;
         },
         Effect::Join(target) => {
             let id = OwnedRoomOrAliasId::try_from(target.id.as_str())
@@ -568,7 +656,8 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 .filter_map(|s| OwnedServerName::try_from(s.as_str()).ok())
                 .collect();
             let t0 = std::time::Instant::now();
-            let room = match client.join_room_by_id_or_alias(&id, &via).await {
+            let room = match with_retry(tokens, || client.join_room_by_id_or_alias(&id, &via)).await
+            {
                 Ok(room) => room,
                 Err(e) if is_not_found(&e) => {
                     let msg = if target.implicit_server {
@@ -585,61 +674,70 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let millis = t0.elapsed().as_millis() as u64;
             let _ = tx.send(MxEvent::Synched { room_id: room.room_id().to_owned(), millis });
         },
-        Effect::List(args) => list(client, &me, args, tx).await?,
+        Effect::List(args) => list(client, tokens, &me, args, tx).await?,
         Effect::Part { room_id, .. } => {
-            room_of(client, &room_id)?.leave().await?;
+            let room = room_of(client, &room_id)?;
+            with_retry(tokens, || room.leave()).await?;
             let _ = tx.send(MxEvent::Left(room_id));
         },
         Effect::Topic { room_id, topic } => {
-            room_of(client, &room_id)?.set_room_topic(&topic).await?;
+            let room = room_of(client, &room_id)?;
+            with_retry(tokens, || room.set_room_topic(&topic)).await?;
         },
         Effect::Nick(nick) => {
-            client.account().set_display_name(Some(&nick)).await?;
+            let account = client.account();
+            with_retry(tokens, || account.set_display_name(Some(&nick))).await?;
             let _ = tx.send(MxEvent::OwnDisplayName(nick));
         },
         Effect::Msg { user, text } => {
-            let room = dm_room(client, &user).await?;
+            let room = with_retry(tokens, || dm_room(client, &user)).await?;
             let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
-            send(&room, &me, text, false, tx).await?;
+            send(tokens, &room, &me, text, false, tx).await?;
         },
         Effect::Query(user) => {
-            let room = dm_room(client, &user).await?;
+            let room = with_retry(tokens, || dm_room(client, &user)).await?;
             let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
             let _ = tx.send(MxEvent::Focus(room.room_id().to_owned()));
         },
         Effect::Invite { room_id, user } => {
-            room_of(client, &room_id)?.invite_user_by_id(&user).await?;
+            let room = room_of(client, &room_id)?;
+            with_retry(tokens, || room.invite_user_by_id(&user)).await?;
             let line = Line::Info(format!("Inviting {user} to {room_id}"));
             let _ = tx.send(MxEvent::Info { room_id: Some(room_id), line });
         },
         Effect::Kick { room_id, user, reason } => {
-            room_of(client, &room_id)?.kick_user(&user, reason.as_deref()).await?;
+            let room = room_of(client, &room_id)?;
+            with_retry(tokens, || room.kick_user(&user, reason.as_deref())).await?;
         },
         Effect::Power { room_id, user, level } => {
-            room_of(client, &room_id)?
-                .update_power_levels(vec![(&user, Int::from(level as i32))])
-                .await?;
+            let room = room_of(client, &room_id)?;
+            let level = Int::from(level as i32);
+            with_retry(tokens, || room.update_power_levels(vec![(&user, level)])).await?;
         },
         Effect::Away(reason) => {
             let (presence, status_msg) = away_presence(reason.as_deref());
             // the sync loop first, so the next /sync already carries it
             SYNC_AWAY.send_replace(reason.is_some());
-            let mut req = PresenceRequest::new(me.clone(), presence);
-            req.status_msg = status_msg;
-            client.send(req).await?;
+            let req = || {
+                let mut req = PresenceRequest::new(me.clone(), presence.clone());
+                req.status_msg = status_msg.clone();
+                client.send(req)
+            };
+            with_retry(tokens, req).await?;
             let _ = tx.send(MxEvent::Away(reason));
         },
         Effect::Whois(user) => {
             // The display name is the BitchX ircname (real name); the nick is
             // the localpart.
-            let name = client
-                .account()
-                .fetch_profile_field_of_static::<DisplayName>(user.clone())
-                .await
-                .ok()
-                .flatten()
-                .map(|n| sanitize(&n))
-                .unwrap_or_else(|| user.localpart().to_string());
+            let account = client.account();
+            let name = with_retry(tokens, || {
+                account.fetch_profile_field_of_static::<DisplayName>(user.clone())
+            })
+            .await
+            .ok()
+            .flatten()
+            .map(|n| sanitize(&n))
+            .unwrap_or_else(|| user.localpart().to_string());
             let mut chans = vec![];
             for room in client.joined_rooms() {
                 if let Ok(Some(m)) = room.get_member_no_sync(&user).await {
@@ -652,15 +750,13 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 }
             }
             // WHOIS_AWAY `| away     : $0 - $1-` (include/color.h:726).
-            let away = client
-                .send(GetPresenceRequest::new(user.clone()))
+            let away = with_retry(tokens, || client.send(GetPresenceRequest::new(user.clone())))
                 .await
                 .ok()
                 .and_then(|p| away_of(p.presence.as_str(), p.status_msg.as_deref()));
             let _ = tx.send(MxEvent::Presence { user: user.clone(), away: away.clone() });
-            let devices = client
-                .encryption()
-                .get_user_devices(&user)
+            let enc = client.encryption();
+            let devices = with_retry(tokens, || enc.get_user_devices(&user))
                 .await
                 .map(|d| d.devices().count())
                 .unwrap_or(0);
@@ -699,31 +795,37 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
         },
         Effect::Backfill(room_id) => {
             let room = room_of(client, &room_id)?;
-            let lines = backfill(&room, &me).await?;
+            let lines = with_retry(tokens, || backfill(&room, &me)).await?;
             let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: true });
         },
         Effect::EnableEncryption(room_id) => {
             let room = room_of(client, &room_id)?;
-            crate::e2ee::enable_encryption(&room, tx).await?;
+            with_retry(tokens, || crate::e2ee::enable_encryption(&room, tx)).await?;
             let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
         },
         Effect::Verify { user, flow_id, action } => {
-            crate::e2ee::verify(client, user, flow_id, action, tx).await?;
+            let verify =
+                || crate::e2ee::verify(client, user.clone(), flow_id.clone(), action.clone(), tx);
+            with_retry(tokens, verify).await?;
         },
-        Effect::Devices(user) => crate::e2ee::devices(client, user, tx).await?,
-        Effect::Trust => crate::e2ee::trust(client, tx).await?,
-        Effect::Recover(key) => crate::e2ee::recover(client, key, tx).await?,
+        Effect::Devices(user) => {
+            with_retry(tokens, || crate::e2ee::devices(client, user.clone(), tx)).await?;
+        },
+        Effect::Trust => with_retry(tokens, || crate::e2ee::trust(client, tx)).await?,
+        Effect::Recover(key) => {
+            with_retry(tokens, || crate::e2ee::recover(client, key.clone(), tx)).await?;
+        },
         Effect::Quit => {},
     }
     Ok(())
 }
 
 /// Execute an effect in the background; failures become `-:-` error lines.
-pub fn spawn_effect(client: Client, effect: Effect, tx: Tx) {
+pub fn spawn_effect(client: Client, tokens: Tokens, effect: Effect, tx: Tx) {
     tokio::spawn(async move {
         let what = format!("{effect:?}");
         let what = what.split([' ', '(', '{']).next().unwrap_or("").to_lowercase();
-        if let Err(e) = run(&client, effect, &tx).await {
+        if let Err(e) = run(&client, &tokens, effect, &tx).await {
             let line = Line::Error(format!("{what}: {e}"));
             let _ = tx.send(MxEvent::Info { room_id: None, line });
         }
