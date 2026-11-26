@@ -373,11 +373,11 @@ impl App {
                 let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
                 self.windows[idx].push(None, line);
             },
-            MxEvent::OwnNick(nick) => {
-                if nick != self.nick {
-                    let old = std::mem::replace(&mut self.nick, nick.clone());
-                    self.windows[0].push(None, Line::Nick { old, new: nick });
-                }
+            MxEvent::OwnDisplayName(name) => {
+                // The nick is the localpart and never changes; /nick only
+                // sets the Matrix display name.
+                let line = Line::DisplayName { nick: self.nick.clone(), name: Some(name) };
+                self.windows[0].push(None, line);
             },
             MxEvent::Away(away) => {
                 let msg = match &away {
@@ -397,12 +397,6 @@ impl App {
         let Some(room_id) = snap.room_id.clone() else {
             return vec![];
         };
-
-        if let Some(me) = snap.members.iter().find(|m| m.user_id == self.me) &&
-            !me.nick.trim().is_empty()
-        {
-            self.nick = me.nick.clone();
-        }
 
         if let Some(idx) = self.window_of(&room_id) {
             self.windows[idx].room = snap;

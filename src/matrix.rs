@@ -30,22 +30,9 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
-use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot};
+use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, nick_of};
 
 pub type Tx = UnboundedSender<MxEvent>;
-
-/// The member's nick: their room display name, else their localpart.
-pub async fn nick_of(room: &Room, user: &UserId) -> String {
-    match room.get_member_no_sync(user).await {
-        Ok(Some(m)) => {
-            m.display_name()
-                .filter(|n| !n.trim().is_empty())
-                .map(sanitize)
-                .unwrap_or_else(|| user.localpart().to_string())
-        },
-        _ => user.localpart().to_string(),
-    }
-}
 
 fn power(pl: UserPowerLevel) -> i64 {
     match pl {
@@ -87,17 +74,7 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
         .await
         .unwrap_or_default()
         .into_iter()
-        .map(|m| {
-            Member {
-                nick: m
-                    .display_name()
-                    .filter(|n| !n.trim().is_empty())
-                    .map(sanitize)
-                    .unwrap_or_else(|| m.user_id().localpart().to_string()),
-                user_id: m.user_id().to_owned(),
-                power: power(m.power_level()),
-            }
-        })
+        .map(|m| Member::new(m.user_id().to_owned(), power(m.power_level())))
         .collect();
 
     let is_direct = room.is_direct().await.unwrap_or(false);
@@ -110,10 +87,7 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
     } else {
         None
     };
-    let peer_nick = match &dm_peer {
-        Some(p) => Some(nick_of(room, p).await),
-        None => None,
-    };
+    let peer_nick = dm_peer.as_deref().map(nick_of);
 
     RoomSnapshot {
         room_id: Some(room.room_id().to_owned()),
@@ -128,8 +102,8 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
     }
 }
 
-async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
-    let sender = nick_of(room, ev.sender()).await;
+fn state_lines(ev: AnySyncStateEvent) -> Vec<Line> {
+    let sender = nick_of(ev.sender());
 
     match ev {
         AnySyncStateEvent::RoomMember(SyncStateEvent::Original(m)) => {
@@ -137,14 +111,7 @@ async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
                 return vec![];
             };
             let mxid = target.to_string();
-            let local = target.localpart().to_string();
-            let named = |n: Option<&str>| {
-                n.filter(|n| !n.trim().is_empty())
-                    .map(sanitize)
-                    .unwrap_or_else(|| local.clone())
-            };
-            let prev_name = m.prev_content().and_then(|p| p.displayname.clone());
-            let victim = named(m.content.displayname.as_deref().or(prev_name.as_deref()));
+            let victim = nick_of(&target);
             let reason = m.content.reason.clone().filter(|r| !r.trim().is_empty());
 
             match m.membership_change() {
@@ -172,7 +139,8 @@ async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
                 },
                 MembershipChange::Invited => vec![Line::Invite { nick: sender, target: mxid }],
                 MembershipChange::ProfileChanged { displayname_change: Some(c), .. } => {
-                    vec![Line::Nick { old: named(c.old), new: named(c.new) }]
+                    let name = c.new.filter(|n| !n.trim().is_empty()).map(sanitize);
+                    vec![Line::DisplayName { nick: victim, name }]
                 },
                 _ => vec![],
             }
@@ -214,7 +182,7 @@ async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
                     (true, false) => "-o",
                     _ => continue,
                 };
-                let entry = format!("{m} {}", nick_of(room, user).await);
+                let entry = format!("{m} {}", nick_of(user));
                 if !modes.contains(&entry) {
                     modes.push(entry);
                 }
@@ -230,33 +198,29 @@ async fn state_lines(room: &Room, ev: AnySyncStateEvent) -> Vec<Line> {
 }
 
 /// Translate one timeline event. Unknown/irrelevant events yield nothing.
-pub async fn convert(room: &Room, me: &UserId, tev: &TimelineEvent) -> Vec<(Option<String>, Line)> {
+pub fn convert(me: &UserId, tev: &TimelineEvent) -> Vec<(Option<String>, Line)> {
     if let TimelineEventKind::UnableToDecrypt { event, utd_info } = &tev.kind {
         let id = event.get_field::<String>("event_id").ok().flatten();
         let sender = event.get_field::<OwnedUserId>("sender").ok().flatten();
         let nick = match &sender {
-            Some(s) => nick_of(room, s).await,
+            Some(s) => nick_of(s),
             None => "?".to_string(),
         };
         let reason = utd_reason(&utd_info.reason);
         return vec![(id, Line::Undecryptable { nick, reason })];
     }
-    convert_raw(room, me, tev.raw()).await
+    convert_raw(me, tev.raw())
 }
 
 /// Translate one (decrypted or plain) timeline event.
-pub async fn convert_raw(
-    room: &Room,
-    me: &UserId,
-    raw: &Raw<AnySyncTimelineEvent>,
-) -> Vec<(Option<String>, Line)> {
+pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<(Option<String>, Line)> {
     let Ok(ev) = raw.deserialize() else {
         return vec![];
     };
     let id = Some(ev.event_id().to_string());
     let own = ev.sender() == me;
     let sender = ev.sender().to_string();
-    let nick = nick_of(room, ev.sender()).await;
+    let nick = nick_of(ev.sender());
 
     let lines = match ev {
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
@@ -286,7 +250,7 @@ pub async fn convert_raw(
             let kind = ty.trim_start_matches("m.key.verification.");
             vec![Line::Info(verification_event_text(&nick, kind))]
         },
-        AnySyncTimelineEvent::State(s) => state_lines(room, s).await,
+        AnySyncTimelineEvent::State(s) => state_lines(s),
         _ => vec![],
     };
 
@@ -300,7 +264,7 @@ pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<(Option<St
     let msgs = room.messages(opts).await?;
     let mut out = vec![];
     for ev in msgs.chunk.iter().rev() {
-        out.extend(convert(room, me, ev).await);
+        out.extend(convert(me, ev));
     }
     Ok(out)
 }
@@ -323,7 +287,7 @@ pub fn spawn_sync(client: Client, tx: Tx) {
                         let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
                         let mut lines = vec![];
                         for ev in &update.timeline.events {
-                            lines.extend(convert(&room, &me, ev).await);
+                            lines.extend(convert(&me, ev));
                         }
                         if !lines.is_empty() {
                             let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: false });
@@ -393,7 +357,7 @@ async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> a
         RoomMessageEventContent::text_plain(text.clone())
     };
     let resp = room.send(content).await?;
-    let nick = nick_of(room, me).await;
+    let nick = nick_of(me);
     let line = if emote {
         Line::Action { nick, own: true, text }
     } else {
@@ -440,7 +404,7 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
         },
         Effect::Nick(nick) => {
             client.account().set_display_name(Some(&nick)).await?;
-            let _ = tx.send(MxEvent::OwnNick(nick));
+            let _ = tx.send(MxEvent::OwnDisplayName(nick));
         },
         Effect::Msg { user, text } => {
             let room = dm_room(client, &user).await?;
@@ -477,6 +441,8 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let _ = tx.send(MxEvent::Away(reason));
         },
         Effect::Whois(user) => {
+            // The display name is the BitchX ircname (real name); the nick is
+            // the localpart.
             let name = client
                 .account()
                 .fetch_profile_field_of_static::<DisplayName>(user.clone())
@@ -510,7 +476,7 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let send = |line: Line| tx.send(MxEvent::Info { room_id: None, line });
             let _ = send(Line::WhoisRule);
             let _ = send(Line::WhoisNick {
-                nick: name.clone(),
+                nick: nick_of(&user),
                 mxid: user.to_string(),
                 info: ident.to_string(),
             });
@@ -563,4 +529,83 @@ pub fn spawn_effect(client: Client, effect: Effect, tx: Tx) {
             let _ = tx.send(MxEvent::Info { room_id: None, line });
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use matrix_sdk::ruma::{owned_room_id, owned_user_id};
+
+    use super::*;
+    use crate::bitchx::app::App;
+
+    fn ev(json: &str) -> Raw<AnySyncTimelineEvent> {
+        Raw::from_json_string(json.to_string()).unwrap()
+    }
+
+    fn member_ev(id: u8, sender: &str, target: &str, content: &str, prev: Option<&str>) -> String {
+        let unsigned = prev.map(|p| format!(r#","unsigned":{{"prev_content":{p}}}"#));
+        format!(
+            r#"{{"type":"m.room.member","event_id":"$m{id}","sender":"{sender}","state_key":"{target}","origin_server_ts":{id},"content":{content}{}}}"#,
+            unsigned.unwrap_or_default()
+        )
+    }
+
+    #[test]
+    fn test_nick_is_localpart_not_display_name() {
+        let me = owned_user_id!("@carla:x");
+        let m = Member::new(me.clone(), 100);
+        assert_eq!(m.nick, "carla");
+        assert_eq!(nick_of(&owned_user_id!("@Armin:remote.tld")), "Armin");
+
+        let mut app = App::new(me.clone());
+        app.clock = Some("09:24pm".into());
+        let room_id = owned_room_id!("!r:x");
+        app.handle_mx(MxEvent::Room(RoomSnapshot {
+            room_id: Some(room_id.clone()),
+            name: "#room".into(),
+            members: vec![m, Member::new(owned_user_id!("@armin:remote.tld"), 0)],
+            ..Default::default()
+        }));
+        app.switch(1);
+
+        let join = r#"{"membership":"join","displayname":"Carla"}"#;
+        let events = [
+            member_ev(1, "@carla:x", "@carla:x", join, None),
+            r#"{"type":"m.room.message","event_id":"$t","sender":"@carla:x","origin_server_ts":2,"content":{"msgtype":"m.text","body":"hello"}}"#.to_string(),
+            r#"{"type":"m.room.message","event_id":"$u","sender":"@armin:remote.tld","origin_server_ts":3,"content":{"msgtype":"m.text","body":"sup"}}"#.to_string(),
+            member_ev(4, "@carla:x", "@carla:x", r#"{"membership":"join","displayname":"CARLA"}"#, Some(join)),
+            member_ev(
+                5,
+                "@carla:x",
+                "@armin:remote.tld",
+                r#"{"membership":"leave","displayname":"Armin"}"#,
+                Some(r#"{"membership":"join","displayname":"Armin"}"#),
+            ),
+        ];
+        let lines: Vec<_> = events.iter().flat_map(|e| convert_raw(&me, &ev(e))).collect();
+        assert_eq!(lines[1].1, Line::Public {
+            nick: "carla".into(),
+            own: true,
+            text: "hello".into()
+        });
+        app.handle_mx(MxEvent::Lines { room_id, lines, backfill: false });
+
+        let rows = crate::smoke::render_text(&mut app, 60, 12).unwrap();
+        assert!(rows[0].starts_with(" carla [@carla:x] has joined #room"), "{rows:?}");
+        assert!(rows[1].starts_with("<carla> hello"), "{rows:?}");
+        assert!(rows[2].starts_with("<armin> sup"), "{rows:?}");
+        assert!(rows[3].starts_with(" carla changed display name to CARLA"), "{rows:?}");
+        assert!(rows[4].starts_with(" armin was kicked off #room by carla"), "{rows:?}");
+        assert!(rows[9].starts_with(" [09:24pm][@carla] [#room]"), "{:?}", rows[9]);
+        assert!(!rows.iter().any(|r| r.contains("<Carla>") || r.contains("Armin")), "{rows:?}");
+
+        // /nick only changes the display name; the nick stays the localpart.
+        app.handle_mx(MxEvent::OwnDisplayName("Carla".into()));
+        assert_eq!(app.nick, "carla");
+        assert_eq!(app.status().nick, "carla");
+        assert_eq!(
+            app.windows[0].lines.last(),
+            Some(&Line::DisplayName { nick: "carla".into(), name: Some("Carla".into()) })
+        );
+    }
 }

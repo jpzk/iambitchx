@@ -2,7 +2,7 @@
 //!
 //! Nothing here touches the SDK or the terminal, so the whole UI can be
 //! driven by tests.
-use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
+use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 pub use crate::bitchx::commands::Secret;
 
@@ -34,8 +34,9 @@ pub enum Line {
         kicker: String,
         reason: Option<String>,
     },
-    /// NICKNAME: ` old is now known as new`.
-    Nick { old: String, new: String },
+    /// ` nick changed display name to name` -- the nick (mxid localpart)
+    /// itself cannot change; `name: None` means the display name was removed.
+    DisplayName { nick: String, name: Option<String> },
     /// TOPIC / TOPIC_CHANGE: ` Topic (#chan): [changed by nick:] topic`.
     Topic { nick: Option<String>, topic: String },
     /// MODE: ` mode/#chan [modes] by nick`.
@@ -67,6 +68,12 @@ pub enum Line {
     WhoisRow { row: u8, last: bool, key: String, value: String },
 }
 
+/// IRC-style nick for a Matrix user: the mxid localpart (`@carla:x` ->
+/// `carla`), never the display name, sanitized for the terminal.
+pub fn nick_of(user: &UserId) -> String {
+    crate::bitchx::format::sanitize(user.localpart())
+}
+
 /// A room member as the UI needs it.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Member {
@@ -76,6 +83,13 @@ pub struct Member {
 }
 
 impl Member {
+    /// A member whose nick is the mxid localpart. The display name (which may
+    /// be capitalised, e.g. `Carla`) is deliberately NOT used; BitchX shows it
+    /// only as the ircname in /whois.
+    pub fn new(user_id: OwnedUserId, power: i64) -> Self {
+        Member { nick: nick_of(&user_id), user_id, power }
+    }
+
     /// `@` in IRC terms: power level 50 or more.
     pub fn is_op(&self) -> bool {
         self.power >= 50
@@ -121,8 +135,8 @@ pub enum MxEvent {
     Synched { room_id: OwnedRoomId, millis: u64 },
     /// A `-:-` line for a room window, or the status window.
     Info { room_id: Option<OwnedRoomId>, line: Line },
-    /// Our own nick changed.
-    OwnNick(String),
+    /// Our own display name changed (`/nick`); the nick stays the localpart.
+    OwnDisplayName(String),
     /// Away state changed.
     Away(Option<String>),
     /// Round-trip time to the homeserver, in seconds.

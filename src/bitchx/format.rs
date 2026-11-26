@@ -180,13 +180,17 @@ pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
             }
             vec![g_line(s)]
         },
-        // ` old is now known as new`: old bold white, new cyan.
-        Line::Nick { old, new } => {
-            vec![g_line(vec![
-                sp(format!("{old} "), w()),
-                sp("is now known as ", n()),
-                sp(new.clone(), c()),
-            ])]
+        // ` nick changed display name to name`: nick bold white, name cyan.
+        Line::DisplayName { nick, name } => {
+            let mut s = vec![sp(format!("{nick} "), w())];
+            match name {
+                Some(name) => {
+                    s.push(sp("changed display name to ", n()));
+                    s.push(sp(name.clone(), c()));
+                },
+                None => s.push(sp("removed their display name", n())),
+            }
+            vec![g_line(s)]
         },
         // ` Topic (#chan): changed by nick: topic`
         Line::Topic { nick, topic } => {
@@ -474,8 +478,10 @@ mod tests {
             reason: Some("recon kick test".into()),
         };
         assert_eq!(text(&k), " a was kicked off #room by op (recon kick test)");
-        let n = Line::Nick { old: "a".into(), new: "b".into() };
-        assert_eq!(text(&n), " a is now known as b");
+        let n = Line::DisplayName { nick: "carla".into(), name: Some("Carla".into()) };
+        assert_eq!(text(&n), " carla changed display name to Carla");
+        let n = Line::DisplayName { nick: "carla".into(), name: None };
+        assert_eq!(text(&n), " carla removed their display name");
         let t = Line::Topic { nick: Some("op".into()), topic: "hello".into() };
         assert_eq!(text(&t), " Topic (#room): changed by op: hello");
         let m = Line::Mode { modes: "+o b".into(), nick: "op".into() };
