@@ -6,6 +6,10 @@
 //! of every FSET (`source/misc.c` `make_timestamp`), here prepended to each
 //! scrollback line at render time, so toggling re-renders old lines too.
 //!
+//! `AUTO_AWAY` (bool, default ON, `include/config.h:455`) and
+//! `AUTO_AWAY_TIME` (seconds, default 600, `include/config.h:407`), clamped
+//! like `source/vars.c:1407-1418` `set_away_time`.
+//!
 //! Values persist in `config.toml` under `[settings.bitchx]`.
 use std::fmt::Write as _;
 use std::path::Path;
@@ -18,11 +22,35 @@ use serde::Deserialize;
 pub const DEFAULT_TIMESTAMP_STR: &str = "%I:%M%p ";
 
 /// Every variable name, in `/set` listing order.
-pub const NAMES: &[&str] = &["TIMESTAMP", "TIMESTAMP_STRING"];
+pub const NAMES: &[&str] = &[
+    "AUTO_AWAY",
+    "AUTO_AWAY_TIME",
+    "TIMESTAMP",
+    "TIMESTAMP_STRING",
+];
+
+/// `DEFAULT_AUTO_AWAY_TIME` (`include/config.h:407`), seconds.
+pub const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
+
+/// `set_away_time` (`source/vars.c:1407-1418`): 0 disables, values under a
+/// minute are minutes, anything else under ten minutes becomes ten minutes.
+pub fn clamp_away_time(value: u32) -> u32 {
+    if value == 0 {
+        0
+    } else if value / 60 == 0 {
+        value * 60
+    } else if value < 60 * 10 {
+        60 * 10
+    } else {
+        value
+    }
+}
 
 /// `[settings.bitchx]` as found in the config file.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
 pub struct BitchxConfig {
+    pub auto_away: Option<bool>,
+    pub auto_away_time: Option<u32>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
 }
@@ -30,6 +58,8 @@ pub struct BitchxConfig {
 impl BitchxConfig {
     pub fn merge(self, other: Self) -> Self {
         BitchxConfig {
+            auto_away: self.auto_away.or(other.auto_away),
+            auto_away_time: self.auto_away_time.or(other.auto_away_time),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
         }
@@ -39,6 +69,9 @@ impl BitchxConfig {
 /// The live values.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Vars {
+    pub auto_away: bool,
+    /// Seconds; 0 disables.
+    pub auto_away_time: u32,
     pub timestamp: bool,
     pub timestamp_string: String,
 }
@@ -46,6 +79,8 @@ pub struct Vars {
 impl Default for Vars {
     fn default() -> Self {
         Vars {
+            auto_away: true,
+            auto_away_time: DEFAULT_AUTO_AWAY_TIME,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
         }
@@ -91,6 +126,8 @@ impl Vars {
     pub fn from_config(c: &BitchxConfig) -> Self {
         let d = Vars::default();
         Vars {
+            auto_away: c.auto_away.unwrap_or(d.auto_away),
+            auto_away_time: c.auto_away_time.map(clamp_away_time).unwrap_or(d.auto_away_time),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
         }
@@ -99,6 +136,8 @@ impl Vars {
     /// The value as `/set` shows it; `None` for an empty string ("has no value").
     pub fn get(&self, name: &str) -> Option<String> {
         match name {
+            "AUTO_AWAY" => Some(if self.auto_away { "ON" } else { "OFF" }.to_string()),
+            "AUTO_AWAY_TIME" => Some(self.auto_away_time.to_string()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -108,6 +147,21 @@ impl Vars {
     /// Set a canonical `name` (see [`lookup`]).
     pub fn set(&mut self, name: &str, value: &str) -> Result<(), String> {
         match name {
+            "AUTO_AWAY" => {
+                self.auto_away = boolean(value, self.auto_away)
+                    .ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
+            "AUTO_AWAY_TIME" => {
+                // INT_TYPE_VAR, `source/vars.c:892-905`.
+                let v: i64 = value
+                    .trim()
+                    .parse()
+                    .map_err(|_| format!("Value of {name} must be numeric!"))?;
+                if v < 0 {
+                    return Err(format!("Value of {name} must be greater than 0"));
+                }
+                self.auto_away_time = clamp_away_time(u32::try_from(v).unwrap_or(u32::MAX));
+            },
             "TIMESTAMP" => {
                 self.timestamp = boolean(value, self.timestamp)
                     .ok_or("Value must be either ON, OFF, or TOGGLE")?;
@@ -154,6 +208,8 @@ impl Vars {
         else {
             bail!("settings.bitchx is not a table");
         };
+        bx.insert("auto_away".into(), Value::Boolean(self.auto_away));
+        bx.insert("auto_away_time".into(), Value::Integer(i64::from(self.auto_away_time)));
         bx.insert("timestamp".into(), Value::Boolean(self.timestamp));
         bx.insert("timestamp_string".into(), Value::String(self.timestamp_string.clone()));
 
@@ -215,6 +271,35 @@ mod tests {
     }
 
     #[test]
+    fn test_auto_away_vars() {
+        let v = Vars::default();
+        assert!(v.auto_away);
+        assert_eq!(v.auto_away_time, 600);
+        assert_eq!(lookup("auto_away"), Ok("AUTO_AWAY"));
+        assert_eq!(lookup("auto_away_t"), Ok("AUTO_AWAY_TIME"));
+        assert_eq!(lookup("auto"), Err("AUTO is ambiguous".into()));
+        let mut v = Vars::default();
+        v.set("AUTO_AWAY", "off").unwrap();
+        assert_eq!(v.get("AUTO_AWAY").as_deref(), Some("OFF"));
+        // set_away_time clamping.
+        for (input, want) in [("0", 0), ("5", 300), ("120", 600), ("900", 900)] {
+            v.set("AUTO_AWAY_TIME", input).unwrap();
+            assert_eq!(v.auto_away_time, want, "{input}");
+        }
+        assert_eq!(v.get("AUTO_AWAY_TIME").as_deref(), Some("900"));
+        assert_eq!(
+            v.set("AUTO_AWAY_TIME", "x"),
+            Err("Value of AUTO_AWAY_TIME must be numeric!".into())
+        );
+        assert_eq!(
+            v.set("AUTO_AWAY_TIME", "-1"),
+            Err("Value of AUTO_AWAY_TIME must be greater than 0".into())
+        );
+        let c = BitchxConfig { auto_away_time: Some(7), ..Default::default() };
+        assert_eq!(Vars::from_config(&c).auto_away_time, 420);
+    }
+
+    #[test]
     fn test_persist_round_trip_keeps_other_keys() {
         let dir = std::env::temp_dir().join(format!("bx-vars-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -226,6 +311,8 @@ mod tests {
         )
         .unwrap();
         let v = Vars {
+            auto_away: false,
+            auto_away_time: 1200,
             timestamp: true,
             timestamp_string: "[%H:%M] ".into(),
         };

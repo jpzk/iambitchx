@@ -392,6 +392,31 @@ mod tests {
     }
 
     #[test]
+    fn test_status_away_marker() {
+        // STATUS_AWAY ` ([zZzZ] %A)`: green zZzZ, MSGCOUNT for %A (color.h:806).
+        let mut app = room_app();
+        app.away = Some("Auto-Away after 10 mins".into());
+        app.away_msgs = 2;
+        let buf = render(&mut app, 80, 12);
+        let l1 = row(&buf, 9);
+        assert!(l1.starts_with(" [09:24pm][@carla (zZzZ 2)] [#room]"), "{l1:?}");
+        let x = l1.find("zZzZ").unwrap() as u16;
+        assert_eq!(buf[(x, 9)].fg, Color::Green);
+        assert_eq!(buf[(x - 1, 9)].fg, Color::Cyan);
+
+        // The query peer away (presence unavailable).
+        app.away = None;
+        app.handle_mx(MxEvent::Presence {
+            user: matrix_sdk::ruma::owned_user_id!("@armin:remote.tld"),
+            away: Some("brb".into()),
+        });
+        app.handle_key(alt('4'));
+        let buf = render(&mut app, 80, 12);
+        let l1 = row(&buf, 9);
+        assert!(l1.starts_with(" [09:24pm][@carla] []  [Query: armin (zZzZ)]"), "{l1:?}");
+    }
+
+    #[test]
     fn test_status_line2_lag_and_flags() {
         // Recon 21/22: `[Lag ??]` until the first sample, then `[Lag  n]`;
         // right-aligned cyan `[U:a:S:b:h]` in a channel, `[::::]` elsewhere.

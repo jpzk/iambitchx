@@ -77,6 +77,20 @@ pub fn nick_of(user: &UserId) -> String {
     crate::bitchx::format::sanitize(user.localpart())
 }
 
+/// Matrix presence as IRC away: `unavailable` is away (BitchX shows
+/// `away : nick - msg`, the message defaulting to `away`); `online`,
+/// `offline` and unknown states are not.
+pub fn away_of(presence: &str, status_msg: Option<&str>) -> Option<String> {
+    (presence == "unavailable").then(|| {
+        let msg = crate::bitchx::format::sanitize(status_msg.unwrap_or("").trim());
+        if msg.is_empty() {
+            "away".to_string()
+        } else {
+            msg
+        }
+    })
+}
+
 /// A line with the event id it came from (for dedup) and the event's
 /// `origin_server_ts` in unix millis (`None`: client-generated, use now).
 pub type Stamped = (Option<String>, Option<i64>, Line);
@@ -146,6 +160,8 @@ pub enum MxEvent {
     OwnDisplayName(String),
     /// Away state changed.
     Away(Option<String>),
+    /// Presence of another user: `Some(status_msg)` while `unavailable`.
+    Presence { user: OwnedUserId, away: Option<String> },
     /// Round-trip time to the homeserver, in seconds.
     Lag(u64),
     /// A key verification with `user` progressed.
@@ -246,4 +262,19 @@ pub enum VerifyUpdate {
     Confirmed,
     Done,
     Cancelled(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_away_of_presence() {
+        assert_eq!(away_of("unavailable", Some("lunch")), Some("lunch".into()));
+        assert_eq!(away_of("unavailable", Some("  ")), Some("away".into()));
+        assert_eq!(away_of("unavailable", None), Some("away".into()));
+        assert_eq!(away_of("unavailable", Some("a\x1b[31mb")), Some("a [31mb".into()));
+        assert_eq!(away_of("online", Some("hi")), None);
+        assert_eq!(away_of("offline", None), None);
+    }
 }

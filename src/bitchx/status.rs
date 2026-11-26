@@ -29,6 +29,11 @@ fn st_text() -> Style {
     status_bg().fg(Color::Gray)
 }
 
+/// `ESC[1;32m`: bold green on blue (the `zZzZ` of STATUS_AWAY).
+fn st_away() -> Style {
+    status_bg().fg(Color::Green).add_modifier(StyleModifier::BOLD)
+}
+
 /// `%C` is cut to this many columns (`#bxrecon-0122` shows as `#bxrecon-0`).
 pub const CHANNEL_WIDTH: usize = 10;
 
@@ -62,6 +67,8 @@ pub struct BxStatus {
     pub umodes: String,
     /// `%A`
     pub away: bool,
+    /// MSGCOUNT: messages received while away, shown inside the `%A` marker.
+    pub away_msgs: usize,
     /// `%@`
     pub chanop: bool,
     /// `%=`
@@ -70,6 +77,8 @@ pub struct BxStatus {
     pub channel: Option<String>,
     /// `%Q`: the query target of a DM window.
     pub query: Option<String>,
+    /// The query target is away (Matrix presence `unavailable`).
+    pub query_away: bool,
     /// `%+`, without the `+`.
     pub modes: String,
     /// `%F`: refnums of other windows with unread activity.
@@ -109,7 +118,12 @@ impl BxStatus {
         }
 
         if self.away {
-            s.push(sp(" (zZzZ)", st_text()));
+            // STATUS_AWAY ` ([zZzZ] %A)` with MSGCOUNT for %A
+            // (`include/color.h:806`, `source/status.c:1243-1260`).
+            s.push(sp(" (", st_punct()));
+            s.push(sp("zZzZ", st_away()));
+            s.push(sp(format!(" {}", self.away_msgs), st_bright()));
+            s.push(sp(")", st_punct()));
         }
 
         s.push(sp("]", st_punct()));
@@ -134,6 +148,11 @@ impl BxStatus {
             s.push(sp("  [", st_punct()));
             s.push(sp("Query: ", st_text()));
             s.push(sp(q.clone(), st_bright()));
+            if self.query_away {
+                s.push(sp(" (", st_punct()));
+                s.push(sp("zZzZ", st_away()));
+                s.push(sp(")", st_punct()));
+            }
             s.push(sp("]", st_punct()));
         }
 

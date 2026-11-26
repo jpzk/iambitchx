@@ -2,7 +2,7 @@
 //!
 //! Pure state: numbered windows, the input line, and slash-command dispatch.
 //! Keys and Matrix events go in, [`Effect`]s for the Matrix side come out.
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
@@ -208,6 +208,20 @@ pub struct App {
     pub vars: Vars,
     /// Where `/set` persists (`config.toml`); `None`: not saved.
     pub config_toml: Option<PathBuf>,
+    /// Unix millis of the last keypress: the AUTO_AWAY idle clock.
+    pub last_input: i64,
+    /// The current away was set by AUTO_AWAY; the next keypress clears it.
+    pub auto_away: bool,
+    /// When we went away (unix millis), for `You were /away for ...`.
+    pub away_since: Option<i64>,
+    /// MSGCOUNT: query messages received while away (`%A`).
+    pub away_msgs: usize,
+    /// AUTO_AWAY only runs in the interactive client: never in `--smoke`.
+    pub auto_away_armed: bool,
+    /// Fixed clock for tests (unix millis); `None` uses the real time.
+    pub fake_now: Option<i64>,
+    /// Other users whose presence is `unavailable`, with their status message.
+    pub presence_away: HashMap<OwnedUserId, String>,
 }
 
 impl App {
@@ -234,6 +248,13 @@ impl App {
             verifications: vec![],
             vars: Vars::default(),
             config_toml: None,
+            last_input: now_ms(),
+            auto_away: false,
+            away_since: None,
+            away_msgs: 0,
+            auto_away_armed: false,
+            fake_now: None,
+            presence_away: HashMap::new(),
         }
     }
 
@@ -352,10 +373,16 @@ impl App {
             nick: self.nick.clone(),
             umodes: String::new(),
             away: self.away.is_some(),
+            away_msgs: self.away_msgs,
             chanop: me.is_some_and(Member::is_op),
             voice: me.is_some_and(Member::is_voice),
             channel: win.channel().filter(|_| win.room.dm_peer.is_none()).map(str::to_string),
             query: win.room.dm_peer.as_ref().map(|_| win.room.name.clone()),
+            query_away: win
+                .room
+                .dm_peer
+                .as_ref()
+                .is_some_and(|p| self.presence_away.contains_key(p)),
             modes,
             act: self.act(),
             users,
@@ -390,8 +417,16 @@ impl App {
                     win.prepend(lines);
                 } else {
                     let mut added = false;
+                    let mut msgs = 0;
                     for (id, ts, line) in lines {
-                        added |= win.push_at(id, ts, line);
+                        let incoming = matches!(line, Line::Private { own: false, .. });
+                        if win.push_at(id, ts, line) {
+                            added = true;
+                            msgs += usize::from(incoming);
+                        }
+                    }
+                    if self.away.is_some() {
+                        self.away_msgs += msgs;
                     }
                     if added && idx != self.current {
                         win.unread = true;
@@ -434,13 +469,12 @@ impl App {
                 let line = Line::DisplayName { nick: self.nick.clone(), name: Some(name) };
                 self.windows[0].push(None, line);
             },
-            MxEvent::Away(away) => {
-                let msg = match &away {
-                    Some(r) => format!("You have been marked as being away ({r})"),
-                    None => "You are no longer marked as being away".to_string(),
+            MxEvent::Away(away) => self.away_changed(away),
+            MxEvent::Presence { user, away } => {
+                match away {
+                    Some(msg) => self.presence_away.insert(user, msg),
+                    None => self.presence_away.remove(&user),
                 };
-                self.away = away;
-                self.info(msg);
             },
             MxEvent::Lag(lag) => self.lag = Some(lag),
             MxEvent::Verify { user, update } => self.verify_update(user, update),
@@ -486,11 +520,80 @@ impl App {
 
     // ---- keys ---------------------------------------------------------
 
+    // ---- away / AUTO_AWAY ----------------------------------------------
+
+    /// Now in unix millis (the fake clock in tests).
+    pub fn now(&self) -> i64 {
+        self.fake_now.unwrap_or_else(now_ms)
+    }
+
+    /// The timer: `check_auto_away` (`source/misc.c:1204-1225`). After
+    /// AUTO_AWAY_TIME seconds without a keypress, go away with
+    /// `Auto-Away after N mins`, unless already away (by hand or not).
+    pub fn tick(&mut self) -> Vec<Effect> {
+        let secs = self.vars.auto_away_time;
+        let now = self.now();
+        if !self.auto_away_armed ||
+            !self.vars.auto_away ||
+            secs == 0 ||
+            self.away.is_some() ||
+            now - self.last_input < i64::from(secs) * 1000
+        {
+            return vec![];
+        }
+        let msg = format!("Auto-Away after {} mins", secs / 60);
+        self.auto_away = true;
+        self.away = Some(msg.clone());
+        self.away_since = Some(now);
+        vec![Effect::Away(Some(msg))]
+    }
+
+    /// Keyboard activity: resets the idle clock; ends an automatic away
+    /// (a `/away` by hand stays until `/back`).
+    pub fn activity(&mut self) -> Vec<Effect> {
+        self.last_input = self.now();
+        if self.auto_away && self.away.is_some() {
+            self.auto_away = false;
+            return vec![Effect::Away(None)];
+        }
+        vec![]
+    }
+
+    /// The homeserver confirmed an away change: the 306/305 lines, and on
+    /// return BitchX's `You were /away for ...` (`source/commands.c:3124`).
+    fn away_changed(&mut self, away: Option<String>) {
+        let now = self.now();
+        match &away {
+            Some(r) => {
+                self.away_since.get_or_insert(now);
+                self.info(format!("You have been marked as being away ({r})"));
+            },
+            None => {
+                if let Some(since) = self.away_since.take() {
+                    let t = (now - since).max(0) / 1000;
+                    let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
+                    self.info(format!(
+                        "You were /away for {h} hours {m} minutes and {s} seconds. [BX-MsgLog Off]"
+                    ));
+                }
+                self.info("You are no longer marked as being away");
+                self.auto_away = false;
+                self.away_msgs = 0;
+            },
+        }
+        self.away = away;
+    }
+
     pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
         if key.kind == KeyEventKind::Release {
             return vec![];
         }
+        let mut fx = self.activity();
+        fx.extend(self.key(key));
+        fx
+    }
 
+    fn key(&mut self, key: KeyEvent) -> Vec<Effect> {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
 
@@ -749,11 +852,15 @@ impl App {
                     .collect()
             },
             BitchxCommand::Away { reason } => {
+                self.auto_away = false;
                 vec![Effect::Away(Some(
                     reason.unwrap_or_else(|| "away".to_string()),
                 ))]
             },
-            BitchxCommand::Back => vec![Effect::Away(None)],
+            BitchxCommand::Back => {
+                self.auto_away = false;
+                vec![Effect::Away(None)]
+            },
             BitchxCommand::Clear => {
                 let win = self.cur_mut();
                 win.clear();
@@ -1856,6 +1963,11 @@ pub mod tests {
         let n = app.cur().lines.len();
         typed(&mut app, "/set");
         assert_eq!(&app.cur().lines[n..], &[
+            Line::SetVar { name: "AUTO_AWAY".into(), value: Some("ON".into()) },
+            Line::SetVar {
+                name: "AUTO_AWAY_TIME".into(),
+                value: Some("600".into())
+            },
             Line::SetVar {
                 name: "TIMESTAMP".into(),
                 value: Some("OFF".into())
@@ -1908,5 +2020,166 @@ pub mod tests {
         assert_eq!(vars.timestamp_string, "%H:%M:%S ");
         assert!(vars.timestamp);
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    // ---- AUTO_AWAY (fake clock) -----------------------------------------
+
+    const T0: i64 = 1_764_000_000_000;
+
+    /// An armed app on the fake clock at `T0`, last keypress at `T0`.
+    fn idle_app() -> App {
+        let mut app = app();
+        app.fake_now = Some(T0);
+        app.last_input = T0;
+        app.auto_away_armed = true;
+        app
+    }
+
+    fn auto_msg() -> Effect {
+        Effect::Away(Some("Auto-Away after 10 mins".into()))
+    }
+
+    #[test]
+    fn test_auto_away_after_threshold() {
+        let mut app = idle_app();
+        app.fake_now = Some(T0 + 599_999);
+        assert_eq!(app.tick(), vec![]);
+        assert!(app.away.is_none());
+        app.fake_now = Some(T0 + 600_000);
+        assert_eq!(app.tick(), vec![auto_msg()]);
+        assert!(app.auto_away);
+        assert!(app.status().away);
+        // Only once.
+        app.fake_now = Some(T0 + 700_000);
+        assert_eq!(app.tick(), vec![]);
+        // The homeserver echo prints the 306 line with the reason.
+        app.handle_mx(MxEvent::Away(Some("Auto-Away after 10 mins".into())));
+        assert_eq!(
+            last(&app),
+            Line::Info("You have been marked as being away (Auto-Away after 10 mins)".into())
+        );
+        // A configured time: /set auto_away_time 15 -> 15 minutes.
+        let mut app = idle_app();
+        typed(&mut app, "/set auto_away_time 15");
+        assert_eq!(app.vars.auto_away_time, 900);
+        app.last_input = T0;
+        app.fake_now = Some(T0 + 899_000);
+        assert_eq!(app.tick(), vec![]);
+        app.fake_now = Some(T0 + 900_000);
+        assert_eq!(app.tick(), vec![Effect::Away(Some("Auto-Away after 15 mins".into()))]);
+    }
+
+    #[test]
+    fn test_auto_back_on_input() {
+        let mut app = idle_app();
+        app.fake_now = Some(T0 + 600_000);
+        app.tick();
+        app.handle_mx(MxEvent::Away(Some("Auto-Away after 10 mins".into())));
+        app.fake_now = Some(T0 + 600_000 + 3_723_000);
+        // First keypress: back, and the key still types.
+        assert_eq!(app.handle_key(key(KeyCode::Char('x'))), vec![Effect::Away(None)]);
+        assert_eq!(app.input.text(), "x");
+        assert!(!app.auto_away);
+        // Second keypress: nothing more.
+        assert_eq!(app.handle_key(key(KeyCode::Char('y'))), vec![]);
+        app.handle_mx(MxEvent::Away(None));
+        let n = app.cur().lines.len();
+        assert_eq!(&app.cur().lines[n - 2..], &[
+            Line::Info(
+                "You were /away for 1 hours 2 minutes and 3 seconds. [BX-MsgLog Off]".into()
+            ),
+            Line::Info("You are no longer marked as being away".into()),
+        ]);
+        assert!(app.away.is_none());
+        // The idle clock restarted at the keypress.
+        let back = T0 + 600_000 + 3_723_000;
+        app.fake_now = Some(back + 599_000);
+        assert_eq!(app.tick(), vec![]);
+        app.fake_now = Some(back + 600_000);
+        assert_eq!(app.tick(), vec![auto_msg()]);
+    }
+
+    #[test]
+    fn test_manual_away_not_cleared_by_input() {
+        let mut app = idle_app();
+        assert_eq!(typed(&mut app, "/away lunch"), vec![Effect::Away(Some("lunch".into()))]);
+        app.handle_mx(MxEvent::Away(Some("lunch".into())));
+        // Typing does not bring us back, and the timer leaves it alone.
+        assert_eq!(app.handle_key(key(KeyCode::Char('a'))), vec![]);
+        app.fake_now = Some(T0 + 3_600_000);
+        assert_eq!(app.tick(), vec![]);
+        assert_eq!(app.away.as_deref(), Some("lunch"));
+        // A manual /away during an auto-away is manual too.
+        let mut app = idle_app();
+        app.fake_now = Some(T0 + 600_000);
+        app.tick();
+        typed(&mut app, "/away gone");
+        app.handle_mx(MxEvent::Away(Some("gone".into())));
+        assert_eq!(app.handle_key(key(KeyCode::Char('a'))), vec![]);
+        // Only /back ends it.
+        app.handle_key(ctrl('u'));
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None)]);
+    }
+
+    #[test]
+    fn test_auto_away_off_disables() {
+        let mut app = idle_app();
+        typed(&mut app, "/set auto_away off");
+        assert!(!app.vars.auto_away);
+        app.fake_now = Some(T0 + 86_400_000);
+        assert_eq!(app.tick(), vec![]);
+        typed(&mut app, "/set auto_away on");
+        app.fake_now = Some(app.last_input + 600_000);
+        assert_eq!(app.tick(), vec![auto_msg()]);
+        // AUTO_AWAY_TIME 0 disables too.
+        let mut app = idle_app();
+        typed(&mut app, "/set auto_away_time 0");
+        app.fake_now = Some(T0 + 86_400_000);
+        assert_eq!(app.tick(), vec![]);
+        // Never in --smoke: an unarmed app (the default) never goes away.
+        let mut app = self::app();
+        app.fake_now = Some(app.last_input + 86_400_000);
+        assert_eq!(app.tick(), vec![]);
+    }
+
+    #[test]
+    fn test_away_msgcount_and_presence() {
+        let mut app = idle_app();
+        app.fake_now = Some(T0 + 600_000);
+        app.tick();
+        let dm = owned_room_id!("!c:example.org");
+        let msg = |id: &str| {
+            (Some(id.to_string()), Some(T0), Line::Public {
+                nick: "armin".into(),
+                own: false,
+                text: "yo".into(),
+            })
+        };
+        app.handle_mx(MxEvent::Lines {
+            room_id: dm.clone(),
+            lines: vec![msg("$1"), msg("$2"), msg("$1")],
+            backfill: false,
+        });
+        assert_eq!(app.status().away_msgs, 2);
+        // Channel lines do not count.
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!a:example.org"),
+            lines: vec![msg("$3")],
+            backfill: false,
+        });
+        assert_eq!(app.status().away_msgs, 2);
+        app.handle_key(key(KeyCode::Char('x')));
+        app.handle_mx(MxEvent::Away(None));
+        assert_eq!(app.status().away_msgs, 0);
+
+        // The query window shows the peer's presence.
+        let q = app.find_window("armin").unwrap();
+        app.switch(q);
+        assert!(!app.status().query_away);
+        let armin = owned_user_id!("@armin:remote.tld");
+        app.handle_mx(MxEvent::Presence { user: armin.clone(), away: Some("brb".into()) });
+        assert!(app.status().query_away);
+        app.handle_mx(MxEvent::Presence { user: armin, away: None });
+        assert!(!app.status().query_away);
     }
 }

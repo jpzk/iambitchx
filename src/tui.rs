@@ -69,6 +69,9 @@ pub async fn run(
     matrix::spawn_sync(client.clone(), tx.clone(), settings);
     matrix::spawn_lag(client.clone(), tx.clone());
 
+    // AUTO_AWAY runs only here, in the interactive client (never --smoke).
+    app.auto_away_armed = true;
+    app.last_input = app.now();
     let mut term = setup()?;
     let res = event_loop(&mut term, &client, &mut app, &mut rx, &tx).await;
     restore();
@@ -93,23 +96,24 @@ async fn event_loop(
                 Some(Ok(Event::Key(key))) => {
                     if key.code == KeyCode::Char('l') && key.modifiers.contains(KeyModifiers::CONTROL) {
                         term.clear()?;
-                        vec![]
+                        app.activity()
                     } else {
                         app.handle_key(key)
                     }
                 },
                 Some(Ok(Event::Paste(text))) => {
+                    let fx = app.activity();
                     for c in text.chars().filter(|c| !c.is_control()) {
                         app.input.insert(c);
                     }
-                    vec![]
+                    fx
                 },
                 Some(Ok(_)) => vec![],
                 Some(Err(e)) => return Err(e.into()),
                 None => return Ok(()),
             },
             Some(mx) = rx.recv() => app.handle_mx(mx),
-            _ = tick.tick() => vec![],
+            _ = tick.tick() => app.tick(),
         };
 
         for effect in effects {

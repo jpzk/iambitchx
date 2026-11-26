@@ -12,6 +12,7 @@ use matrix_sdk::config::SyncSettings;
 use matrix_sdk::deserialized_responses::{TimelineEvent, TimelineEventKind};
 use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered::v3::Request as PublicRoomsRequest;
+use matrix_sdk::ruma::api::client::presence::get_presence::v3::Request as GetPresenceRequest;
 use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as PresenceRequest;
 use matrix_sdk::ruma::api::client::profile::DisplayName;
 use matrix_sdk::ruma::api::error::ErrorKind;
@@ -44,7 +45,16 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
-use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, nick_of};
+use crate::bitchx::model::{
+    Effect,
+    Line,
+    Member,
+    MxEvent,
+    RoomSnapshot,
+    Stamped,
+    away_of,
+    nick_of,
+};
 use crate::config::ApplicationSettings;
 use crate::login;
 use crate::session_guard::Mode;
@@ -352,6 +362,13 @@ async fn sync_until_error(
                         let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: false });
                     }
                 }
+                for raw in &resp.presence {
+                    if let Ok(ev) = raw.deserialize() {
+                        let away =
+                            away_of(ev.content.presence.as_str(), ev.content.status_msg.as_deref());
+                        let _ = tx.send(MxEvent::Presence { user: ev.sender, away });
+                    }
+                }
                 for room_id in resp.rooms.left.into_keys() {
                     let _ = tx.send(MxEvent::Left(room_id));
                 }
@@ -579,6 +596,13 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                     chans.push(format!("{flag}{}", channel_name(&room, &me, None)));
                 }
             }
+            // WHOIS_AWAY `| away     : $0 - $1-` (include/color.h:726).
+            let away = client
+                .send(GetPresenceRequest::new(user.clone()))
+                .await
+                .ok()
+                .and_then(|p| away_of(p.presence.as_str(), p.status_msg.as_deref()));
+            let _ = tx.send(MxEvent::Presence { user: user.clone(), away: away.clone() });
             let devices = client
                 .encryption()
                 .get_user_devices(&user)
@@ -603,6 +627,9 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             ];
             if !chans.is_empty() {
                 rows.insert(1, ("channels", chans.join(" ")));
+            }
+            if let Some(msg) = away {
+                rows.push(("away", format!("{} - {msg}", nick_of(&user))));
             }
             rows.push(("devices", devices.to_string()));
             let len = rows.len();
