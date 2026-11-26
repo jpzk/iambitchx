@@ -6,6 +6,9 @@ on:
   pull_request:
     branches:
       - main
+  schedule:
+    # weekly: the macOS leg runs here, off the push path
+    - cron: '17 5 * * 1'
 
 name: CI
 
@@ -14,12 +17,34 @@ permissions:
   contents: read
 
 jobs:
+  # macOS hosted runners are capacity-bound: on a push the macos-latest job
+  # queues for many minutes and sometimes never starts at all ("the job was
+  # not acquired by Runner of type hosted"), which blocks the whole workflow
+  # and makes every push look red. Keep the coverage where it is cheap --
+  # tags and the weekly schedule -- and keep pushes fast.
+  plan:
+    permissions:
+      contents: read
+    runs-on: ubuntu-latest
+    outputs:
+      platforms: ${{ steps.pick.outputs.platforms }}
+    steps:
+    - id: pick
+      name: pick the platforms
+      run: |
+        if [ "${{ github.event_name }}" = "schedule" ] || [ "${{ github.ref_type }}" = "tag" ]; then
+          echo 'platforms=["ubuntu-latest","windows-latest","macos-latest"]' >> "$GITHUB_OUTPUT"
+        else
+          echo 'platforms=["ubuntu-latest","windows-latest"]' >> "$GITHUB_OUTPUT"
+        fi
+
   test:
+    needs: plan
     permissions:
       contents: read
     strategy:
       matrix:
-        platform: [ubuntu-latest, windows-latest, macos-latest]
+        platform: ${{ fromJSON(needs.plan.outputs.platforms) }}
     runs-on: ${{ matrix.platform }}
     env:
       SCCACHE_GHA_ENABLED: "true"
