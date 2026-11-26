@@ -301,6 +301,30 @@ mod tests {
         assert_eq!(buf[(1, 0)].fg, Color::Cyan);
     }
 
+    /// The original BitchX splash, rendered in a terminal with room for it.
+    #[test]
+    fn test_original_logo_renders_in_a_big_terminal() {
+        let mut app = app();
+        // A small terminal gets the compact wordmark.
+        let buf = render(&mut app, 60, 30);
+        assert!(rows(&buf)[6].contains('\u{2588}'), "compact wordmark");
+
+        // Room for the original art: the splash switches over, in place.
+        app.fit_logo(true, 120, 50);
+        let buf = render(&mut app, 120, 50);
+        let r = rows(&buf);
+        let art: String = r.iter().take(30).cloned().collect::<Vec<_>>().join("\n");
+        eprintln!("--- rendered splash ---\n{art}\n---");
+        assert!(art.contains("PhonyEye"), "{art}");
+        assert!(art.contains("Awe/Cia"), "{art}");
+        assert!(art.contains('\u{2584}'), "{art}");
+        // The version slot is filled in, and the header names the art.
+        assert!(art.contains("0.14.0"), "{art}");
+        assert!(r[3].contains("original bitchx logo"), "{:?}", r[3]);
+        // The iamb credit line is still above the art.
+        assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
+    }
+
     #[test]
     fn test_status_window_layout() {
         let mut app = app();

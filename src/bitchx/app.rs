@@ -283,18 +283,23 @@ impl Logo {
     }
 }
 
+/// The startup header line: terminal type and which logo is drawn.
+fn header_line(logo: Logo) -> Line {
+    let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
+    Line::Raw(format!("Using terminal type [{term}] ({})", logo.label()))
+}
+
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, the iamb credit line, logo with its `[ version]` credit, then
 /// ` iamBitchX:` lines.
 pub fn startup_lines_for(nick: &str, logo: Logo) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
-    let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
     let mut v = vec![
         Line::Raw("iamBitchX - Matrix client in the style of BitchX by panasync".into()),
         Line::Raw(format!("Version (iambitchx-{ver}) -- Commit ({sha}).")),
         Line::Raw(format!("Process [{}]", std::process::id())),
-        Line::Raw(format!("Using terminal type [{term}] ({})", logo.label())),
+        header_line(logo),
         Line::Raw(String::new()),
     ];
     v.push(Line::Raw("    based on iamb - https://iamb.chat - by Ulyssa".into()));
@@ -569,8 +574,11 @@ impl App {
 
     /// Re-pick the splash logo now that the terminal size is known: the
     /// original BitchX art needs 78 columns and about 36 rows.
-    pub fn fit_logo(&mut self, width: u16, height: u16) {
-        let want = Logo::pick(utf8_terminal(), width, height);
+    ///
+    /// `utf8` is passed in rather than read from the environment, so the
+    /// choice is testable and does not depend on the ambient `TERM`.
+    pub fn fit_logo(&mut self, utf8: bool, width: u16, height: u16) {
+        let want = Logo::pick(utf8, width, height);
         if want == self.logo {
             return;
         }
@@ -580,6 +588,10 @@ impl App {
         let ts = now_ms();
         self.windows[0].lines.splice(start..end, lines.iter().cloned());
         self.windows[0].times.splice(start..end, vec![ts; lines.len()]);
+        // The header names the logo, so it has to follow.
+        if let Some(line) = self.windows[0].lines.get_mut(3) {
+            *line = header_line(want);
+        }
         self.logo = want;
         self.logo_start = start;
         self.logo_len = lines.len();

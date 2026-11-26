@@ -75,7 +75,7 @@ pub async fn run(
     let mut term = setup()?;
     // The splash logo depends on the terminal size, which is only known now.
     let size = term.size()?;
-    app.fit_logo(size.width, size.height);
+    app.fit_logo(crate::bitchx::app::utf8_terminal(), size.width, size.height);
     let res = event_loop(&mut term, &client, &mut app, &mut rx, &tx).await;
     restore();
     res
@@ -113,7 +113,7 @@ async fn event_loop(
                 },
                 Some(Ok(Event::Resize(w, h))) => {
                     // The splash logo depends on the room available.
-                    app.fit_logo(w, h);
+                    app.fit_logo(crate::bitchx::app::utf8_terminal(), w, h);
                     vec![]
                 },
                 Some(Ok(_)) => vec![],
