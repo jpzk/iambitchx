@@ -22,7 +22,7 @@ use crate::bitchx::model::{
     VerifyUpdate,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
-use crate::bitchx::vars::{Vars, lookup};
+use crate::bitchx::vars::{Vars, expand_auto_away_msg, expand_away_nick, lookup, strip_away_nick};
 
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
@@ -222,6 +222,27 @@ pub struct App {
     pub fake_now: Option<i64>,
     /// Other users whose presence is `unavailable`, with their status message.
     pub presence_away: HashMap<OwnedUserId, String>,
+    /// Our own Matrix display name, once known (silent self-whois at
+    /// connect, `/nick`, profile changes seen in rooms).
+    pub display_name: Option<String>,
+    /// The silent self-whois that learns [`Self::display_name`].
+    pub probe: Probe,
+}
+
+/// The connect-time self-whois: its lines are swallowed, the `ircname` row
+/// becomes [`App::display_name`].
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum Probe {
+    /// Not sent yet (sent on the first lag measurement, i.e. once online).
+    #[default]
+    Start,
+    /// Sent; `rule` = the leading WhoisRule was swallowed.
+    Pending {
+        rule: bool,
+    },
+    /// Inside our own whois block.
+    Block,
+    Done,
 }
 
 impl App {
@@ -255,6 +276,8 @@ impl App {
             auto_away_armed: false,
             fake_now: None,
             presence_away: HashMap::new(),
+            display_name: None,
+            probe: Probe::Start,
         }
     }
 
@@ -407,6 +430,18 @@ impl App {
                 let Some(idx) = self.window_of(&room_id) else {
                     return vec![];
                 };
+                // our own profile change seen in a room (e.g. from another client)
+                let own_name = lines.iter().rev().find_map(|(_, _, l)| {
+                    match l {
+                        Line::DisplayName { nick, name: Some(n) } if *nick == self.nick => {
+                            Some(n.clone())
+                        },
+                        _ => None,
+                    }
+                });
+                if let Some(name) = own_name.filter(|_| !backfill) {
+                    self.own_name(name);
+                }
                 let win = &mut self.windows[idx];
                 let now = now_ms();
                 let lines = lines
@@ -460,10 +495,14 @@ impl App {
                 }
             },
             MxEvent::Info { room_id, line } => {
+                if self.probe_line(&line) {
+                    return vec![];
+                }
                 let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
                 self.windows[idx].push(None, line);
             },
             MxEvent::OwnDisplayName(name) => {
+                self.own_name(name.clone());
                 // The nick is the localpart and never changes; /nick only
                 // sets the Matrix display name.
                 let line = Line::DisplayName { nick: self.nick.clone(), name: Some(name) };
@@ -476,7 +515,13 @@ impl App {
                     None => self.presence_away.remove(&user),
                 };
             },
-            MxEvent::Lag(lag) => self.lag = Some(lag),
+            MxEvent::Lag(lag) => {
+                self.lag = Some(lag);
+                if self.probe == Probe::Start {
+                    self.probe = Probe::Pending { rule: false };
+                    return vec![Effect::Whois(self.me.clone())];
+                }
+            },
             MxEvent::Verify { user, update } => self.verify_update(user, update),
             MxEvent::List { server, search, entries } => {
                 // Text width after the line glyph.
@@ -541,11 +586,14 @@ impl App {
         {
             return vec![];
         }
-        let msg = format!("Auto-Away after {} mins", secs / 60);
+        let msg = expand_auto_away_msg(&self.vars.auto_away_msg, secs / 60);
+        let nick = self.away_nick_on();
         self.auto_away = true;
         self.away = Some(msg.clone());
         self.away_since = Some(now);
-        vec![Effect::Away(Some(msg))]
+        let mut fx = vec![Effect::Away(Some(msg))];
+        fx.extend(nick);
+        fx
     }
 
     /// Keyboard activity: resets the idle clock; ends an automatic away
@@ -554,9 +602,133 @@ impl App {
         self.last_input = self.now();
         if self.auto_away && self.away.is_some() {
             self.auto_away = false;
-            return vec![Effect::Away(None)];
+            let mut fx = vec![Effect::Away(None)];
+            fx.extend(self.away_nick_off());
+            return fx;
         }
         vec![]
+    }
+
+    // ---- AWAY_NICK -----------------------------------------------------
+
+    /// Going away: switch the display name to AWAY_NICK, remembering (and
+    /// persisting) the original. Nothing while already away, when off, or
+    /// while our display name is unknown. Never stacks: an already-away
+    /// name (`carla afk`) is unwrapped to its original first.
+    fn away_nick_on(&mut self) -> Vec<Effect> {
+        let pattern = self.vars.away_nick.clone();
+        if self.away.is_some() || self.vars.away_nick_orig.is_some() || pattern.is_empty() {
+            return vec![];
+        }
+        let Some(cur) = self.display_name.clone() else {
+            self.error("AWAY_NICK skipped: display name not known yet");
+            return vec![];
+        };
+        let orig = strip_away_nick(&pattern, &cur).unwrap_or_else(|| cur.clone());
+        let Some(nick) = expand_away_nick(&pattern, &orig) else {
+            return vec![];
+        };
+        self.vars.away_nick_orig = Some(orig);
+        self.save_vars();
+        if nick == cur {
+            return vec![];
+        }
+        vec![Effect::Nick(nick)]
+    }
+
+    /// Back: restore exactly the display name from before the away nick.
+    fn away_nick_off(&mut self) -> Vec<Effect> {
+        let Some(orig) = self.vars.away_nick_orig.take() else {
+            return vec![];
+        };
+        self.save_vars();
+        if self.display_name.as_deref() == Some(orig.as_str()) {
+            return vec![];
+        }
+        vec![Effect::Nick(orig)]
+    }
+
+    /// Our display name is now `name`: one ` iamBitchX:` line per change.
+    fn own_name(&mut self, name: String) {
+        if self.display_name.as_deref() == Some(name.as_str()) {
+            return;
+        }
+        let msg = match &self.vars.away_nick_orig {
+            Some(orig) if *orig != name => {
+                format!("Display name is now {name} (away; /back restores {orig})")
+            },
+            _ => format!("Display name is now {name}"),
+        };
+        self.display_name = Some(name);
+        self.windows[0].push(None, Line::Error(msg));
+    }
+
+    /// Swallow the lines of the connect-time self-whois; `true` if `line`
+    /// was one of them.
+    fn probe_line(&mut self, line: &Line) -> bool {
+        match (self.probe, line) {
+            (Probe::Pending { .. }, Line::WhoisRule) => {
+                self.probe = Probe::Pending { rule: true };
+                true
+            },
+            (Probe::Pending { .. }, Line::WhoisNick { mxid, .. }) if *mxid == self.me.as_str() => {
+                self.probe = Probe::Block;
+                true
+            },
+            (Probe::Pending { rule: true }, Line::WhoisNick { .. }) => {
+                // someone else's whois: give back the rule we took
+                self.probe = Probe::Pending { rule: false };
+                self.cur_mut().push(None, Line::WhoisRule);
+                false
+            },
+            (Probe::Block, Line::WhoisRow { key, value, last, .. }) => {
+                if key == "ircname" {
+                    self.display_name = Some(value.clone());
+                }
+                if *last {
+                    self.probe = Probe::Done;
+                    self.startup_offer();
+                }
+                true
+            },
+            _ => false,
+        }
+    }
+
+    /// At connect, not away, but the display name is still the away nick
+    /// (crash or restart while away): offer `/back` to restore it.
+    fn startup_offer(&mut self) {
+        let (Some(cur), None) = (self.display_name.clone(), &self.away) else {
+            return;
+        };
+        let pattern = self.vars.away_nick.clone();
+        if self.vars.away_nick_orig.as_deref() == Some(cur.as_str()) {
+            // already restored
+            self.vars.away_nick_orig = None;
+            self.save_vars();
+            return;
+        }
+        if self.vars.away_nick_orig.is_none() {
+            let Some(base) = strip_away_nick(&pattern, &cur) else {
+                return;
+            };
+            self.vars.away_nick_orig = Some(base);
+            self.save_vars();
+        }
+        let orig = self.vars.away_nick_orig.clone().unwrap_or_default();
+        self.error(format!(
+            "Display name is still the away nick {cur}: type /back to restore {orig}"
+        ));
+    }
+
+    /// Persist [`Self::vars`] (the away nick original) if there is a
+    /// `config.toml`; quietly skipped otherwise.
+    fn save_vars(&mut self) {
+        if let Some(path) = self.config_toml.clone() &&
+            let Err(e) = self.vars.persist(&path)
+        {
+            self.error(format!("Could not save {}: {e:#}", path.display()));
+        }
     }
 
     /// The homeserver confirmed an away change: the 306/305 lines, and on
@@ -852,14 +1024,20 @@ impl App {
                     .collect()
             },
             BitchxCommand::Away { reason } => {
+                let msg = reason
+                    .or_else(|| Some(self.vars.away_msg.clone()).filter(|m| !m.is_empty()))
+                    .unwrap_or_else(|| "away".to_string());
+                let nick = self.away_nick_on();
                 self.auto_away = false;
-                vec![Effect::Away(Some(
-                    reason.unwrap_or_else(|| "away".to_string()),
-                ))]
+                let mut fx = vec![Effect::Away(Some(msg))];
+                fx.extend(nick);
+                fx
             },
             BitchxCommand::Back => {
                 self.auto_away = false;
-                vec![Effect::Away(None)]
+                let mut fx = vec![Effect::Away(None)];
+                fx.extend(self.away_nick_off());
+                fx
             },
             BitchxCommand::Clear => {
                 let win = self.cur_mut();
@@ -876,6 +1054,9 @@ impl App {
                 vec![]
             },
             BitchxCommand::Whois { target } => {
+                if matches!(self.probe, Probe::Pending { .. }) {
+                    self.probe = Probe::Done;
+                }
                 self.user_cmd(&target).map(Effect::Whois).into_iter().collect()
             },
             BitchxCommand::Channels => {
@@ -1965,8 +2146,20 @@ pub mod tests {
         assert_eq!(&app.cur().lines[n..], &[
             Line::SetVar { name: "AUTO_AWAY".into(), value: Some("ON".into()) },
             Line::SetVar {
+                name: "AUTO_AWAY_MSG".into(),
+                value: Some("Auto-Away after %t mins".into())
+            },
+            Line::SetVar {
                 name: "AUTO_AWAY_TIME".into(),
                 value: Some("600".into())
+            },
+            Line::SetVar {
+                name: "AWAY_MSG".into(),
+                value: Some("away".into())
+            },
+            Line::SetVar {
+                name: "AWAY_NICK".into(),
+                value: Some("%n afk".into())
             },
             Line::SetVar {
                 name: "TIMESTAMP".into(),
@@ -2181,5 +2374,238 @@ pub mod tests {
         assert!(app.status().query_away);
         app.handle_mx(MxEvent::Presence { user: armin, away: None });
         assert!(!app.status().query_away);
+    }
+
+    // ---- AWAY_NICK ------------------------------------------------------
+
+    fn whois_lines(me: &str, name: &str) -> Vec<Line> {
+        let row = |row: u8, last: bool, key: &str, value: &str| {
+            Line::WhoisRow { row, last, key: key.into(), value: value.into() }
+        };
+        vec![
+            Line::WhoisRule,
+            Line::WhoisNick {
+                nick: "carla".into(),
+                mxid: me.into(),
+                info: "unknown".into(),
+            },
+            row(1, false, "ircname", name),
+            row(2, true, "server", "example.org"),
+        ]
+    }
+
+    /// Connect: the first lag sample sends the silent self-whois.
+    fn probe(app: &mut App, name: &str) {
+        assert_eq!(app.handle_mx(MxEvent::Lag(0)), vec![Effect::Whois(app.me.clone())]);
+        let me = app.me.to_string();
+        for line in whois_lines(&me, name) {
+            app.handle_mx(MxEvent::Info { room_id: None, line });
+        }
+    }
+
+    fn named(name: &str) -> App {
+        let mut app = app();
+        probe(&mut app, name);
+        app
+    }
+
+    fn nick(s: &str) -> Effect {
+        Effect::Nick(s.into())
+    }
+
+    fn away(s: &str) -> Effect {
+        Effect::Away(Some(s.into()))
+    }
+
+    #[test]
+    fn test_away_nick_probe_is_silent() {
+        let mut app = app();
+        let before: Vec<usize> = app.windows.iter().map(|w| w.lines.len()).collect();
+        probe(&mut app, "Carla");
+        let after: Vec<usize> = app.windows.iter().map(|w| w.lines.len()).collect();
+        assert_eq!(before, after, "self-whois lines are swallowed");
+        assert_eq!(app.display_name.as_deref(), Some("Carla"));
+        assert_eq!(app.probe, Probe::Done);
+        // only once
+        assert_eq!(app.handle_mx(MxEvent::Lag(1)), vec![]);
+        // a later /whois is shown in full
+        let me = app.me.to_string();
+        for line in whois_lines(&me, "Carla") {
+            app.handle_mx(MxEvent::Info { room_id: None, line });
+        }
+        assert!(matches!(last(&app), Line::WhoisRow { last: true, .. }));
+    }
+
+    #[test]
+    fn test_away_nick_probe_gives_back_foreign_whois() {
+        let mut app = app();
+        app.handle_mx(MxEvent::Lag(0));
+        for line in whois_lines("@armin:remote.tld", "Armin") {
+            app.handle_mx(MxEvent::Info { room_id: None, line });
+        }
+        let lines = &app.cur().lines;
+        let n = lines.len();
+        assert!(matches!(lines[n - 4], Line::WhoisRule), "{:?}", &lines[n - 4..]);
+        assert!(matches!(lines[n - 3], Line::WhoisNick { .. }));
+        assert_eq!(app.display_name, None);
+    }
+
+    #[test]
+    fn test_away_nick_manual_away_and_back() {
+        let mut app = named("Carla");
+        assert_eq!(typed(&mut app, "/away lunch"), vec![away("lunch"), nick("Carla afk")]);
+        assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
+        app.handle_mx(MxEvent::Away(Some("lunch".into())));
+        app.handle_mx(MxEvent::OwnDisplayName("Carla afk".into()));
+        let shown = app.windows[0].lines.iter().any(|l| {
+            *l == Line::Error("Display name is now Carla afk (away; /back restores Carla)".into())
+        });
+        assert!(shown, "iamBitchX line on the change");
+        // already away: a new reason, but the nick is left alone
+        assert_eq!(typed(&mut app, "/away dinner"), vec![away("dinner")]);
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
+        assert_eq!(app.vars.away_nick_orig, None);
+        app.handle_mx(MxEvent::Away(None));
+        app.handle_mx(MxEvent::OwnDisplayName("Carla".into()));
+        let n = app.windows[0].lines.len();
+        assert_eq!(app.windows[0].lines[n - 2], Line::Error("Display name is now Carla".into()));
+        // /back again: nothing left to restore
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None)]);
+    }
+
+    #[test]
+    fn test_away_nick_never_stacks() {
+        // crash while away left the away nick on, the original unknown
+        let mut app = named("Carla afk");
+        assert!(matches!(last(&app), Line::Error(e) if e.contains("/back to restore Carla")));
+        assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
+        assert_eq!(typed(&mut app, "/away"), vec![away("away")], "no 'Carla afk afk'");
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
+
+        // a display name that already is an away nick, no orig recorded
+        let mut app = super::tests::app();
+        app.display_name = Some("Carla afk".into());
+        assert_eq!(typed(&mut app, "/away"), vec![away("away")]);
+        assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
+
+        // many rounds: always the same two names
+        let mut app = named("Carla");
+        for _ in 0..3 {
+            let fx = typed(&mut app, "/away");
+            assert_eq!(fx, vec![away("away"), nick("Carla afk")]);
+            app.handle_mx(MxEvent::Away(Some("away".into())));
+            app.handle_mx(MxEvent::OwnDisplayName("Carla afk".into()));
+            assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
+            app.handle_mx(MxEvent::Away(None));
+            app.handle_mx(MxEvent::OwnDisplayName("Carla".into()));
+        }
+    }
+
+    #[test]
+    fn test_away_nick_empty_disables() {
+        let mut app = named("Carla");
+        app.vars.away_nick = String::new();
+        assert_eq!(typed(&mut app, "/away"), vec![away("away")]);
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None)]);
+        assert_eq!(app.vars.away_nick_orig, None);
+        // auto-away too
+        app.handle_mx(MxEvent::Away(None));
+        app.auto_away_armed = true;
+        app.fake_now = Some(app.last_input + 600_000);
+        assert_eq!(app.tick(), vec![auto_msg()]);
+        assert_eq!(app.activity(), vec![Effect::Away(None)]);
+    }
+
+    #[test]
+    fn test_away_nick_unknown_display_name_skips() {
+        let mut app = app();
+        assert_eq!(typed(&mut app, "/away"), vec![away("away")]);
+        assert_eq!(last(&app), Line::Error("AWAY_NICK skipped: display name not known yet".into()));
+    }
+
+    #[test]
+    fn test_away_messages_manual_vs_auto() {
+        let mut app = named("Carla");
+        app.vars.away_nick = "[%n]".into();
+        assert_eq!(typed(&mut app, "/away"), vec![away("away"), nick("[Carla]")]);
+        typed(&mut app, "/back");
+        typed(&mut app, "/set away_msg gone fishing");
+        assert_eq!(app.vars.away_msg, "gone fishing");
+        assert_eq!(typed(&mut app, "/away")[0], away("gone fishing"));
+        typed(&mut app, "/back");
+        assert_eq!(typed(&mut app, "/away brb")[0], away("brb"), "text wins over AWAY_MSG");
+        typed(&mut app, "/back");
+
+        // auto-away: AUTO_AWAY_MSG with %t, plus the away nick
+        app.handle_mx(MxEvent::Away(None));
+        typed(&mut app, "/set auto_away_msg idle %t min");
+        typed(&mut app, "/set auto_away_time 900");
+        app.auto_away_armed = true;
+        app.fake_now = Some(app.last_input + 900_000);
+        assert_eq!(app.tick(), vec![away("idle 15 min"), nick("[Carla]")]);
+        app.handle_mx(MxEvent::OwnDisplayName("[Carla]".into()));
+        // auto-back restores
+        assert_eq!(app.activity(), vec![Effect::Away(None), nick("Carla")]);
+    }
+
+    #[test]
+    fn test_away_nick_restored_after_restart() {
+        let dir = std::env::temp_dir().join(format!("bx-awaynick-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let _ = std::fs::remove_file(&path);
+        let load = || {
+            let s = std::fs::read_to_string(&path).unwrap();
+            let cfg = crate::config::Config::parse_toml(&s).unwrap();
+            Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap())
+        };
+
+        // run 1: auto-away switches the nick, then the client dies
+        let mut app = named("Carla");
+        app.config_toml = Some(path.clone());
+        app.auto_away_armed = true;
+        app.fake_now = Some(app.last_input + 600_000);
+        assert_eq!(app.tick(), vec![auto_msg(), nick("Carla afk")]);
+        assert_eq!(load().away_nick_orig.as_deref(), Some("Carla"), "persisted");
+        drop(app);
+
+        // run 2: not away, display name still the away nick -> offer + /back
+        let mut app = super::tests::app();
+        app.vars = load();
+        app.config_toml = Some(path.clone());
+        probe(&mut app, "Carla afk");
+        assert_eq!(
+            last(&app),
+            Line::Error(
+                "Display name is still the away nick Carla afk: type /back to restore Carla".into()
+            )
+        );
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
+        assert_eq!(load().away_nick_orig, None, "cleared on disk");
+
+        // a custom original survives too (not derivable from the away nick)
+        let mut app = named("Neo");
+        app.config_toml = Some(path.clone());
+        app.vars.away_nick = "zzz".into();
+        assert_eq!(typed(&mut app, "/away"), vec![away("away"), nick("zzz")]);
+        let mut app = app_after_restart(&path, load(), "zzz");
+        assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Neo")]);
+
+        // restarted after the restore already happened: no offer, orig dropped
+        let mut app = named("Neo");
+        app.config_toml = Some(path.clone());
+        typed(&mut app, "/away");
+        let app = app_after_restart(&path, load(), "Neo");
+        assert!(!matches!(last(&app), Line::Error(e) if e.contains("/back")));
+        assert_eq!(load().away_nick_orig, None);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    fn app_after_restart(path: &std::path::Path, vars: Vars, name: &str) -> App {
+        let mut app = app();
+        app.vars = vars;
+        app.config_toml = Some(path.to_path_buf());
+        probe(&mut app, name);
+        app
     }
 }

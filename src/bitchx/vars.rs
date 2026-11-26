@@ -1,4 +1,4 @@
-//! # BitchX `/set` variables
+//! # BitchX `/et` variable
 //!
 //! The subset of BitchX1.3 `source/vars.c` that makes sense for Matrix:
 //! `TIMESTAMP` (bool, default OFF) and `TIMESTAMP_STRING` (strftime,
@@ -9,6 +9,12 @@
 //! `AUTO_AWAY` (bool, default ON, `include/config.h:455`) and
 //! `AUTO_AWAY_TIME` (seconds, default 600, `include/config.h:407`), clamped
 //! like `source/vars.c:1407-1418` `set_away_time`.
+//!
+//! `AWAY_NICK` (default `%n afk`, `%n` = the display name before going away,
+//! empty = off), `AWAY_MSG` (default `away`, `/away` without text) and
+//! `AUTO_AWAY_MSG` (default `Auto-Away after %t mins`, `%t` = minutes):
+//! iamBitchX extras. While the away nick is on, the original display name is
+//! kept in `away_nick_orig` (not a `/set` var) so a restart can restore it.
 //!
 //! Values persist in `config.toml` under `[settings.bitchx]`.
 use std::fmt::Write as _;
@@ -24,13 +30,45 @@ pub const DEFAULT_TIMESTAMP_STR: &str = "%I:%M%p ";
 /// Every variable name, in `/set` listing order.
 pub const NAMES: &[&str] = &[
     "AUTO_AWAY",
+    "AUTO_AWAY_MSG",
     "AUTO_AWAY_TIME",
+    "AWAY_MSG",
+    "AWAY_NICK",
     "TIMESTAMP",
     "TIMESTAMP_STRING",
 ];
 
 /// `DEFAULT_AUTO_AWAY_TIME` (`include/config.h:407`), seconds.
 pub const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
+
+/// `AWAY_NICK` default: `%n` is the display name before going away.
+pub const DEFAULT_AWAY_NICK: &str = "%n afk";
+/// `AWAY_MSG` default, for `/away` without text.
+pub const DEFAULT_AWAY_MSG: &str = "away";
+/// `AUTO_AWAY_MSG` default: `%t` is AUTO_AWAY_TIME in minutes.
+pub const DEFAULT_AUTO_AWAY_MSG: &str = "Auto-Away after %t mins";
+
+/// `AWAY_NICK` with `%n` replaced by `name`; `None` when empty (off).
+pub fn expand_away_nick(pattern: &str, name: &str) -> Option<String> {
+    (!pattern.is_empty()).then(|| pattern.replace("%n", name))
+}
+
+/// `AUTO_AWAY_MSG` with `%t` replaced by `mins`.
+pub fn expand_auto_away_msg(pattern: &str, mins: u32) -> String {
+    pattern.replace("%t", &mins.to_string())
+}
+
+/// The display name `name` came from if it already is an away nick made by
+/// `pattern` (a single `%n` with fixed text around it), e.g. `carla` for
+/// `carla afk` and `%n afk`. Used so suffixes never stack.
+pub fn strip_away_nick(pattern: &str, name: &str) -> Option<String> {
+    let (pre, post) = pattern.split_once("%n")?;
+    if post.contains("%n") || (pre.is_empty() && post.is_empty()) {
+        return None;
+    }
+    let base = name.strip_prefix(pre)?.strip_suffix(post)?;
+    (!base.is_empty()).then(|| base.to_string())
+}
 
 /// `set_away_time` (`source/vars.c:1407-1418`): 0 disables, values under a
 /// minute are minutes, anything else under ten minutes becomes ten minutes.
@@ -51,6 +89,10 @@ pub fn clamp_away_time(value: u32) -> u32 {
 pub struct BitchxConfig {
     pub auto_away: Option<bool>,
     pub auto_away_time: Option<u32>,
+    pub auto_away_msg: Option<String>,
+    pub away_msg: Option<String>,
+    pub away_nick: Option<String>,
+    pub away_nick_orig: Option<String>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
 }
@@ -60,6 +102,10 @@ impl BitchxConfig {
         BitchxConfig {
             auto_away: self.auto_away.or(other.auto_away),
             auto_away_time: self.auto_away_time.or(other.auto_away_time),
+            auto_away_msg: self.auto_away_msg.or(other.auto_away_msg),
+            away_msg: self.away_msg.or(other.away_msg),
+            away_nick: self.away_nick.or(other.away_nick),
+            away_nick_orig: self.away_nick_orig.or(other.away_nick_orig),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
         }
@@ -72,6 +118,13 @@ pub struct Vars {
     pub auto_away: bool,
     /// Seconds; 0 disables.
     pub auto_away_time: u32,
+    /// `%t` = minutes.
+    pub auto_away_msg: String,
+    pub away_msg: String,
+    /// `%n` = display name before going away; empty = off.
+    pub away_nick: String,
+    /// The display name to restore on `/back` while the away nick is on.
+    pub away_nick_orig: Option<String>,
     pub timestamp: bool,
     pub timestamp_string: String,
 }
@@ -81,6 +134,10 @@ impl Default for Vars {
         Vars {
             auto_away: true,
             auto_away_time: DEFAULT_AUTO_AWAY_TIME,
+            auto_away_msg: DEFAULT_AUTO_AWAY_MSG.to_string(),
+            away_msg: DEFAULT_AWAY_MSG.to_string(),
+            away_nick: DEFAULT_AWAY_NICK.to_string(),
+            away_nick_orig: None,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
         }
@@ -128,6 +185,10 @@ impl Vars {
         Vars {
             auto_away: c.auto_away.unwrap_or(d.auto_away),
             auto_away_time: c.auto_away_time.map(clamp_away_time).unwrap_or(d.auto_away_time),
+            auto_away_msg: c.auto_away_msg.clone().unwrap_or(d.auto_away_msg),
+            away_msg: c.away_msg.clone().unwrap_or(d.away_msg),
+            away_nick: c.away_nick.clone().unwrap_or(d.away_nick),
+            away_nick_orig: c.away_nick_orig.clone().filter(|s| !s.is_empty()),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
         }
@@ -138,6 +199,9 @@ impl Vars {
         match name {
             "AUTO_AWAY" => Some(if self.auto_away { "ON" } else { "OFF" }.to_string()),
             "AUTO_AWAY_TIME" => Some(self.auto_away_time.to_string()),
+            "AUTO_AWAY_MSG" => Some(self.auto_away_msg.clone()).filter(|s| !s.is_empty()),
+            "AWAY_MSG" => Some(self.away_msg.clone()).filter(|s| !s.is_empty()),
+            "AWAY_NICK" => Some(self.away_nick.clone()).filter(|s| !s.is_empty()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -161,6 +225,14 @@ impl Vars {
                     return Err(format!("Value of {name} must be greater than 0"));
                 }
                 self.auto_away_time = clamp_away_time(u32::try_from(v).unwrap_or(u32::MAX));
+            },
+            "AUTO_AWAY_MSG" => self.auto_away_msg = value.to_string(),
+            "AWAY_MSG" => self.away_msg = value.to_string(),
+            "AWAY_NICK" => {
+                if value.matches("%n").count() > 1 {
+                    return Err("AWAY_NICK may contain %n only once".into());
+                }
+                self.away_nick = value.to_string();
             },
             "TIMESTAMP" => {
                 self.timestamp = boolean(value, self.timestamp)
@@ -212,6 +284,13 @@ impl Vars {
         bx.insert("auto_away_time".into(), Value::Integer(i64::from(self.auto_away_time)));
         bx.insert("timestamp".into(), Value::Boolean(self.timestamp));
         bx.insert("timestamp_string".into(), Value::String(self.timestamp_string.clone()));
+        bx.insert("auto_away_msg".into(), Value::String(self.auto_away_msg.clone()));
+        bx.insert("away_msg".into(), Value::String(self.away_msg.clone()));
+        bx.insert("away_nick".into(), Value::String(self.away_nick.clone()));
+        match &self.away_nick_orig {
+            Some(orig) => bx.insert("away_nick_orig".into(), Value::String(orig.clone())),
+            None => bx.remove("away_nick_orig"),
+        };
 
         let tmp = path.with_extension("toml.tmp");
         std::fs::write(&tmp, toml::to_string(&doc)?)?;
@@ -315,6 +394,10 @@ mod tests {
             auto_away_time: 1200,
             timestamp: true,
             timestamp_string: "[%H:%M] ".into(),
+            auto_away_msg: "brb %t".into(),
+            away_msg: "lunch".into(),
+            away_nick: "%n|zz".into(),
+            away_nick_orig: Some("Carla".into()),
         };
         v.persist(&path).unwrap();
 
@@ -334,5 +417,52 @@ mod tests {
             crate::config::Config::parse_toml(&std::fs::read_to_string(&fresh).unwrap()).unwrap();
         assert_eq!(Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap()), Vars::default());
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn test_away_nick_expansion() {
+        assert_eq!(expand_away_nick("%n afk", "carla").as_deref(), Some("carla afk"));
+        assert_eq!(expand_away_nick("[%n]zz", "Carla").as_deref(), Some("[Carla]zz"));
+        assert_eq!(expand_away_nick("gone", "carla").as_deref(), Some("gone"));
+        assert_eq!(expand_away_nick("", "carla"), None, "empty AWAY_NICK = off");
+        assert_eq!(expand_auto_away_msg("Auto-Away after %t mins", 10), "Auto-Away after 10 mins");
+        assert_eq!(expand_auto_away_msg("idle %t/%t", 15), "idle 15/15");
+        assert_eq!(expand_auto_away_msg("zZz", 15), "zZz");
+    }
+
+    #[test]
+    fn test_strip_away_nick() {
+        assert_eq!(strip_away_nick("%n afk", "carla afk").as_deref(), Some("carla"));
+        assert_eq!(strip_away_nick("%n afk", "carla afk afk").as_deref(), Some("carla afk"));
+        assert_eq!(strip_away_nick("%n afk", "carla"), None);
+        assert_eq!(strip_away_nick("%n afk", " afk"), None);
+        assert_eq!(strip_away_nick("[%n]", "[x]").as_deref(), Some("x"));
+        assert_eq!(strip_away_nick("gone", "gone"), None);
+        assert_eq!(strip_away_nick("%n", "x"), None);
+    }
+
+    #[test]
+    fn test_away_vars() {
+        let v = Vars::default();
+        assert_eq!(v.get("AWAY_NICK").as_deref(), Some("%n afk"));
+        assert_eq!(v.get("AWAY_MSG").as_deref(), Some("away"));
+        assert_eq!(v.get("AUTO_AWAY_MSG").as_deref(), Some("Auto-Away after %t mins"));
+        assert_eq!(lookup("away_n"), Ok("AWAY_NICK"));
+        assert_eq!(lookup("away_m"), Ok("AWAY_MSG"));
+        assert_eq!(lookup("auto_away_m"), Ok("AUTO_AWAY_MSG"));
+        assert_eq!(lookup("away"), Err("AWAY is ambiguous".into()));
+        let mut v = Vars::default();
+        v.set("AWAY_NICK", "").unwrap();
+        assert_eq!(v.get("AWAY_NICK"), None);
+        assert!(v.set("AWAY_NICK", "%n %n").is_err());
+        v.set("AWAY_MSG", "brb").unwrap();
+        v.set("AUTO_AWAY_MSG", "idle %t").unwrap();
+        assert_eq!((v.away_msg.as_str(), v.auto_away_msg.as_str()), ("brb", "idle %t"));
+        // An empty orig in the file is no orig.
+        let c = BitchxConfig {
+            away_nick_orig: Some(String::new()),
+            ..Default::default()
+        };
+        assert_eq!(Vars::from_config(&c).away_nick_orig, None);
     }
 }
