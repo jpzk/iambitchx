@@ -87,7 +87,8 @@ fn is_sync_death(line: &Line) -> bool {
 }
 
 /// The startup lines of window 1, as in recon captures 00/01: version
-/// header, logo with its `[ version]` credit, then ` iamBitchX:` lines.
+/// header, the iamb credit line, logo with its `[ version]` credit, then
+/// ` iamBitchX:` lines.
 pub fn startup_lines(nick: &str) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
@@ -99,6 +100,7 @@ pub fn startup_lines(nick: &str) -> Vec<Line> {
         Line::Raw(format!("Using terminal type [{term}]")),
         Line::Raw(String::new()),
     ];
+    v.push(Line::Raw("    based on iamb - https://iamb.chat - by Ulyssa".into()));
     v.extend(BANNER.iter().map(|b| Line::Logo(format!("    {b}"))));
     v.push(Line::Logo(format!("    [ iamBitchX-{ver}]           Matrix edition")));
     v.push(Line::Raw(String::new()));

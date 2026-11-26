@@ -315,15 +315,19 @@ mod tests {
         assert!(r[1].starts_with("Version (iambitchx-"), "{:?}", r[1]);
         assert!(r[2].starts_with("Process ["), "{:?}", r[2]);
         assert!(r[3].starts_with("Using terminal type ["), "{:?}", r[3]);
+        // Credit line over the logo: iamb (iamb.chat) by Ulyssa is the base.
+        assert!(r[5].starts_with("    based on iamb"), "{:?}", r[5]);
+        assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
         // Slanted iamBitchX logo, verbatim, full word including the X.
         for (i, l) in crate::bitchx::app::BANNER.iter().enumerate() {
             assert!(l.len() <= 70);
-            assert!(r[5 + i].starts_with(&format!("    {l}")), "{:?}", r[5 + i]);
+            assert!(r[6 + i].starts_with(&format!("    {l}")), "{:?}", r[6 + i]);
         }
-        assert!(r[9].trim_end().ends_with("/_/|_|"), "X glyph: {:?}", r[9]);
-        assert_eq!(buf[(8, 5)].fg, Color::Blue);
-        assert!(buf[(8, 5)].modifier.contains(Modifier::ITALIC));
-        assert!(r[10].starts_with("    [ iamBitchX-"), "{:?}", r[10]);
+        assert!(r[10].trim_end().ends_with("/_/|_|"), "X glyph: {:?}", r[10]);
+        // Buffer indexing is (x, y): column 8, row 6 = first logo line.
+        assert_eq!(buf[(8, 6)].fg, Color::Blue);
+        assert!(buf[(8, 6)].modifier.contains(Modifier::ITALIC));
+        assert!(r[11].starts_with("    [ iamBitchX-"), "{:?}", r[11]);
         assert!(
             r.iter()
                 .any(|l| l.starts_with(" iamBitchX: Auto Response is set to - carla"))
@@ -334,6 +338,8 @@ mod tests {
             r.iter()
                 .any(|l| l.starts_with("      4) armin [query with @armin:remote.tld]"))
         );
+        // The status bar is anchored to the bottom of the window, so the
+        // credit line above the logo does not move these rows.
         assert_blue_row(&buf, 27);
         assert_blue_row(&buf, 28);
         assert!(r[27].starts_with(" [09:24pm][carla] [status]"), "{:?}", r[27]);
