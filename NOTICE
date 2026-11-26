@@ -7,3 +7,8 @@ Copyright Ulyssa, licensed under the Apache License, Version 2.0.
 It has been substantially modified: the iamb/modalkit (Vim) frontend
 was removed and replaced by a BitchX-style frontend; the Matrix
 backend has been modified (login, token handling, presence).
+
+The splash logo art (src/bitchx/app.rs: BANNER_ORIGINAL, BANNER_ACID) comes
+from BitchX (https://github.com/prime001/BitchX), file art.c, function
+do_ansi_logo(), and is redistributed under the BSD 3-Clause license; the
+full notice is in COPYRIGHT-BITCHX, which ships with the binaries.

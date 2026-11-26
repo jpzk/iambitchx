@@ -92,6 +92,63 @@ pub const BANNER_SHADOW: [&str; 2] = [
     " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
     " ░  ░░░ ░ ░ ░░░░░ ░  ░░░ ░░░ ░   ░░   ░",
 ];
+/// The original BitchX 1.3 splash logo, from `art.c`
+/// (`do_ansi_logo`, case 0), decoded from CP437 to Unicode.
+///
+/// The original client ships raw CP437 bytes, so a UTF-8 terminal shows
+/// mojibake; this is the art as it was meant to render. `{ver}` is the
+/// version slot the original filled with its own version string.
+///
+/// BSD-3-Clause, (c) 1990-2012 the BitchX authors -- see NOTICE.
+pub const BANNER_ORIGINAL: [&str; 23] = [
+    ",",
+    "         ▄▄▄",
+    "      ▄█▀▀▄▄▄▄▄          ░▓                             ▐▄   ▄▄",
+    "        ▄▄█▀▀▀   ▄▄▄▄▄█▀▀▀                             ▀       ▀▀▀▀█▄▄▄▄ ▄▄▄",
+    "       ▀▀ ▄▄▄▄▀▀▓█▀ ▀                                               ▀▀▓▓▄██▀▀",
+    " █░░██ ▄▄██▓▌▀ ▐█▌ ▌        ▄▄▄▄      ▐  ██              ▐████   ▐▄▄▄▐▐██▀▀",
+    " █▓▓▄▄▄▄▄▄▄▄▄▄▄ ▀▀▀█▄    ▄▄██▓▀██▄▄   █░░░█       ▄▄▄     ██░░░  ▐▐▀████▄▄▄",
+    " ███▀▌▌     ▀▀▀██▄▄▄▄ ▀ ▐▐█▓██▄▄▐█▌▌ ▐▐▓▓▌▌▄▄▄▄█▓█▓░      ▐░▓▓▓▌▌ █▌▀▓▓███▀▀▀",
+    " ▐▐▀▐▌▌▀▌       ▀▀████▄▄ ▀▀▀▀▐███▀▀  ████▌ ▀   ███▌▌ ▄▄▄▄██ ██▓▌▌ █▌ ▄▀▀▀ ▄▄█",
+    "▄▐▐▄░██ ▌▄░▓     ▐▐▓▓█▓░▌   ▀▀▀▀ ▄▄ ▐▐███ ▌   ▐▐██▄▓▓█▀▀▀  ▐▐████ ▐▀▀ ▄▄▄██▄▄▄",
+    "▌▐▐█▓█  ▀▀      ▄█▀▀▀▀   ▄▄▄▄▄███▌▌  █████   ▄▄██▄█▀▀       ████░ ▄▄▐▀▀▀▀███▓░",
+    "▌ █████      ▀▀          ▀▀▐▐▌ ▄██ ▐▐█▓█▌▌  ▐▐█▌▀█▌▌   Pe^  ▐▐▓▓██▀▀    ██▓█▌▌",
+    "░ ███▀▀▀▀▀▀██▄▄▄▄▄▄        ▐▐▌░█▌▌ ██▌░█▌▌   ▀▀█▄▄█▄▄        ████      ▐▐▀░█ ▄",
+    "░ ████▌▌  ▄▄▄ ▀▀▀▀██▀█▄▄▄  ██▄▓█▌▌▐▐█ ▐██ ▄▐    ▀▀▀███▄▄▄    ▐▐██▌▌ ░▓ ▐▐ ▐▌▌▌",
+    "  ▐▐▀▓▌▌    ▀░▄▄▄▄ ▀▀█▄ ▀▀███████▄▄▓▀████ █▄   ▐▐████▀▀███▄▄▄  ██▌▌    █████▄▌",
+    "  ▐▐▓██▄▄    ▐▐▓▀▌▌ ▐▐█▌ ░▓▓██████████▀▀▀     ▄▄███▀▀ ▄ ▀▀▀███▄▐███    █▀▀ ▌░▓",
+    "  ░▓░▌▀▀▀    ▀▀▀   ▄▄█▀█▓▓█▀▀▀▀    ▀▀▀▀█▄▄▄▄▄█▀▀▀▀ ▄▄▄▀█▄▄  ▀▀██▀██    █▄",
+    "  ░▓         ▄▄▄▄▄███▌▌▐▀▀              ▀▀██▄▄  ▀█▀█▄ ░▓▓░▌  ▐▐▓▓▓░▌",
+    "                       ▐▌    PhonyEye    ▐▐█▓░▌  ▐ ▐▀█▓█▀▀",
+    "    [{ver}]  ▐▀    ^          ▄▄█▀▀▀  ▄█ ▀▌▀▀░▓        Awe/Cia",
+    "                       ▀             ██ ▀           ▌",
+    "                                                    ▀",
+    ",",
+];
+
+/// The original BitchX ASCII "acidjazz" logo (`art.c`, ASCII build,
+/// case 2). BSD-3-Clause, (c) 1990-2012 the BitchX authors.
+pub const BANNER_ACID: [&str; 19] = [
+    "                                                                   ,",
+    "                                           .                     ,$",
+    "                 .                                              ,$'",
+    "                                           .        .          ,$'",
+    "                 :      ,g$p,              .         $,       ,$'",
+    "               y&$       `\"` .,.           $&y       `$,     ,$'",
+    "               $$$     o oooy$$$yoo o      $$$        `$,   ,$' -acidjazz",
+    "         .     $$$%%yyyp, gyp`$$$'gyyyyyyp, $$$yyyyp,   `$, ,$'     .",
+    "       . yxxxx $$$\"`\"$$$ $$$ $$$ $y$\"`\"$$$ $$$\"`\"$$$ xxx`$,$'xxxxxxy .",
+    "         $     $$7   l$$ $$$ $$$ $$7   \"\"\" $$7   ly$     .$'       $",
+    "         $     $$b   dy$ $$$ $y$ $$b   $$$ $$b   d$$    ,$`$,      $",
+    "       . $xxxx $$$uuu$$$ $$$ $$$ $$$uuu$$$ $$$   $$$ x ,$'x`$, xxxx$ .",
+    "         .           \"\"\" \"\"\" \"\"\"       \"\"\"       \"\"\"  ,$'   `$,    .",
+    "           b i t c h    -      x                     ,$'     `$,",
+    "                                                     $'       `$,",
+    "                                                    '          `$,",
+    "                                                                `$,",
+    "                                                                 `$",
+    "                                                                   `",
+];
 
 /// The ASCII fallback logo, in figlet `slant` style (47 columns). Used when
 /// the terminal cannot render the UTF-8 block wordmark.
@@ -165,13 +222,71 @@ fn is_sync_death(line: &Line) -> bool {
     matches!(line, Line::Error(t) if t.starts_with("sync: "))
 }
 
+/// Which splash logo the status window shows.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Logo {
+    /// The original BitchX 1.3 art, decoded from CP437 to Unicode (78 cols).
+    Original,
+    /// The original BitchX ASCII "acidjazz" art (78 cols).
+    Acid,
+    /// Our compact block wordmark (36 cols).
+    Compact,
+    /// The original figlet slant (47 cols).
+    Slant,
+}
+
+impl Logo {
+    /// Pick the logo that fits this terminal.
+    ///
+    /// The original art wants 78 columns and about 36 rows; without that
+    /// room the compact wordmark (UTF-8) or the ASCII slant is used.
+    pub fn pick(utf8: bool, width: u16, height: u16) -> Logo {
+        let room = width >= 78 && height >= 36;
+        match (utf8, room) {
+            (true, true) => Logo::Original,
+            (true, false) => Logo::Compact,
+            (false, true) => Logo::Acid,
+            (false, false) => Logo::Slant,
+        }
+    }
+
+    /// The logo's lines, ready for the startup window.
+    pub fn lines(self, ver: &str) -> Vec<Line> {
+        let slot = format!("{:>15}", ver);
+        match self {
+            Logo::Original => {
+                BANNER_ORIGINAL
+                    .iter()
+                    .map(|l| Line::Logo(format!("    {}", l.replace("{ver}", &slot))))
+                    .collect()
+            },
+            Logo::Acid => BANNER_ACID.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
+            Logo::Compact => {
+                BANNER_BLOCKS
+                    .iter()
+                    .map(|l| Line::Logo(format!("    {l}")))
+                    .chain(BANNER_SHADOW.iter().map(|l| Line::LogoDim(format!("    {l}"))))
+                    .collect()
+            },
+            Logo::Slant => BANNER_ASCII.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
+        }
+    }
+
+    /// How the startup header names the logo.
+    pub fn label(self) -> &'static str {
+        match self {
+            Logo::Original => "original bitchx logo",
+            Logo::Acid => "acidjazz logo",
+            Logo::Compact => "block logo",
+            Logo::Slant => "ascii logo",
+        }
+    }
+}
+
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, the iamb credit line, logo with its `[ version]` credit, then
 /// ` iamBitchX:` lines.
-///
-/// `utf8` picks the logo: the block wordmark with its dither shadow, or the
-/// ASCII slant for terminals that cannot render it.
-pub fn startup_lines_for(nick: &str, utf8: bool) -> Vec<Line> {
+pub fn startup_lines_for(nick: &str, logo: Logo) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
     let term = std::env::var("TERM").unwrap_or_else(|_| "unknown".into());
@@ -179,23 +294,11 @@ pub fn startup_lines_for(nick: &str, utf8: bool) -> Vec<Line> {
         Line::Raw("iamBitchX - Matrix client in the style of BitchX by panasync".into()),
         Line::Raw(format!("Version (iambitchx-{ver}) -- Commit ({sha}).")),
         Line::Raw(format!("Process [{}]", std::process::id())),
-        Line::Raw(format!(
-            "Using terminal type [{term}]{}",
-            if utf8 {
-                " (utf8 logo)"
-            } else {
-                " (ascii logo)"
-            }
-        )),
+        Line::Raw(format!("Using terminal type [{term}] ({})", logo.label())),
         Line::Raw(String::new()),
     ];
     v.push(Line::Raw("    based on iamb - https://iamb.chat - by Ulyssa".into()));
-    if utf8 {
-        v.extend(BANNER_BLOCKS.iter().map(|b| Line::Logo(format!("    {b}"))));
-        v.extend(BANNER_SHADOW.iter().map(|b| Line::LogoDim(format!("    {b}"))));
-    } else {
-        v.extend(BANNER_ASCII.iter().map(|b| Line::Logo(format!("    {b}"))));
-    }
+    v.extend(logo.lines(ver));
     v.push(Line::Logo(format!("    [ iamBitchX-{ver}]           Matrix edition")));
     v.push(Line::Raw(String::new()));
     v.push(Line::Error(format!("Auto Response is set to - {nick}")));
@@ -420,6 +523,10 @@ pub struct App {
     dbg_applied: (bool, String, bool),
     /// DBG flood guard per window: (second, lines this second, suppressed).
     dbg_flood: HashMap<usize, (i64, u32, u32)>,
+    /// The splash logo currently drawn, and where its lines sit in window 0.
+    logo: Logo,
+    logo_start: usize,
+    logo_len: usize,
 }
 
 /// DBG flood guard: at most this many DBG lines per second per window.
@@ -443,16 +550,48 @@ pub enum Probe {
 
 impl App {
     pub fn new(me: OwnedUserId) -> Self {
-        Self::new_with_logo(me, utf8_terminal())
+        Self::new_with_logo(me, Logo::pick(utf8_terminal(), 0, 0))
     }
 
-    /// [`App::new`] with an explicit logo mode (UTF-8 blocks or ASCII).
-    pub fn new_with_logo(me: OwnedUserId, utf8: bool) -> Self {
-        let lines = startup_lines_for(me.localpart(), utf8);
-        Self::with_startup(me, lines)
+    /// [`App::new`] with an explicit logo.
+    pub fn new_with_logo(me: OwnedUserId, logo: Logo) -> Self {
+        let lines = startup_lines_for(me.localpart(), logo);
+        let logo_start = lines
+            .iter()
+            .position(|l| matches!(l, Line::Logo(_) | Line::LogoDim(_)))
+            .unwrap_or(0);
+        let logo_len = lines[logo_start..]
+            .iter()
+            .take_while(|l| matches!(l, Line::Logo(_) | Line::LogoDim(_)))
+            .count();
+        Self::with_startup(me, lines, logo, logo_start, logo_len)
     }
 
-    fn with_startup(me: OwnedUserId, lines: Vec<Line>) -> Self {
+    /// Re-pick the splash logo now that the terminal size is known: the
+    /// original BitchX art needs 78 columns and about 36 rows.
+    pub fn fit_logo(&mut self, width: u16, height: u16) {
+        let want = Logo::pick(utf8_terminal(), width, height);
+        if want == self.logo {
+            return;
+        }
+        let lines = want.lines(env!("CARGO_PKG_VERSION"));
+        let start = self.logo_start.min(self.windows[0].lines.len());
+        let end = (self.logo_start + self.logo_len).min(self.windows[0].lines.len());
+        let ts = now_ms();
+        self.windows[0].lines.splice(start..end, lines.iter().cloned());
+        self.windows[0].times.splice(start..end, vec![ts; lines.len()]);
+        self.logo = want;
+        self.logo_start = start;
+        self.logo_len = lines.len();
+    }
+
+    fn with_startup(
+        me: OwnedUserId,
+        lines: Vec<Line>,
+        logo: Logo,
+        logo_start: usize,
+        logo_len: usize,
+    ) -> Self {
         register_me(&me);
         let mut status = Window::default();
         for line in lines {
@@ -491,6 +630,9 @@ impl App {
             bell: false,
             dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
             dbg_flood: HashMap::new(),
+            logo,
+            logo_start,
+            logo_len,
         }
     }
 
@@ -2094,7 +2236,7 @@ pub mod tests {
 
     /// An app with the status window and three rooms.
     pub fn app() -> App {
-        let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), true);
+        let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::Compact);
         app.clock = Some("09:24pm".into());
         app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
         app.handle_mx(MxEvent::Room(room("!b:example.org", "#other")));
@@ -3965,9 +4107,7 @@ pub mod tests {
     }
 
     #[test]
-    fn test_startup_logo_falls_back_to_ascii() {
-        let utf8 = startup_lines_for("carla", true);
-        let ascii = startup_lines_for("carla", false);
+    fn test_startup_logos() {
         let text = |ls: &[Line]| {
             ls.iter()
                 .map(|l| {
@@ -3978,18 +4118,51 @@ pub mod tests {
                 })
                 .collect::<Vec<_>>()
         };
-        let u = text(&utf8);
-        let a = text(&ascii);
-        assert!(u.iter().any(|l| l.contains('\u{2588}')), "utf8 logo has blocks");
-        assert!(u.iter().any(|l| l.contains('\u{2591}')), "utf8 logo has a dither fade");
-        assert!(!a.iter().any(|l| l.contains('\u{2588}')), "ascii logo has no blocks");
-        assert!(a.iter().any(|l| l.contains("____  _ __")), "ascii logo is the slant art");
-        // Both variants carry the iamb credit line.
-        for l in [&u, &a] {
+        let orig = text(&startup_lines_for("carla", Logo::Original));
+        let acid = text(&startup_lines_for("carla", Logo::Acid));
+        let compact = text(&startup_lines_for("carla", Logo::Compact));
+        let slant = text(&startup_lines_for("carla", Logo::Slant));
+
+        // The original BitchX art, decoded to real Unicode, with the artist
+        // credits kept and the version slot filled in.
+        assert!(orig.iter().any(|l| l.contains('\u{2584}')), "original art has blocks");
+        assert!(orig.iter().any(|l| l.contains("PhonyEye")), "{orig:?}");
+        assert!(orig.iter().any(|l| l.contains("Awe/Cia")), "{orig:?}");
+        assert!(!orig.iter().any(|l| l.contains("{ver}")), "version slot filled");
+        assert!(orig.iter().any(|l| l.contains(env!("CARGO_PKG_VERSION"))), "{orig:?}");
+
+        // The acidjazz art is pure ASCII.
+        assert!(acid.iter().any(|l| l.contains("-acidjazz")), "{acid:?}");
+        assert!(!acid.iter().any(|l| l.contains('\u{2588}')), "ascii art has no blocks");
+
+        // Our compact wordmark: full blocks plus a dither fade.
+        assert!(compact.iter().any(|l| l.contains('\u{2588}')), "compact logo has blocks");
+        assert!(compact.iter().any(|l| l.contains('\u{2591}')), "compact logo has a dither fade");
+
+        // The ASCII fallback.
+        assert!(slant.iter().any(|l| l.contains("____  _ __")), "slant art");
+        assert!(!slant.iter().any(|l| l.contains('\u{2588}')), "slant has no blocks");
+
+        // Every variant carries the iamb credit line.
+        for l in [&orig, &acid, &compact, &slant] {
             assert!(l.iter().any(|x| x.contains("iamb.chat")), "{l:?}");
         }
         // The header says which logo was chosen.
-        assert!(u[3].contains("utf8 logo"), "{:?}", u[3]);
-        assert!(a[3].contains("ascii logo"), "{:?}", a[3]);
+        assert!(orig[3].contains("original bitchx logo"), "{:?}", orig[3]);
+        assert!(acid[3].contains("acidjazz logo"), "{:?}", acid[3]);
+        assert!(compact[3].contains("block logo"), "{:?}", compact[3]);
+        assert!(slant[3].contains("ascii logo"), "{:?}", slant[3]);
+    }
+
+    #[test]
+    fn test_logo_pick() {
+        // Room for the original art: 78 columns and ~36 rows.
+        assert_eq!(Logo::pick(true, 100, 50), Logo::Original);
+        assert_eq!(Logo::pick(false, 100, 50), Logo::Acid);
+        // Too narrow or too short: the compact/ASCII variants.
+        assert_eq!(Logo::pick(true, 60, 50), Logo::Compact);
+        assert_eq!(Logo::pick(true, 100, 30), Logo::Compact);
+        assert_eq!(Logo::pick(false, 60, 50), Logo::Slant);
+        assert_eq!(Logo::pick(false, 100, 30), Logo::Slant);
     }
 }

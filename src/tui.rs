@@ -73,6 +73,9 @@ pub async fn run(
     app.auto_away_armed = true;
     app.last_input = app.now();
     let mut term = setup()?;
+    // The splash logo depends on the terminal size, which is only known now.
+    let size = term.size()?;
+    app.fit_logo(size.width, size.height);
     let res = event_loop(&mut term, &client, &mut app, &mut rx, &tx).await;
     restore();
     res
