@@ -74,7 +74,7 @@ panic = "abort"
 
 [package.metadata.deb]
 section = "net"
-license-file = ["LICENSE", "COPYRIGHT-BITCHX", "NOTICE", "0"]
+license-file = ["LICENSE", "0"]
 assets = [
     # Binary:
     ["target/release/iambitchx", "usr/bin/iambitchx", "755"],
@@ -98,6 +98,10 @@ version = "0.1.0"
 assets = [
     # Binary:
     { source = "target/release/iambitchx", dest = "/usr/bin/iambitchx", mode = "755" },
+    # License:
+    { source = "LICENSE", dest = "/usr/share/licenses/iambitchx/LICENSE", mode = "644", doc = true },
+    { source = "COPYRIGHT-BITCHX", dest = "/usr/share/licenses/iambitchx/COPYRIGHT-BITCHX", mode = "644", doc = true },
+    { source = "NOTICE", dest = "/usr/share/licenses/iambitchx/NOTICE", mode = "644", doc = true },
     # Manual pages:
     { source = "docs/iambitchx.1", dest = "/usr/share/man/man1/iambitchx.1", mode = "644" },
     { source = "docs/iambitchx.5", dest = "/usr/share/man/man5/iambitchx.5", mode = "644" },
