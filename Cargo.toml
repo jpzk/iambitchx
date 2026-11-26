@@ -2,11 +2,11 @@
 name = "iambitchx"
 version = "0.14.0-alpha.1"
 edition = "2024"
-authors = ["Ulyssa <git@ulyssa.dev>"]
-repository = "https://github.com/ulyssa/iamb"
-homepage = "https://iamb.chat"
+authors = ["jpzk"]
+repository = "https://github.com/jpzk/iambitchx"
+homepage = "https://github.com/jpzk/iambitchx"
 readme = "README.md"
-description = "A BitchX-style Matrix chat client"
+description = "A BitchX-style Matrix chat client (fork of iamb by Ulyssa)"
 license = "Apache-2.0"
 exclude = [".github", "CONTRIBUTING.md"]
 keywords = ["matrix", "chat", "tui", "irc", "bitchx"]

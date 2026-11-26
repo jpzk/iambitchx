@@ -1,0 +1,8 @@
+iamBitchX
+Copyright jpzk
+
+This product is a fork of iamb (https://github.com/ulyssa/iamb),
+Copyright Ulyssa, licensed under the Apache License, Version 2.0.
+It has been substantially modified: the iamb/modalkit (Vim) frontend
+was removed and replaced by a BitchX-style frontend; the Matrix
+backend has been modified (login, token handling, presence).
