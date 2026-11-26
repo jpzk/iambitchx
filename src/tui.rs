@@ -111,6 +111,11 @@ async fn event_loop(
                     }
                     fx
                 },
+                Some(Ok(Event::Resize(w, h))) => {
+                    // The splash logo depends on the room available.
+                    app.fit_logo(w, h);
+                    vec![]
+                },
                 Some(Ok(_)) => vec![],
                 Some(Err(e)) => return Err(e.into()),
                 None => return Ok(()),
