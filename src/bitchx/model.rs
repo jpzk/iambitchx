@@ -93,6 +93,9 @@ pub enum Line {
 /// localpart is not ours, for the user on our own homeserver. So with
 /// `@bob:own` and `@bob:evil.org` in sight they read `bob` and
 /// `bob@evil.org`, and a remote `@me:evil.org` can never show up as `me`.
+/// Case twins on the same server (`@Bob:x`, `@bob:x`) stay bare: `@server`
+/// cannot tell them apart, their case does (and nick commands refuse them
+/// as ambiguous).
 pub fn nick_of(user: &UserId) -> String {
     nicks::nick(user)
 }
@@ -136,7 +139,10 @@ mod nicks {
         /// The bare localpart is only shown when it cannot be confused.
         fn bare(&self, user: &UserId) -> bool {
             let key = user.localpart().to_lowercase();
-            let others = self.by_local.get(&key).is_some_and(|s| s.iter().any(|u| u != user));
+            let others = self
+                .by_local
+                .get(&key)
+                .is_some_and(|s| s.iter().any(|u| u.server_name() != user.server_name()));
             if !others || self.mine.contains(user) {
                 return true;
             }

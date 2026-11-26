@@ -123,8 +123,10 @@ pub enum BitchxCommand {
 pub enum VerifyCmd {
     /// `/verify`: list pending verifications.
     List,
+    /// `flow` picks one of several pending flows with `user` (F44).
     Accept {
         user: String,
+        flow: Option<String>,
     },
     Start {
         user: String,
@@ -132,12 +134,15 @@ pub enum VerifyCmd {
     },
     Confirm {
         user: String,
+        flow: Option<String>,
     },
     Mismatch {
         user: String,
+        flow: Option<String>,
     },
     Cancel {
         user: String,
+        flow: Option<String>,
     },
 }
 
@@ -303,7 +308,7 @@ impl<'a> Args<'a> {
     }
 }
 
-/// `/verify` with no args lists; otherwise `<sub> <user> [device]`.
+/// `/verify` with no args lists; otherwise `<sub> <user> [device|flow]`.
 fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
     let Some(sub) = args.word() else {
         return Ok(VerifyCmd::List);
@@ -311,14 +316,34 @@ fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
     let sub = sub.to_lowercase();
     let cmd = match sub.as_str() {
         "list" => VerifyCmd::List,
-        "accept" => VerifyCmd::Accept { user: args.required_word("user")? },
+        "accept" => {
+            VerifyCmd::Accept {
+                user: args.required_word("user")?,
+                flow: args.word(),
+            }
+        },
         "start" => {
             let user = args.required_word("user")?;
             VerifyCmd::Start { user, device: args.word() }
         },
-        "confirm" | "yes" => VerifyCmd::Confirm { user: args.required_word("user")? },
-        "mismatch" | "no" => VerifyCmd::Mismatch { user: args.required_word("user")? },
-        "cancel" => VerifyCmd::Cancel { user: args.required_word("user")? },
+        "confirm" | "yes" => {
+            VerifyCmd::Confirm {
+                user: args.required_word("user")?,
+                flow: args.word(),
+            }
+        },
+        "mismatch" | "no" => {
+            VerifyCmd::Mismatch {
+                user: args.required_word("user")?,
+                flow: args.word(),
+            }
+        },
+        "cancel" => {
+            VerifyCmd::Cancel {
+                user: args.required_word("user")?,
+                flow: args.word(),
+            }
+        },
         _ => return Err(BitchxError::InvalidArgument { command: "verify", argument: sub }),
     };
     let rest = std::mem::take(&mut args.rest).trim().to_string();
@@ -838,23 +863,46 @@ mod tests {
         let v = |c| BitchxCommand::Verify(c);
         assert_eq!(ok("verify"), v(VerifyCmd::List));
         assert_eq!(ok("verify list"), v(VerifyCmd::List));
-        assert_eq!(ok("verify accept armin"), v(VerifyCmd::Accept { user: s("armin") }));
-        assert_eq!(ok("VERIFY Accept armin"), v(VerifyCmd::Accept { user: s("armin") }));
+        assert_eq!(
+            ok("verify accept armin"),
+            v(VerifyCmd::Accept { user: s("armin"), flow: None })
+        );
+        assert_eq!(
+            ok("VERIFY Accept armin"),
+            v(VerifyCmd::Accept { user: s("armin"), flow: None })
+        );
         assert_eq!(ok("verify start @a:x"), v(VerifyCmd::Start { user: s("@a:x"), device: None }));
         assert_eq!(
             ok("verify start @a:x ABCDEF"),
             v(VerifyCmd::Start { user: s("@a:x"), device: Some(s("ABCDEF")) })
         );
-        assert_eq!(ok("verify confirm armin"), v(VerifyCmd::Confirm { user: s("armin") }));
-        assert_eq!(ok("verify mismatch armin"), v(VerifyCmd::Mismatch { user: s("armin") }));
-        assert_eq!(ok("verify cancel armin"), v(VerifyCmd::Cancel { user: s("armin") }));
+        assert_eq!(
+            ok("verify confirm armin"),
+            v(VerifyCmd::Confirm { user: s("armin"), flow: None })
+        );
+        assert_eq!(
+            ok("verify mismatch armin"),
+            v(VerifyCmd::Mismatch { user: s("armin"), flow: None })
+        );
+        assert_eq!(
+            ok("verify cancel armin"),
+            v(VerifyCmd::Cancel { user: s("armin"), flow: None })
+        );
+        assert_eq!(
+            ok("verify confirm armin f2"),
+            v(VerifyCmd::Confirm { user: s("armin"), flow: Some(s("f2")) })
+        );
+        assert_eq!(
+            ok("verify cancel armin f2"),
+            v(VerifyCmd::Cancel { user: s("armin"), flow: Some(s("f2")) })
+        );
         assert_eq!(parse("verify accept"), Err(missing("verify", "user")));
         assert_eq!(parse("verify start"), Err(missing("verify", "user")));
         assert_eq!(parse("verify confirm"), Err(missing("verify", "user")));
         assert_eq!(parse("verify mismatch"), Err(missing("verify", "user")));
         assert_eq!(parse("verify cancel"), Err(missing("verify", "user")));
         assert_eq!(parse("verify frob armin"), Err(invalid("verify", "frob")));
-        assert_eq!(parse("verify accept a b"), Err(invalid("verify", "b")));
+        assert_eq!(parse("verify accept a b c"), Err(invalid("verify", "c")));
         assert_eq!(parse("verify start a DEV extra"), Err(invalid("verify", "extra")));
     }
 

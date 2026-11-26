@@ -41,6 +41,11 @@ pub fn st_hilite() -> Style {
     status_bg().fg(Color::Yellow).add_modifier(StyleModifier::BOLD)
 }
 
+/// `[SYNC LOST]`: bold red on blue.
+fn st_alert() -> Style {
+    status_bg().fg(Color::LightRed).add_modifier(StyleModifier::BOLD)
+}
+
 /// `%C` is cut to this many columns (`#bxrecon-0122` shows as `#bxrecon-0`).
 pub const CHANNEL_WIDTH: usize = 10;
 
@@ -102,6 +107,9 @@ pub struct BxStatus {
     pub users: Option<UserCounts>,
     /// `%L`: lag to the homeserver in seconds; `None` before the first sample.
     pub lag: Option<u64>,
+    /// The sync loop died (F37): `[Lag ??]` is replaced by a persistent
+    /// `[SYNC LOST]` until a restart, so a frozen client never looks live.
+    pub sync_lost: bool,
 }
 
 impl BxStatus {
@@ -220,6 +228,9 @@ impl BxStatus {
             sp(lag, st_bright()),
             sp("]", st_punct()),
         ];
+        if self.sync_lost {
+            s.splice(2..4, [sp("SYNC LOST", st_alert())]);
+        }
 
         if let Some(u) = self.users {
             s.push(sp(" [", st_punct()));

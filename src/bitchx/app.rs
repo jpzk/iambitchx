@@ -80,6 +80,11 @@ pub const BANNER: [&str; 5] = [
     r"/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|",
 ];
 
+/// F37: the line `spawn_sync` sends when the sync loop breaks for good.
+fn is_sync_death(line: &Line) -> bool {
+    matches!(line, Line::Error(t) if t.starts_with("sync: "))
+}
+
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, logo with its `[ version]` credit, then ` iamBitchX:` lines.
 pub fn startup_lines(nick: &str) -> Vec<Line> {
@@ -245,6 +250,9 @@ pub struct PendingVerify {
     pub we_started: bool,
     /// requested / ready / emoji / confirmed.
     pub state: &'static str,
+    /// Several flows with this user reached SAS: the emoji shown cannot be
+    /// tied to this flow, so `/verify confirm` refuses it (F44).
+    pub ambiguous: bool,
 }
 
 pub struct App {
@@ -256,6 +264,8 @@ pub struct App {
     pub input: Input,
     pub away: Option<String>,
     pub lag: Option<u64>,
+    /// F37: the sync loop stopped (no more events until a restart).
+    pub sync_lost: bool,
     /// `/window split on`: show the `STATUS_FORMAT3` top bar (capture 19).
     pub split: bool,
     pub quit: bool,
@@ -334,6 +344,7 @@ impl App {
             input: Input::default(),
             away: None,
             lag: None,
+            sync_lost: false,
             split: false,
             quit: false,
             page: 20,
@@ -512,6 +523,7 @@ impl App {
             hilite: self.hilite(),
             users,
             lag: self.lag,
+            sync_lost: self.sync_lost,
         }
     }
 
@@ -609,6 +621,10 @@ impl App {
             },
             MxEvent::Info { room_id, line } => {
                 if self.probe_line(&line) {
+                    return vec![];
+                }
+                if room_id.is_none() && is_sync_death(&line) {
+                    self.sync_died(line);
                     return vec![];
                 }
                 let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
@@ -1417,12 +1433,74 @@ impl App {
         }
     }
 
-    fn pending_verify(&self, user: &OwnedUserId) -> Option<&PendingVerify> {
-        self.verifications.iter().find(|v| &v.user == user)
+    /// F37: the Matrix sync loop broke (`sync: <err>`, it is not restarted).
+    /// Status bar turns `[SYNC LOST]` for good and the status window plus the
+    /// current one get a -:- line, so a frozen client never looks live.
+    fn sync_died(&mut self, line: Line) {
+        self.windows[0].push(None, line);
+        if self.sync_lost {
+            return;
+        }
+        self.sync_lost = true;
+        let warn = Line::Info(
+            "Sync with the homeserver stopped: no new messages arrive until iamBitchX is restarted"
+                .into(),
+        );
+        if self.current != 0 {
+            self.windows[self.current].push(None, warn.clone());
+        }
+        self.windows[0].push(None, warn);
+    }
+
+    /// The pending flows with `user` (F44: one entry per flow, not per user).
+    fn flows_of(&self, user: &OwnedUserId) -> Vec<&PendingVerify> {
+        self.verifications.iter().filter(|v| &v.user == user).collect()
+    }
+
+    /// The one flow a `/verify <sub> <user> [flow]` means. `flow` is a flow id
+    /// or a unique prefix of one. Several flows and no `flow`: refused, listing
+    /// them, so a confirm can never land on a flow whose emoji were not shown.
+    fn pick_flow(&mut self, user: &OwnedUserId, flow: Option<&str>) -> Option<PendingVerify> {
+        let flows = self.flows_of(user);
+        let picked: Vec<&PendingVerify> = match flow {
+            Some(f) => {
+                let exact: Vec<_> = flows.iter().copied().filter(|v| v.flow_id == f).collect();
+                if exact.is_empty() {
+                    flows.iter().copied().filter(|v| v.flow_id.starts_with(f)).collect()
+                } else {
+                    exact
+                }
+            },
+            None => flows,
+        };
+        match picked.as_slice() {
+            [one] => Some((*one).clone()),
+            [] => {
+                let what = flow.map(|f| format!(" (flow {f})")).unwrap_or_default();
+                self.error(format!("No pending verification with {user}{what} -- see /verify"));
+                None
+            },
+            many => {
+                let list: Vec<String> = many
+                    .iter()
+                    .map(|v| {
+                        let dev =
+                            v.device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
+                        format!("{}{dev}", v.flow_id)
+                    })
+                    .collect();
+                self.error(format!(
+                    "{user} has {} pending verifications: {} -- add the flow id",
+                    many.len(),
+                    list.join(", ")
+                ));
+                None
+            },
+        }
     }
 
     fn verify_cmd(&mut self, cmd: VerifyCmd) -> Vec<Effect> {
-        let (target, action) = match cmd {
+        let (target, flow, action) = match cmd {
             VerifyCmd::List => {
                 if self.verifications.is_empty() {
                     self.info("No pending verifications");
@@ -1434,7 +1512,11 @@ impl App {
                         let dir = if v.we_started { "to" } else { "from" };
                         let dev =
                             v.device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
-                        format!("Verification {dir} {}{dev}: {}", v.user, v.state)
+                        let amb = if v.ambiguous { ", emoji ambiguous" } else { "" };
+                        format!(
+                            "Verification {dir} {}{dev}: {}{amb} (flow {})",
+                            v.user, v.state, v.flow_id
+                        )
                     })
                     .collect();
                 for r in rows {
@@ -1442,21 +1524,38 @@ impl App {
                 }
                 return vec![];
             },
-            VerifyCmd::Accept { user } => (user, VerifyAction::Accept),
-            VerifyCmd::Start { user, device } => (user, VerifyAction::Start { device }),
-            VerifyCmd::Confirm { user } => (user, VerifyAction::Confirm),
-            VerifyCmd::Mismatch { user } => (user, VerifyAction::Mismatch),
-            VerifyCmd::Cancel { user } => (user, VerifyAction::Cancel),
+            VerifyCmd::Accept { user, flow } => (user, flow, VerifyAction::Accept),
+            VerifyCmd::Start { user, device } => (user, None, VerifyAction::Start { device }),
+            VerifyCmd::Confirm { user, flow } => (user, flow, VerifyAction::Confirm),
+            VerifyCmd::Mismatch { user, flow } => (user, flow, VerifyAction::Mismatch),
+            VerifyCmd::Cancel { user, flow } => (user, flow, VerifyAction::Cancel),
         };
         let Some(user) = self.user_cmd(&target) else {
             return vec![];
         };
-        let flow_id = self.pending_verify(&user).map(|v| v.flow_id.clone());
-        if flow_id.is_none() && !matches!(action, VerifyAction::Start { .. }) {
-            self.error(format!("No pending verification with {user} -- see /verify"));
+        if let VerifyAction::Start { .. } = action {
+            let flow_id = self.flows_of(&user).last().map(|v| v.flow_id.clone());
+            return vec![Effect::Verify { user, flow_id, action }];
+        }
+        let Some(v) = self.pick_flow(&user, flow.as_deref()) else {
+            return vec![];
+        };
+        // The emoji on screen cannot be tied to this flow (several flows with
+        // this user reached SAS): never confirm it, start over.
+        if v.ambiguous && action == VerifyAction::Confirm {
+            self.error(format!(
+                "Emoji shown for {user} may belong to another flow -- /verify cancel {user} {} and start again",
+                v.flow_id
+            ));
             return vec![];
         }
-        vec![Effect::Verify { user, flow_id, action }]
+        if matches!(action, VerifyAction::Cancel | VerifyAction::Mismatch) &&
+            let Some(p) = self.verifications.iter_mut().find(|p| p.flow_id == v.flow_id)
+        {
+            // the Matrix side's `Cancelled` (no flow id) then removes this one
+            p.state = "cancelled";
+        }
+        vec![Effect::Verify { user, flow_id: Some(v.flow_id), action }]
     }
 
     /// Print verification lines in the room of an in-room request (else the
@@ -1474,24 +1573,35 @@ impl App {
         }
     }
 
+    /// F44: the Matrix side reports progress per user (no flow id yet), so an
+    /// update is tied to a flow only while that user has exactly one. With
+    /// several flows, SAS emoji mark them all `ambiguous` (confirm refused).
     fn verify_update(&mut self, user: OwnedUserId, update: VerifyUpdate) {
-        let room_id = self.pending_verify(&user).and_then(|v| v.room_id.clone());
+        let n = self.flows_of(&user).len();
+        let room_id = self.flows_of(&user).last().and_then(|v| v.room_id.clone());
         let set_state = |app: &mut App, state| {
-            if let Some(v) = app.verifications.iter_mut().find(|v| v.user == user) {
+            if n == 1 &&
+                let Some(v) = app.verifications.iter_mut().find(|v| v.user == user)
+            {
                 v.state = state;
             }
         };
         let lines = match update {
             VerifyUpdate::Requested { flow_id, device, room_id, we_started } => {
                 let dev = device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
-                let line = if we_started {
+                let mut lines = vec![Line::Info(if we_started {
                     format!("Verification request sent to {user}{dev}, waiting for them to accept")
                 } else {
                     format!(
                         "Verification request from {user}{dev} -- /verify accept {user} or /verify cancel {user}"
                     )
-                };
-                self.verifications.retain(|v| v.user != user);
+                })];
+                self.verifications.retain(|v| v.flow_id != flow_id);
+                if !self.flows_of(&user).is_empty() {
+                    lines.push(Line::Error(format!(
+                        "{user} has another verification pending -- commands now need the flow id ({flow_id}), see /verify"
+                    )));
+                }
                 self.verifications.push(PendingVerify {
                     user: user.clone(),
                     flow_id,
@@ -1499,8 +1609,9 @@ impl App {
                     room_id: room_id.clone(),
                     we_started,
                     state: "requested",
+                    ambiguous: false,
                 });
-                return self.verify_lines(room_id, vec![Line::Info(line)]);
+                return self.verify_lines(room_id, lines);
             },
             VerifyUpdate::Ready => {
                 set_state(self, "ready");
@@ -1510,7 +1621,16 @@ impl App {
             },
             VerifyUpdate::Emoji(emojis) => {
                 set_state(self, "emoji");
-                sas_lines(user.as_str(), &emojis)
+                let mut lines = sas_lines(user.as_str(), &emojis);
+                if n > 1 {
+                    for v in self.verifications.iter_mut().filter(|v| v.user == user) {
+                        v.ambiguous = true;
+                    }
+                    lines.push(Line::Error(format!(
+                        "{n} verifications with {user} are pending: these emoji cannot be tied to one of them, confirm is refused -- cancel them and start again"
+                    )));
+                }
+                lines
             },
             VerifyUpdate::Confirmed => {
                 set_state(self, "confirmed");
@@ -1519,14 +1639,42 @@ impl App {
                 ))]
             },
             VerifyUpdate::Done => {
-                self.verifications.retain(|v| v.user != user);
+                if n == 1 {
+                    self.verifications.retain(|v| v.user != user);
+                } else {
+                    // The flow we confirmed (never an ambiguous one) finished.
+                    let done = self
+                        .verifications
+                        .iter()
+                        .position(|v| v.user == user && v.state == "confirmed");
+                    if let Some(i) = done {
+                        self.verifications.remove(i);
+                    }
+                }
                 vec![Line::Info(format!("{user} is now verified"))]
             },
             VerifyUpdate::Cancelled(reason) => {
-                self.verifications.retain(|v| v.user != user);
-                vec![Line::Error(format!(
+                let mut lines = vec![Line::Error(format!(
                     "Verification with {user} cancelled: {reason}"
-                ))]
+                ))];
+                let ours = self
+                    .verifications
+                    .iter()
+                    .position(|v| v.user == user && v.state == "cancelled");
+                if n == 1 {
+                    self.verifications.retain(|v| v.user != user);
+                } else if let Some(i) = ours {
+                    self.verifications.remove(i);
+                } else if n > 1 {
+                    // Which flow ended is unknown: keep them, see /verify.
+                    for v in self.verifications.iter_mut().filter(|v| v.user == user) {
+                        v.ambiguous = true;
+                    }
+                    lines.push(Line::Error(format!(
+                        "One of {n} verifications with {user} ended -- /verify cancel {user} <flow> the rest"
+                    )));
+                }
+                lines
             },
         };
         self.verify_lines(room_id, lines);
@@ -2465,6 +2613,134 @@ pub mod tests {
         assert!(text.contains("#room(+ie)"), "{text}");
     }
 
+    /// F37: a dead sync loop turns the status bar `[SYNC LOST]` for good and
+    /// leaves a -:- line; other room-less errors do not.
+    #[test]
+    fn test_f37_sync_death_marker() {
+        let mut app = app();
+        let bar = |app: &App| -> String {
+            app.status().line2().spans.iter().map(|s| s.content.to_string()).collect()
+        };
+        assert!(bar(&app).contains("[Lag ??]"), "{}", bar(&app));
+        app.handle_mx(MxEvent::Info { room_id: None, line: Line::Error("other".into()) });
+        assert!(!app.sync_lost);
+        app.handle_mx(MxEvent::Info {
+            room_id: None,
+            line: Line::Error("sync: connection reset".into()),
+        });
+        assert!(app.sync_lost);
+        assert!(bar(&app).contains("[SYNC LOST]"), "{}", bar(&app));
+        assert!(!bar(&app).contains("Lag"), "{}", bar(&app));
+        let warns = |app: &App| {
+            app.windows[0]
+                .lines
+                .iter()
+                .filter(|l| matches!(l, Line::Info(t) if t.contains("Sync with the homeserver stopped")))
+                .count()
+        };
+        assert_eq!(warns(&app), 1);
+        // A lag sample does not hide it; a second error does not repeat it.
+        app.handle_mx(MxEvent::Lag(0));
+        app.handle_mx(MxEvent::Info {
+            room_id: None,
+            line: Line::Error("sync: again".into()),
+        });
+        assert!(bar(&app).contains("[SYNC LOST]"));
+        assert_eq!(warns(&app), 1);
+    }
+
+    /// F44: a second flow with the same user no longer replaces the first;
+    /// commands then need the flow id, and emoji that cannot be tied to one
+    /// flow can never be confirmed.
+    #[test]
+    fn test_f44_verification_keyed_by_flow() {
+        let mut app = app();
+        let me2 = owned_user_id!("@armin:remote.tld");
+        let req = |flow: &str, dev: &str| {
+            MxEvent::Verify {
+                user: me2.clone(),
+                update: VerifyUpdate::Requested {
+                    flow_id: flow.into(),
+                    device: Some(dev.into()),
+                    room_id: None,
+                    we_started: false,
+                },
+            }
+        };
+        app.handle_mx(req("flowA", "DEVA"));
+        app.handle_mx(req("flowB", "DEVB"));
+        assert_eq!(app.verifications.len(), 2);
+        assert!(
+            app.windows[0]
+                .lines
+                .iter()
+                .any(|l| matches!(l, Line::Error(t) if t.contains("another verification pending")))
+        );
+        // No flow id: refused, both listed.
+        for cmd in [
+            "/verify accept armin",
+            "/verify confirm armin",
+            "/verify cancel armin",
+        ] {
+            assert_eq!(typed(&mut app, cmd), vec![], "{cmd}");
+            assert!(
+                matches!(last(&app), Line::Error(t)
+                if t.contains("2 pending verifications") && t.contains("flowA [DEVA]")
+                    && t.contains("flowB [DEVB]")),
+                "{cmd}"
+            );
+        }
+        // The flow id (or a unique prefix) picks exactly that flow.
+        assert_eq!(typed(&mut app, "/verify accept armin flowA"), vec![Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowA".into()),
+            action: VerifyAction::Accept,
+        }]);
+        assert_eq!(typed(&mut app, "/verify accept armin flowB")[0], Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowB".into()),
+            action: VerifyAction::Accept,
+        });
+        assert_eq!(typed(&mut app, "/verify accept armin flowC"), vec![]);
+        // Emoji arrive while two flows are pending: they cannot be tied to a
+        // flow, so confirm is refused even with an explicit flow id.
+        let emojis: Vec<(String, String)> =
+            (0..7).map(|i| (format!("e{i}"), format!("n{i}"))).collect();
+        app.handle_mx(MxEvent::Verify {
+            user: me2.clone(),
+            update: VerifyUpdate::Emoji(emojis),
+        });
+        assert!(app.verifications.iter().all(|v| v.ambiguous));
+        assert_eq!(typed(&mut app, "/verify confirm armin flowA"), vec![]);
+        assert!(matches!(last(&app), Line::Error(t) if t.contains("may belong to another flow")));
+        // Cancelling one: the Matrix side's Cancelled removes that flow only.
+        assert_eq!(typed(&mut app, "/verify cancel armin flowB")[0], Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowB".into()),
+            action: VerifyAction::Cancel,
+        });
+        app.handle_mx(MxEvent::Verify {
+            user: me2.clone(),
+            update: VerifyUpdate::Cancelled("user".into()),
+        });
+        assert_eq!(app.verifications.len(), 1);
+        assert_eq!(app.verifications[0].flow_id, "flowA");
+        // flowA stays tainted: its emoji were ambiguous.
+        assert_eq!(typed(&mut app, "/verify confirm armin"), vec![]);
+        // A single fresh flow confirms normally.
+        app.handle_mx(MxEvent::Verify {
+            user: me2.clone(),
+            update: VerifyUpdate::Cancelled("user".into()),
+        });
+        assert!(app.verifications.is_empty());
+        app.handle_mx(req("flowC", "DEVA"));
+        assert_eq!(typed(&mut app, "/verify confirm armin"), vec![Effect::Verify {
+            user: me2,
+            flow_id: Some("flowC".into()),
+            action: VerifyAction::Confirm,
+        }]);
+    }
+
     #[test]
     fn test_verify_dispatch() {
         let mut app = app();
@@ -3182,6 +3458,10 @@ pub mod tests {
         assert_eq!(nick_of(&owned_user_id!("@carla:evil.org")), "carla@evil.org");
         assert_eq!(nick_of(&owned_user_id!("@f28bob:evil.org")), "f28bob@evil.org");
         assert_eq!(nick_of(&owned_user_id!("@carla:example.org")), "carla");
+        // Same-server case twins: `@server` would not tell them apart, so
+        // they keep their (differently cased) localpart.
+        assert_eq!(nick_of(&owned_user_id!("@F28Zed:z.org")), "F28Zed");
+        assert_eq!(nick_of(&owned_user_id!("@f28zed:z.org")), "f28zed");
     }
 
     #[test]
