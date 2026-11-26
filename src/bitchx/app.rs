@@ -71,14 +71,21 @@ pub const STATUS_NAME: &str = "status";
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
 
-/// The iamBitchX logo shown in the status window, in figlet `slant` style
-/// (47 columns). Rendered italic where the terminal supports it.
-pub const BANNER: [&str; 5] = [
-    r"    _               ____  _ __       __   _  __",
-    r"   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /",
-    r"  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /",
-    r" / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |",
-    r"/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|",
+/// The iamBitchX logo shown in the status window, drawn in block characters:
+/// full blocks for the wordmark, a half-block drop shadow under it.
+/// Rendered italic where the terminal supports it.
+///
+/// The ASCII slant could not be converted: its strokes are one character
+/// wide, so every block mapping (full-block doubling, half-block pairing,
+/// quadrant bridging) turned the letterforms into mush. The wordmark is
+/// therefore drawn in a block font instead.
+pub const BANNER_BLOCKS: [&str; 6] = [
+    "█  ███ █████████ █  █   ███ █    █   █",
+    "  █   ██ █ ██   █   █  █    █     █ █ ",
+    "█ █   ██ █ █████ █ ███ █    ████   █  ",
+    "█ █   ██ █ ██   ██  █  █    █   █ █ █ ",
+    "█  ███ █ █ █████ █  ███ ███ █   ██   █",
+    " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
 ];
 
 /// F37: the line `spawn_sync` sends when the sync loop breaks for good.
@@ -101,7 +108,7 @@ pub fn startup_lines(nick: &str) -> Vec<Line> {
         Line::Raw(String::new()),
     ];
     v.push(Line::Raw("    based on iamb - https://iamb.chat - by Ulyssa".into()));
-    v.extend(BANNER.iter().map(|b| Line::Logo(format!("    {b}"))));
+    v.extend(BANNER_BLOCKS.iter().map(|b| Line::Logo(format!("    {b}"))));
     v.push(Line::Logo(format!("    [ iamBitchX-{ver}]           Matrix edition")));
     v.push(Line::Raw(String::new()));
     v.push(Line::Error(format!("Auto Response is set to - {nick}")));

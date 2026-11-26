@@ -150,7 +150,9 @@ mod tests {
     fn assert_no_box_glyphs(buf: &Buffer) {
         for r in rows(buf) {
             for c in r.chars() {
-                assert!(!('\u{2500}'..='\u{259f}').contains(&c), "box glyph {c:?} in {r:?}");
+                // Box Drawing only (U+2500..U+257F). Block Elements
+                // (U+2580..U+259F: full/half blocks) are used by the logo.
+                assert!(!('\u{2500}'..='\u{257f}').contains(&c), "box glyph {c:?} in {r:?}");
             }
         }
     }
@@ -318,16 +320,18 @@ mod tests {
         // Credit line over the logo: iamb (iamb.chat) by Ulyssa is the base.
         assert!(r[5].starts_with("    based on iamb"), "{:?}", r[5]);
         assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
-        // Slanted iamBitchX logo, verbatim, full word including the X.
-        for (i, l) in crate::bitchx::app::BANNER.iter().enumerate() {
-            assert!(l.len() <= 70);
+        // Block wordmark: full blocks plus a half-block drop shadow.
+        for (i, l) in crate::bitchx::app::BANNER_BLOCKS.iter().enumerate() {
+            assert!(l.chars().count() <= 70);
             assert!(r[6 + i].starts_with(&format!("    {l}")), "{:?}", r[6 + i]);
         }
-        assert!(r[10].trim_end().ends_with("/_/|_|"), "X glyph: {:?}", r[10]);
+        // The wordmark rows are blocks, the last one a half-block shadow.
+        assert!(r[6].contains('\u{2588}'), "full block: {:?}", r[6]);
+        assert!(r[11].contains('\u{2580}'), "half-block shadow: {:?}", r[11]);
         // Buffer indexing is (x, y): column 8, row 6 = first logo line.
         assert_eq!(buf[(8, 6)].fg, Color::Blue);
         assert!(buf[(8, 6)].modifier.contains(Modifier::ITALIC));
-        assert!(r[11].starts_with("    [ iamBitchX-"), "{:?}", r[11]);
+        assert!(r[12].starts_with("    [ iamBitchX-"), "{:?}", r[12]);
         assert!(
             r.iter()
                 .any(|l| l.starts_with(" iamBitchX: Auto Response is set to - carla"))
