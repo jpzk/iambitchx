@@ -84,11 +84,13 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
 
 ## release.yml layout (least privilege)
 
-- `prep-release` (contents: write): creates the draft release; no checkout.
+- no separate prep job: `publish` creates the draft release itself, so it
+  is the only job with contents: write.
 - `build` matrix (contents: read): builds + packages tgz/deb/rpm, hands them
   over as workflow artifacts. Third-party build code never sees a write token.
 - `sbom` (contents: read): `iambitchx-<version>.cdx.json` (version = tag
   without `v`) + `vuln.json`; the scan never fails the release (error-JSON
   fallback in `.github/workflows/vuln.sh`).
-- `publish` (contents: write): downloads all artifacts and runs
+- `publish` (contents: write): creates the draft if missing, downloads all
+  artifacts and runs
   `gh release upload --clobber`; runs even if a build target failed.
