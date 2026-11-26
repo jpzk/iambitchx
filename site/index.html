@@ -5,42 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>iamBitchX — a BitchX-style Matrix client</title>
 <meta name="description" content="iamBitchX: a BitchX-style Matrix client for the terminal. IRC vocabulary, Matrix underneath, end-to-end encrypted.">
+<meta name="color-scheme" content="dark">
+<link rel="icon" href="https://github.com/jpzk/iambitchx/raw/main/docs/iambitchx-256x256.png">
 <style>
-  :root {
-    --bg: #10131a; --fg: #d7dce5; --dim: #8b93a3; --accent: #6fa8ff;
-    --line: #232838; --panel: #161a23;
+  /* JetBrains Mono, self-hosted (SIL OFL 1.1 -- site/fonts/OFL.txt). */
+  @font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url("fonts/jetbrains-mono-400.woff2") format("woff2");
   }
-  @media (prefers-color-scheme: light) {
-    :root { --bg: #fbfbfd; --fg: #1c2030; --dim: #5a6274; --accent: #1f5fd0;
-            --line: #e2e5ec; --panel: #f2f3f7; }
+  @font-face {
+    font-family: "JetBrains Mono";
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url("fonts/jetbrains-mono-700.woff2") format("woff2");
+  }
+
+  :root {
+    --bg: #0b0d12; --panel: #12151d; --panel2: #161a24; --fg: #d8dee9;
+    --dim: #8b93a7; --accent: #6fa8ff; --accent2: #c792ea; --line: #232838;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas,
+            "DejaVu Sans Mono", monospace;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-               "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 860px; margin: 0 auto; padding: 2.5rem 1.25rem 4rem; }
-  h1 { font-size: 1.9rem; margin: 0 0 .2rem; letter-spacing: -.01em; }
-  h2 { font-size: 1.15rem; margin: 2.4rem 0 .6rem; letter-spacing: .01em; }
-  p, li { color: var(--fg); }
-  .sub { color: var(--dim); margin: 0 0 1.8rem; }
-  a { color: var(--accent); }
-  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
-        padding: 1rem 1.1rem; overflow-x: auto; font-size: 12px; line-height: 1.35;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
-  code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-         font-size: .92em; }
-  .btns { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1.4rem 0 0; }
-  .btns a { display: inline-block; padding: .5rem .95rem; border: 1px solid var(--line);
-            border-radius: 7px; text-decoration: none; background: var(--panel); }
-  .btns a.primary { background: var(--accent); border-color: var(--accent); color: #0b0e14; }
-  .grid { display: grid; gap: .9rem; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
-  .card { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: .9rem 1rem; }
-  .card h3 { margin: 0 0 .3rem; font-size: .98rem; }
-  .card p { margin: 0; color: var(--dim); font-size: .92rem; }
-  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--line);
-           color: var(--dim); font-size: .88rem; }
-  .kbd { border: 1px solid var(--line); border-radius: 5px; padding: .05rem .35rem;
-         font-family: ui-monospace, monospace; font-size: .85em; background: var(--panel); }
+  html { background: var(--bg); }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--mono); font-size: 15px; line-height: 1.7;
+    font-variant-ligatures: none; -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 2.2rem 1.1rem 4rem; }
+  h1 { font-size: 1.7rem; margin: 0 0 .3rem; letter-spacing: -.02em; }
+  h2 { font-size: 1.05rem; margin: 2.6rem 0 .7rem; color: var(--accent);
+       letter-spacing: .02em; }
+  h2::before { content: "// "; color: var(--accent2); }
+  p { color: var(--fg); }
+  a { color: var(--accent); text-decoration-color: #2c3d5e; }
+  a:hover { text-decoration-color: var(--accent); }
+  code { color: var(--accent2); }
+  .sub { color: var(--dim); margin: 0 0 1.4rem; }
+
+  /* the splash, in a terminal window */
+  .term { border: 1px solid var(--line); border-radius: 9px; overflow: hidden;
+          background: var(--panel); margin: 1.6rem 0 0; }
+  .term .bar { display: flex; align-items: center; gap: .45rem;
+               padding: .5rem .7rem; background: var(--panel2);
+               border-bottom: 1px solid var(--line); }
+  .term .dot { width: 9px; height: 9px; border-radius: 50%; background: #2b3140; }
+  .term .bar span { margin-left: .4rem; color: var(--dim); font-size: .78rem; }
+  pre { margin: 0; padding: 1rem .9rem 1.2rem; overflow-x: auto; color: var(--fg);
+        font-family: var(--mono); font-size: 12px; line-height: 1.28;
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0, "calt" 0; }
+  pre.hero { font-size: 13px; line-height: 1.22; color: #e7ecf5;
+              text-shadow: 0 0 12px rgba(111, 168, 255, .35); }
+  pre.dim { color: var(--dim); }
+
+  .btns { display: flex; flex-wrap: wrap; gap: .55rem; margin: 1.3rem 0 0; }
+  .btns a { display: inline-block; padding: .45rem .9rem; border: 1px solid var(--line);
+            border-radius: 6px; text-decoration: none; background: var(--panel);
+            color: var(--fg); font-size: .9rem; }
+  .btns a.primary { background: var(--accent); border-color: var(--accent);
+                    color: #080b11; font-weight: 700; }
+  .btns a:hover { border-color: var(--accent); }
+
+  .grid { display: grid; gap: .8rem; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card { border: 1px solid var(--line); background: var(--panel); border-radius: 8px;
+          padding: .8rem .95rem; }
+  .card h3 { margin: 0 0 .35rem; font-size: .92rem; color: var(--accent2); }
+  .card p { margin: 0; color: var(--dim); font-size: .87rem; }
+  .card code { font-size: .85em; }
+
+  footer { margin-top: 3rem; padding-top: 1.1rem; border-top: 1px solid var(--line);
+           color: var(--dim); font-size: .82rem; }
 </style>
 </head>
 <body>
@@ -54,38 +94,77 @@
     <a class="primary" href="https://github.com/jpzk/iambitchx">Source</a>
     <a href="https://github.com/jpzk/iambitchx/releases">Releases</a>
     <a href="https://github.com/jpzk/iambitchx/blob/main/docs/bitchx-frontend.md">Docs</a>
+    <a href="https://github.com/jpzk/iambitchx/blob/main/docs/project.md">Notes</a>
     <a href="https://github.com/jpzk/iambitchx/blob/main/NOTICE">Licence</a>
   </div>
 
-  <h2>The splash</h2>
-  <p>This is the original BitchX 1.3 logo, decoded from CP437 to Unicode — the client
-     shipped raw CP437 bytes, so a UTF-8 terminal has always shown mojibake. The 3D
-     letters are not in the characters: the art is overlapping segments positioned with
-     ANSI cursor jumps, so the layout has to be replayed.</p>
-  <pre>
-     ▄▄▄
-  ▄█▀▀▄▄▄▄▄          ░▓                             ▐▄   ▄▄
-    ▄▄█▀▀▀   ▄▄▄▄▄█▀▀▀                             ▀       ▀▀▀▀█▄▄▄▄ ▄▄▄
-   ▀▀ ▄▄▄▄▀▀▓█▀ ▀                                               ▀▀▓▓▄██▀▀
- █░░██ ▄▄██▓▌▀ ▐█▌ ▌        ▄▄▄▄      ▐  ██              ▐████   ▐▄▄▄▐▐██▀▀
- █▓▓▄▄▄▄▄▄▄▄▄▄▄ ▀▀▀█▄    ▄▄██▓▀██▄▄   █░░░█       ▄▄▄     ██░░░  ▐▐▀████▄▄▄
- ███▀▌▌     ▀▀▀██▄▄▄▄ ▀ ▐▐█▓██▄▄▐█▌▌ ▐▐▓▓▌▌▄▄▄▄█▓█▓░      ▐░▓▓▓▌▌ █▌▀▓▓███▀▀▀
- ▐▐▀▐▌▌▀▌       ▀▀████▄▄ ▀▀▀▀▐███▀▀  ████▌ ▀   ███▌▌ ▄▄▄▄██ ██▓▌▌ █▌ ▄▀▀▀ ▄▄█
-▄▐▐▄░██ ▌▄░▓     ▐▐▓▓█▓░▌   ▀▀▀▀ ▄▄ ▐▐███ ▌   ▐▐██▄▓▓█▀▀▀  ▐▐████ ▐▀▀ ▄▄▄██▄▄▄
-▌▐▐█▓█  ▀▀      ▄█▀▀▀▀   ▄▄▄▄▄███▌▌  █████   ▄▄██▄█▀▀       ████░ ▄▄▐▀▀▀▀███▓░
-▌ █████      ▀▀          ▀▀▐▐▌ ▄██ ▐▐█▓█▌▌  ▐▐█▌▀█▌▌   Pe^  ▐▐▓▓██▀▀    ██▓█▌▌
-░ ███▀▀▀▀▀▀██▄▄▄▄▄▄        ▐▐▌░█▌▌ ██▌░█▌▌   ▀▀█▄▄█▄▄        ████      ▐▐▀░█ ▄
-░ ████▌▌  ▄▄▄ ▀▀▀▀██▀█▄▄▄  ██▄▓█▌▌▐▐█ ▐██ ▄▐    ▀▀▀███▄▄▄    ▐▐██▌▌ ░▓ ▐▐ ▐▌▌▌
-  ▐▐▀▓▌▌    ▀░▄▄▄▄ ▀▀█▄ ▀▀███████▄▄▓▀████ █▄   ▐▐████▀▀███▄▄▄  ██▌▌    █████▄▌
-  ▐▐▓██▄▄    ▐▐▓▀▌▌ ▐▐█▌ ░▓▓██████████▀▀▀     ▄▄███▀▀ ▄ ▀▀▀███▄▐███    █▀▀ ▌░▓
-  ░▓░▌▀▀▀    ▀▀▀   ▄▄█▀█▓▓█▀▀▀▀    ▀▀▀▀█▄▄▄▄▄█▀▀▀▀ ▄▄▄▀█▄▄  ▀▀██▀██    █▄
-  ░▓         ▄▄▄▄▄███▌▌▐▀▀              ▀▀██▄▄  ▀█▀█▄ ░▓▓░▌  ▐▐▓▓▓░▌
-                         ▐▌    PhonyEye    ▐▐█▓░▌  ▐ ▐▀█▓█▀▀
-    [ 0.14.0-alpha.1]  ▐▀    ^          ▄▄█▀▀▀  ▄█ ▀▌▀▀░▓        Awe/Cia
-                         ▀             ██ ▀           ▌
-  </pre>
+  <div class="term">
+    <div class="bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span>iambitchx — status window</span>
+    </div>
+    <pre class="hero">iamBitchX - Matrix client in the style of BitchX by panasync
+Version (iambitchx-0.14.0-alpha.1) -- Commit (e72ec8d).
+Using terminal type [xterm-256color] (original bitchx logo)
 
-  <h2>What it does</h2>
+    based on iamb - https://iamb.chat - by Ulyssa
+    ,
+             ▄▄▄
+          ▄█▀▀▄▄▄▄▄          ░▓                             ▐▄   ▄▄
+            ▄▄█▀▀▀   ▄▄▄▄▄█▀▀▀                             ▀       ▀▀▀▀█▄▄▄▄ ▄▄▄
+           ▀▀ ▄▄▄▄▀▀▓█▀ ▀                                               ▀▀▓▓▄██▀▀
+     █░░██ ▄▄██▓▌▀ ▐█▌ ▌        ▄▄▄▄      ▐  ██              ▐████   ▐▄▄▄▐▐██▀▀
+     █▓▓▄▄▄▄▄▄▄▄▄▄▄ ▀▀▀█▄    ▄▄██▓▀██▄▄   █░░░█       ▄▄▄     ██░░░  ▐▐▀████▄▄▄
+     ███▀▌▌     ▀▀▀██▄▄▄▄ ▀ ▐▐█▓██▄▄▐█▌▌ ▐▐▓▓▌▌▄▄▄▄█▓█▓░      ▐░▓▓▓▌▌ █▌▀▓▓███▀▀▀
+     ▐▐▀▐▌▌▀▌       ▀▀████▄▄ ▀▀▀▀▐███▀▀  ████▌ ▀   ███▌▌ ▄▄▄▄██ ██▓▌▌ █▌ ▄▀▀▀ ▄▄█
+    ▄▐▐▄░██ ▌▄░▓     ▐▐▓▓█▓░▌   ▀▀▀▀ ▄▄ ▐▐███ ▌   ▐▐██▄▓▓█▀▀▀  ▐▐████ ▐▀▀ ▄▄▄██▄▄▄
+    ▌▐▐█▓█  ▀▀      ▄█▀▀▀▀   ▄▄▄▄▄███▌▌  █████   ▄▄██▄█▀▀       ████░ ▄▄▐▀▀▀▀███▓░
+    ▌ █████      ▀▀          ▀▀▐▐▌ ▄██ ▐▐█▓█▌▌  ▐▐█▌▀█▌▌   Pe^  ▐▐▓▓██▀▀    ██▓█▌▌
+    ░ ███▀▀▀▀▀▀██▄▄▄▄▄▄        ▐▐▌░█▌▌ ██▌░█▌▌   ▀▀█▄▄█▄▄        ████      ▐▐▀░█ ▄
+    ░ ████▌▌  ▄▄▄ ▀▀▀▀██▀█▄▄▄  ██▄▓█▌▌▐▐█ ▐██ ▄▐    ▀▀▀███▄▄▄    ▐▐██▌▌ ░▓ ▐▐ ▐▌▌▌
+      ▐▐▀▓▌▌    ▀░▄▄▄▄ ▀▀█▄ ▀▀███████▄▄▓▀████ █▄   ▐▐████▀▀███▄▄▄  ██▌▌    █████▄▌
+      ▐▐▓██▄▄    ▐▐▓▀▌▌ ▐▐█▌ ░▓▓██████████▀▀▀     ▄▄███▀▀ ▄ ▀▀▀███▄▐███    █▀▀ ▌░▓
+      ░▓░▌▀▀▀    ▀▀▀   ▄▄█▀█▓▓█▀▀▀▀    ▀▀▀▀█▄▄▄▄▄█▀▀▀▀ ▄▄▄▀█▄▄  ▀▀██▀██    █▄
+      ░▓         ▄▄▄▄▄███▌▌▐▀▀              ▀▀██▄▄  ▀█▀█▄ ░▓▓░▌  ▐▐▓▓▓░▌
+                           ▐▌    PhonyEye    ▐▐█▓░▌  ▐ ▐▀█▓█▀▀
+        [  iamBitchX   ]  ▐▀    ^          ▄▄█▀▀▀  ▄█ ▀▌▀▀░▓        Awe/Cia
+                           ▀             ██ ▀           ▌</pre>
+  </div>
+
+  <p style="margin-top:1rem;color:var(--dim);font-size:.86rem">The original BitchX 1.3
+     splash, decoded from CP437 to Unicode — the client shipped raw CP437 bytes, so a
+     UTF-8 terminal has always shown mojibake. The 3D letters are not in the characters:
+     the art is overlapping segments positioned with ANSI cursor jumps, so the layout has
+     to be replayed. Art by the BitchX artists, BSD 3-Clause.</p>
+
+  <h2>the other original</h2>
+  <div class="term">
+    <div class="bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span>iambitchx — ascii logo (non-UTF-8 terminals)</span>
+    </div>
+    <pre class="dim">                                                                   ,
+                                           .                     ,$
+                 .                                              ,$'
+                                           .        .          ,$'
+                 :      ,g$p,              .         $,       ,$'
+               y&$       `"` .,.           $&y       `$,     ,$'
+               $$$     o oooy$$$yoo o      $$$        `$,   ,$' -acidjazz
+         .     $$$%%yyyp, gyp`$$$'gyyyyyyp, $$$yyyyp,   `$, ,$'     .
+       . yxxxx $$$\`"$$$ $$$ $$$ $y$\`"$$$ $$$\`"$$$ xxx\`$,$'xxxxxxy .
+         $     $$7   l$$ $$$ $$$ $$7   \""\" $$7   ly$     .$'       $
+         $     $$b   dy$ $$$ $y$ $$b   $$$ $$b   d$$    ,$`$,      $
+       . $xxxx $$$uuu$$$ $$$ $$$ $$$uuu$$$ $$$   $$$ x ,$'x`$, xxxx$ .
+         .           \""\" \""\" \""\"       \""\"       \""\"  ,$'   `$,    .
+           b i t c h    -      x                     ,$'     `$,
+                                                     $'       `$,
+                                                    '          `$,
+                                                                `$,
+                                                                 `$
+                                                                   `</pre>
+  </div>
+
+  <h2>what it does</h2>
   <div class="grid">
     <div class="card"><h3>IRC vocabulary</h3>
       <p><code>/join</code> <code>/part</code> <code>/names</code> <code>/who</code>
@@ -104,27 +183,74 @@
          status bar and prompt. No mouse required.</p></div>
   </div>
 
-  <h2>Build &amp; run</h2>
+  <h2>build &amp; run</h2>
   <pre>cargo build --release
 ./target/release/iambitchx            # default profile
 ./target/release/iambitchx -P &lt;name&gt;  # another profile</pre>
   <p>First start logs you in (OAuth device link or password). Type
-     <span class="kbd">/help</span> for the command list.</p>
+     <code>/help</code> for the command list.</p>
 
-  <h2>Credits</h2>
-  <p>iamBitchX is a fork of <a href="https://github.com/ulyssa/iamb">iamb</a> by Ulyssa
-     — the project home is <a href="https://iamb.chat">iamb.chat</a>. iamb's Matrix engine,
-     sync loop, E2EE stack and store are what make this client possible; the frontend is
-     new. Support the project.</p>
-  <p>The splash logo art comes from <a href="https://github.com/prime001/BitchX">BitchX</a>
-     (<code>art.c</code>, <code>do_ansi_logo()</code>) under the BSD 3-Clause licence; the
-     artists' credits stay in the artwork, and the notice ships with the binaries
+  <h2>credits</h2>
+
+  <h3 style="margin-top:1.4rem;color:var(--accent2)">the splash art</h3>
+  <p>The startup logo is the original <a href="https://github.com/prime001/BitchX">BitchX</a>
+     1.3 art — <code>art.c</code>, <code>do_ansi_logo()</code> — in two variants: the 3D block
+     logo and the “acidjazz” ASCII logo. Both are redistributed under the
+     BSD 3-Clause licence:</p>
+  <pre class="dim">Copyright (c) 1990 Michael Sandroff.
+Copyright (c) 1991, 1992 Troy Rollo.
+Copyright (c) 1992-1996 Matthew Green.
+Copyright 1993, 1997 Jeremy Nelson.
+Copyright 1994 Jake Khuon.
+Copyright 1995, 1998 Jeremy Nelson and others ("EPIC Software Labs").
+Copyright 1996-2004 Colten Edwards et al.
+Copyright 2008-2012 Kevin Easton et al.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions
+are met:
+1. Redistributions of source code must retain the above copyright
+   notice, this list of conditions and the following disclaimer.
+2. Redistributions in binary form must reproduce the above copyright
+   notice, this list of conditions and the following disclaimer in the
+   documentation and/or other materials provided with the distribution.
+3. The names of the author(s) may not be used to endorse or promote
+   products derived from this software without specific prior written
+   permission.
+
+THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
+IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES
+OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.</pre>
+  <p>The artwork itself is signed <em>PhonyEye</em> and <em>Awe/Cia</em>, and those
+     credits stay in the artwork. BitchX was created by
+     <a href="https://github.com/prime001/BitchX">pasync (Colten Edwards)</a> in 1995; the
+     “Why BitchX?” and “History” texts in the README are quoted from the same project.
+     We ship the art decoded from CP437 to Unicode — the original emits raw CP437 bytes,
+     so a UTF-8 terminal has always shown mojibake — and the notice ships with the binaries
      (<code>COPYRIGHT-BITCHX</code>).</p>
-  <p>BitchX was created by panasync (Colten Edwards) in 1995. iamBitchX shares no code
+
+  <h3 style="margin-top:1.8rem;color:var(--accent2)">the base code</h3>
+  <p>iamBitchX is a fork of <a href="https://github.com/ulyssa/iamb">iamb</a> by Ulyssa —
+     the project home is <a href="https://iamb.chat">iamb.chat</a> — under the
+     Apache License 2.0. iamb’s Matrix engine, sync loop, E2EE stack and store are what
+     make this client possible; the frontend is new. Support the project.</p>
+
+  <h3 style="margin-top:1.8rem;color:var(--accent2)">everything else</h3>
+  <ul>
+    <li><a href="https://github.com/matrix-org/matrix-rust-sdk">matrix-rust-sdk</a> —
+        Apache-2.0 — the Matrix SDK underneath.</li>
+    <li><a href="https://github.com/JetBrains/JetBrainsMono">JetBrains Mono</a> —
+        SIL Open Font License 1.1 — this page’s typeface, self-hosted
+        (<code>site/fonts/OFL.txt</code>).</li>
+  </ul>
+  <p>BitchX is by panasync (Colten Edwards) and contributors. iamBitchX shares no code
      with it — only the look and the attitude.</p>
 
   <footer>
     Apache-2.0, with the BitchX splash art under BSD-3-Clause ·
+    set in <a href="https://github.com/JetBrains/JetBrainsMono">JetBrains Mono</a>
+    (SIL OFL 1.1) ·
     <a href="https://github.com/jpzk/iambitchx">github.com/jpzk/iambitchx</a>
   </footer>
 
