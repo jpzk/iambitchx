@@ -4,8 +4,8 @@
 //! [`Line`]s, room snapshots for the windows, history backfill, and the
 //! executor for the [`Effect`]s the UI asks for. Everything it learns goes
 //! to the UI as [`MxEvent`]s over a channel.
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{Duration, Instant};
 
 use matrix_sdk::config::SyncSettings;
@@ -41,6 +41,7 @@ use matrix_sdk::ruma::{
 };
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
+use tokio::sync::watch;
 
 use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
@@ -60,6 +61,38 @@ use crate::login;
 use crate::session_guard::Mode;
 
 pub type Tx = UnboundedSender<MxEvent>;
+
+/// Our own away state as the sync loop sees it (`true` while away, by hand or
+/// automatic). Every `/sync` carries `set_presence`, and Synapse applies it on
+/// each request: with the default (`online`) the loop would undo `/away`
+/// within one long-poll. [`Effect::Away`] flips this; the loop rebuilds its
+/// [`SyncSettings`] after the current response.
+static SYNC_AWAY: LazyLock<watch::Sender<bool>> = LazyLock::new(|| watch::Sender::new(false));
+
+/// The `set_presence` for `/sync`: `unavailable` while away (manual `/away`
+/// or AUTO_AWAY), `online` otherwise.
+pub fn sync_presence(away: bool) -> PresenceState {
+    if away {
+        PresenceState::Unavailable
+    } else {
+        PresenceState::Online
+    }
+}
+
+/// The explicit `PUT /presence` for an away change: away sets `unavailable`
+/// with the reason as `status_msg`; back (`/back`, auto-back) sets `online`
+/// and clears `status_msg` (field absent, stored by Synapse as no status).
+/// The display name is never touched by away.
+pub fn away_presence(reason: Option<&str>) -> (PresenceState, Option<String>) {
+    (sync_presence(reason.is_some()), reason.map(str::to_string))
+}
+
+/// Sync settings for the current away state.
+fn sync_settings(away: bool) -> SyncSettings {
+    SyncSettings::default()
+        .timeout(Duration::from_secs(30))
+        .set_presence(sync_presence(away))
+}
 
 fn power(pl: UserPowerLevel) -> i64 {
     match pl {
@@ -333,21 +366,45 @@ pub fn spawn_sync(client: Client, tx: Tx, app_settings: ApplicationSettings) {
     });
 }
 
-/// One `sync_with_callback` run: returns when a sync request fails or the UI
-/// is gone. Every sync response resets the recovery `attempts` counter.
+/// `sync_with_callback` runs: returns when a sync request fails or the UI is
+/// gone. Every sync response resets the recovery `attempts` counter. When the
+/// away state changes, the run breaks after the current response and restarts
+/// with a matching `set_presence` (the stored sync token is reused).
 async fn sync_until_error(
     client: &Client,
     me: &OwnedUserId,
     tx: &Tx,
     attempts: &Arc<AtomicU32>,
 ) -> Result<(), matrix_sdk::Error> {
-    let settings = SyncSettings::default().timeout(Duration::from_secs(30));
+    let mut away_rx = SYNC_AWAY.subscribe();
+    loop {
+        let away = *away_rx.borrow_and_update();
+        let settings = sync_settings(away);
+        sync_run(client, me, tx, attempts, settings, &away_rx).await?;
+        if tx.is_closed() {
+            return Ok(());
+        }
+        tracing::debug!("sync: away changed, restarting the sync loop");
+    }
+}
+
+/// One `sync_with_callback` run with fixed settings; breaks when the UI is
+/// gone or the away state changed.
+async fn sync_run(
+    client: &Client,
+    me: &OwnedUserId,
+    tx: &Tx,
+    attempts: &Arc<AtomicU32>,
+    settings: SyncSettings,
+    away_rx: &watch::Receiver<bool>,
+) -> Result<(), matrix_sdk::Error> {
     client
         .sync_with_callback(settings, |resp| {
             let client = client.clone();
             let tx = tx.clone();
             let me = me.clone();
             attempts.store(0, Ordering::SeqCst);
+            let away_changed = away_rx.has_changed().unwrap_or(false);
             async move {
                 for (room_id, update) in resp.rooms.joined {
                     let Some(room) = client.get_room(&room_id) else {
@@ -378,7 +435,7 @@ async fn sync_until_error(
                     ));
                     let _ = tx.send(MxEvent::Info { room_id: None, line });
                 }
-                if tx.is_closed() {
+                if tx.is_closed() || away_changed {
                     LoopCtrl::Break
                 } else {
                     LoopCtrl::Continue
@@ -564,13 +621,11 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 .await?;
         },
         Effect::Away(reason) => {
-            let presence = if reason.is_some() {
-                PresenceState::Unavailable
-            } else {
-                PresenceState::Online
-            };
+            let (presence, status_msg) = away_presence(reason.as_deref());
+            // the sync loop first, so the next /sync already carries it
+            SYNC_AWAY.send_replace(reason.is_some());
             let mut req = PresenceRequest::new(me.clone(), presence);
-            req.status_msg = reason.clone();
+            req.status_msg = status_msg;
             client.send(req).await?;
             let _ = tx.send(MxEvent::Away(reason));
         },
@@ -681,6 +736,66 @@ mod tests {
 
     use super::*;
     use crate::bitchx::app::App;
+    use crate::bitchx::app::tests::{app, typed};
+
+    /// What the sync loop's `set_presence` becomes after these effects ran
+    /// (the [`Effect::Away`] executor drives [`SYNC_AWAY`]); `None` if no
+    /// away change.
+    fn sync_after(fx: &[Effect]) -> Option<PresenceState> {
+        fx.iter().rev().find_map(|e| {
+            match e {
+                Effect::Away(reason) => Some(sync_presence(reason.is_some())),
+                _ => None,
+            }
+        })
+    }
+
+    #[test]
+    fn test_sync_presence_decision() {
+        assert_eq!(sync_presence(true), PresenceState::Unavailable);
+        assert_eq!(sync_presence(false), PresenceState::Online);
+        // The settings really carry it (default would be `online`).
+        assert!(format!("{:?}", sync_settings(true)).to_lowercase().contains("unavailable"));
+        assert!(format!("{:?}", sync_settings(false)).to_lowercase().contains("online"));
+        // Away: unavailable + reason; back: online + status_msg cleared.
+        assert_eq!(
+            away_presence(Some("lunch")),
+            (PresenceState::Unavailable, Some("lunch".to_string()))
+        );
+        assert_eq!(away_presence(None), (PresenceState::Online, None));
+    }
+
+    #[test]
+    fn test_sync_presence_follows_manual_away() {
+        let mut app = app();
+        let fx = typed(&mut app, "/away at lunch");
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Nick(_))), "away never changes the nick");
+        assert_eq!(sync_after(&fx), Some(PresenceState::Unavailable));
+        app.handle_mx(MxEvent::Away(Some("at lunch".into())));
+        // A keypress does not end a manual away: still unavailable.
+        assert_eq!(sync_after(&app.activity()), None);
+        let fx = typed(&mut app, "/back");
+        assert_eq!(sync_after(&fx), Some(PresenceState::Online));
+        assert_eq!(fx, vec![Effect::Away(None)], "back clears status_msg, no nick change");
+    }
+
+    #[test]
+    fn test_sync_presence_follows_auto_away() {
+        let t0 = 1_764_000_000_000;
+        let mut app = app();
+        app.fake_now = Some(t0);
+        app.last_input = t0;
+        app.auto_away_armed = true;
+        app.fake_now = Some(t0 + 600_000);
+        let fx = app.tick();
+        assert_eq!(sync_after(&fx), Some(PresenceState::Unavailable));
+        assert!(!fx.iter().any(|e| matches!(e, Effect::Nick(_))), "away never changes the nick");
+        // First keypress: auto-back -> online, status_msg cleared.
+        let fx = app.activity();
+        assert_eq!(fx, vec![Effect::Away(None)]);
+        assert_eq!(sync_after(&fx), Some(PresenceState::Online));
+        assert_eq!(away_presence(None).1, None);
+    }
 
     fn ev(json: &str) -> Raw<AnySyncTimelineEvent> {
         Raw::from_json_string(json.to_string()).unwrap()

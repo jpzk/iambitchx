@@ -5,6 +5,7 @@
 //! ratatui TestBackend and printed as plain text.
 use matrix_sdk::Client;
 use matrix_sdk::config::SyncSettings;
+use matrix_sdk::ruma::presence::PresenceState;
 use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
@@ -55,7 +56,10 @@ pub fn encryption_report(app: &App) -> Vec<String> {
 
 pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
     // read-only: a rejected token is fatal here, never refreshed
-    client.sync_once(SyncSettings::default()).await.map_err(|e| {
+    // set_presence=offline: a read-only probe must not flip the live
+    // client's away state back to online.
+    let settings = SyncSettings::default().set_presence(PresenceState::Offline);
+    client.sync_once(settings).await.map_err(|e| {
         if crate::login::is_unknown_token(&e) {
             anyhow::anyhow!(
                 "--smoke: the homeserver rejected the access token (M_UNKNOWN_TOKEN); \
