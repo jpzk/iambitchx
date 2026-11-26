@@ -778,7 +778,7 @@ impl App {
     /// Going away: switch the display name to AWAY_NICK, remembering (and
     /// persisting) the original. Nothing while already away, when off, or
     /// while our display name is unknown. Never stacks: an already-away
-    /// name (`carla afk`) is unwrapped to its original first.
+    /// name (`carla^afk`) is unwrapped to its original first.
     fn away_nick_on(&mut self) -> Vec<Effect> {
         let pattern = self.vars.away_nick.clone();
         if self.away.is_some() || self.vars.away_nick_orig.is_some() || pattern.is_empty() {
@@ -3051,9 +3051,18 @@ pub mod tests {
             },
             Line::SetVar {
                 name: "AWAY_NICK".into(),
-                value: Some("%n afk".into())
+                value: Some("%n^afk".into())
             },
             Line::SetVar { name: "BEEP".into(), value: Some("ON".into()) },
+            Line::SetVar { name: "DEBUG".into(), value: Some("OFF".into()) },
+            Line::SetVar {
+                name: "DEBUG_FILTER".into(),
+                value: Some("all".into())
+            },
+            Line::SetVar {
+                name: "DEBUG_RAW".into(),
+                value: Some("OFF".into())
+            },
             Line::SetVar {
                 name: "TIMESTAMP".into(),
                 value: Some("OFF".into())
@@ -3456,12 +3465,12 @@ pub mod tests {
     #[test]
     fn test_away_nick_manual_away_and_back() {
         let mut app = named("Carla");
-        assert_eq!(typed(&mut app, "/away lunch"), vec![away("lunch"), nick("Carla afk")]);
+        assert_eq!(typed(&mut app, "/away lunch"), vec![away("lunch"), nick("Carla^afk")]);
         assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
         app.handle_mx(MxEvent::Away(Some("lunch".into())));
-        app.handle_mx(MxEvent::OwnDisplayName("Carla afk".into()));
+        app.handle_mx(MxEvent::OwnDisplayName("Carla^afk".into()));
         let shown = app.windows[0].lines.iter().any(|l| {
-            *l == Line::Error("Display name is now Carla afk (away; /back restores Carla)".into())
+            *l == Line::Error("Display name is now Carla^afk (away; /back restores Carla)".into())
         });
         assert!(shown, "iamBitchX line on the change");
         // already away: a new reason, but the nick is left alone
@@ -3479,15 +3488,15 @@ pub mod tests {
     #[test]
     fn test_away_nick_never_stacks() {
         // crash while away left the away nick on, the original unknown
-        let mut app = named("Carla afk");
+        let mut app = named("Carla^afk");
         assert!(matches!(last(&app), Line::Error(e) if e.contains("/back to restore Carla")));
         assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
-        assert_eq!(typed(&mut app, "/away"), vec![away("away")], "no 'Carla afk afk'");
+        assert_eq!(typed(&mut app, "/away"), vec![away("away")], "no 'Carla^afk^afk'");
         assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
 
         // a display name that already is an away nick, no orig recorded
         let mut app = super::tests::app();
-        app.display_name = Some("Carla afk".into());
+        app.display_name = Some("Carla^afk".into());
         assert_eq!(typed(&mut app, "/away"), vec![away("away")]);
         assert_eq!(app.vars.away_nick_orig.as_deref(), Some("Carla"));
 
@@ -3495,9 +3504,9 @@ pub mod tests {
         let mut app = named("Carla");
         for _ in 0..3 {
             let fx = typed(&mut app, "/away");
-            assert_eq!(fx, vec![away("away"), nick("Carla afk")]);
+            assert_eq!(fx, vec![away("away"), nick("Carla^afk")]);
             app.handle_mx(MxEvent::Away(Some("away".into())));
-            app.handle_mx(MxEvent::OwnDisplayName("Carla afk".into()));
+            app.handle_mx(MxEvent::OwnDisplayName("Carla^afk".into()));
             assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);
             app.handle_mx(MxEvent::Away(None));
             app.handle_mx(MxEvent::OwnDisplayName("Carla".into()));
@@ -3568,7 +3577,7 @@ pub mod tests {
         app.config_toml = Some(path.clone());
         app.auto_away_armed = true;
         app.fake_now = Some(app.last_input + 600_000);
-        assert_eq!(app.tick(), vec![auto_msg(), nick("Carla afk")]);
+        assert_eq!(app.tick(), vec![auto_msg(), nick("Carla^afk")]);
         assert_eq!(load().away_nick_orig.as_deref(), Some("Carla"), "persisted");
         drop(app);
 
@@ -3576,11 +3585,11 @@ pub mod tests {
         let mut app = super::tests::app();
         app.vars = load();
         app.config_toml = Some(path.clone());
-        probe(&mut app, "Carla afk");
+        probe(&mut app, "Carla^afk");
         assert_eq!(
             last(&app),
             Line::Error(
-                "Display name is still the away nick Carla afk: type /back to restore Carla".into()
+                "Display name is still the away nick Carla^afk: type /back to restore Carla".into()
             )
         );
         assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None), nick("Carla")]);

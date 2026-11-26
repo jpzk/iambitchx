@@ -10,7 +10,7 @@
 //! `AUTO_AWAY_TIME` (seconds, default 600, `include/config.h:407`), clamped
 //! like `source/vars.c:1407-1418` `set_away_time`.
 //!
-//! `AWAY_NICK` (default `%n afk`, `%n` = the display name before going away,
+//! `AWAY_NICK` (default `%n^afk`, IRC style, `%n` = the display name before going away,
 //! empty = off), `AWAY_MSG` (default `away`, `/away` without text) and
 //! `AUTO_AWAY_MSG` (default `Auto-Away after %t mins`, `%t` = minutes):
 //! iamBitchX extras. While the away nick is on, the original display name is
@@ -55,7 +55,7 @@ pub const NAMES: &[&str] = &[
 pub const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
 
 /// `AWAY_NICK` default: `%n` is the display name before going away.
-pub const DEFAULT_AWAY_NICK: &str = "%n afk";
+pub const DEFAULT_AWAY_NICK: &str = "%n^afk";
 /// `AWAY_MSG` default, for `/away` without text.
 pub const DEFAULT_AWAY_MSG: &str = "away";
 /// `AUTO_AWAY_MSG` default: `%t` is AUTO_AWAY_TIME in minutes.
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn test_away_vars() {
         let v = Vars::default();
-        assert_eq!(v.get("AWAY_NICK").as_deref(), Some("%n afk"));
+        assert_eq!(v.get("AWAY_NICK").as_deref(), Some("%n^afk"));
         assert_eq!(v.get("AWAY_MSG").as_deref(), Some("away"));
         assert_eq!(v.get("AUTO_AWAY_MSG").as_deref(), Some("Auto-Away after %t mins"));
         assert_eq!(lookup("away_n"), Ok("AWAY_NICK"));

@@ -153,10 +153,8 @@ pub fn client_metadata() -> Raw<ClientMetadata> {
         .expect("Couldn't parse IPv4 redirect URI");
     let ipv6_localhost_uri = Url::parse(&format!("http://[{}]/", Ipv6Addr::LOCALHOST))
         .expect("Couldn't parse IPv6 redirect URI");
-    let client_uri =
-        Localized::new(Url::parse("https://iamb.chat").expect("Couldn't parse client URI"), None);
-    let logo_uri = Localized::new(
-        Url::parse("https://iamb.chat/images/iamb.png").expect("Couldn't parse logo uri"),
+    let client_uri = Localized::new(
+        Url::parse("https://github.com/jpzk/iambitchx").expect("Couldn't parse client URI"),
         None,
     );
 
@@ -168,7 +166,6 @@ pub fn client_metadata() -> Raw<ClientMetadata> {
                 }],
         client_uri), {
             client_name: Some(Localized::new("iambitchx".to_owned(), [])),
-            logo_uri: Some(logo_uri)
     });
 
     Raw::new(&metadata).expect("Couldn't serialize client metadata")

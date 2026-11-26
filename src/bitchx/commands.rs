@@ -229,11 +229,62 @@ impl std::error::Error for BitchxError {}
 
 /// Every command word understood by [`parse`], including aliases, for `/help`.
 pub const COMMAND_NAMES: &[&str] = &[
-    "action", "away", "back", "channels", "clear", "close", "ctcp", "deop", "devices", "encrypt",
-    "exit", "help", "ignore", "invite", "j", "join", "kick", "leave", "list", "me", "mode", "msg",
-    "names", "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "set",
-    "topic", "trust", "unignore", "verify", "version", "who", "whois", "window",
+    "action",
+    "away",
+    "back",
+    "channels",
+    "clear",
+    "close",
+    "ctcp",
+    "deop",
+    "devices",
+    "encrypt",
+    "exit",
+    "help",
+    "ignore",
+    "invite",
+    "j",
+    "join",
+    "kick",
+    "leave",
+    "list",
+    "me",
+    "mircslap",
+    "mircslaps",
+    "mode",
+    "msg",
+    "names",
+    "next",
+    "nick",
+    "op",
+    "part",
+    "prev",
+    "previous",
+    "query",
+    "quit",
+    "recover",
+    "set",
+    "slap",
+    "slaps",
+    "topic",
+    "trust",
+    "unignore",
+    "verify",
+    "version",
+    "who",
+    "whois",
+    "window",
 ];
+
+/// The original BitchX slap (script/menu.bx:1385).
+pub fn slap_text(nick: &str) -> String {
+    format!("slaps {nick} around a bit with a substantially large Brown Cow...")
+}
+
+/// The classic mIRC slap.
+pub fn mircslap_text(nick: &str) -> String {
+    format!("slaps {nick} around a bit with a large trout")
+}
 
 /// Split off the first whitespace-delimited word, returning it and the rest
 /// with only the separating whitespace removed (so bodies keep their spaces).
@@ -387,6 +438,15 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         },
         "me" => BitchxCommand::Me { text: args.required_rest("text")? },
         "action" => BitchxCommand::Action { text: args.required_rest("text")? },
+        // BitchX menu.bx "Slap" action (script/menu.bx:1385), sent as /me.
+        "slap" | "slaps" => {
+            let nick = args.required_word("nick")?;
+            BitchxCommand::Me { text: slap_text(&nick) }
+        },
+        "mircslap" | "mircslaps" => {
+            let nick = args.required_word("nick")?;
+            BitchxCommand::Me { text: mircslap_text(&nick) }
+        },
         "join" => {
             let room = args.required_word("channel")?;
             let key = args.word();
@@ -645,6 +705,17 @@ mod tests {
         });
         assert_eq!(ok("leave"), BitchxCommand::Leave);
         assert_eq!(ok("LEAVE"), BitchxCommand::Leave);
+        let slap = BitchxCommand::Me {
+            text: s("slaps armin around a bit with a substantially large Brown Cow..."),
+        };
+        assert_eq!(ok("slap armin"), slap);
+        assert_eq!(ok("slaps armin"), slap);
+        assert!(parse("slap").is_err());
+        let trout = BitchxCommand::Me {
+            text: s("slaps armin around a bit with a large trout"),
+        };
+        assert_eq!(ok("mircslap armin"), trout);
+        assert_eq!(ok("mircslaps armin"), trout);
         assert_eq!(ok("leave #a:b"), BitchxCommand::Part { room: Some(s("#a:b")), reason: None });
         assert_eq!(ok("leave #a:b bye"), BitchxCommand::Part {
             room: Some(s("#a:b")),
