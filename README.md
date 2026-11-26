@@ -17,6 +17,9 @@
 Channels, not rooms. `/join #channel`, `/msg`, `/whois`, `/away`, `/set` —
 like back in the day, with end-to-end encryption underneath.
 
+Project page: <https://jpzk.github.io/iambitchx/> ·
+Working notes: [docs/project.md](docs/project.md)
+
 Under the hood, iamBitchX runs on the Matrix backend of
 [iamb](https://github.com/ulyssa/iamb) by Ulyssa — [iamb.chat](https://iamb.chat)
 is the project home (sync, E2EE, store, on top of
