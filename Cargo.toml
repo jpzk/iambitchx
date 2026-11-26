@@ -53,7 +53,7 @@ unicode-width = "0.2"
 url = {version = "2.5.8", features = ["serde"]}
 
 [dependencies.matrix-sdk]
-version = "0.19.0"
+version = "0.20.0"
 default-features = false
 features = ["e2e-encryption", "socks", "sqlite", "sso-login", "qrcode", "rustls-aws-lc-rs"]
 

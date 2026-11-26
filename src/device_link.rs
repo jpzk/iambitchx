@@ -458,7 +458,7 @@ pub async fn device_link_login(
     let token_endpoint = metadata.token_endpoint.clone();
     require_https(&token_endpoint, "token endpoint").map_err(fail)?;
 
-    let http = client.http_client().clone();
+    let http = client.http_client().raw().clone();
 
     let (client_id, device_id) =
         if let Some(SavedDevice::OAuth { device_id, client_id, .. }) = saved_device {
