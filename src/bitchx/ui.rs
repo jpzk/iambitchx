@@ -12,6 +12,7 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::bitchx::app::App;
 use crate::bitchx::format::{format_line, n, sanitize, sp, wrap};
+use crate::bitchx::model::Line;
 use crate::bitchx::status::status_bg;
 
 /// `STATUS_FORMAT3`, the top bar shown with `/window split on` (capture 19).
@@ -22,8 +23,23 @@ pub const TOP_BAR: &str = "iamBitchX (BitchX by panasync)";
 pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static>> {
     let win = &app.windows[app.current];
     let chan = win.channel().unwrap_or("").to_string();
-    let formatted: Vec<TLine<'static>> =
-        win.lines.iter().flat_map(|l| format_line(l, &chan)).collect();
+    let vars = &app.vars;
+    let formatted: Vec<TLine<'static>> = win
+        .lines
+        .iter()
+        .zip(&win.times)
+        .flat_map(|(l, ts)| {
+            let mut out = format_line(l, &chan);
+            // `%@`: the stamp leads the first row, in the default colours.
+            let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_));
+            if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped) &&
+                let Some(first) = out.first_mut()
+            {
+                first.spans.insert(0, sp(stamp, n()));
+            }
+            out
+        })
+        .collect();
     let wrapped = wrap(formatted, width);
 
     let max_scroll = wrapped.len().saturating_sub(rows);
@@ -169,7 +185,7 @@ mod tests {
         ];
         app.handle_mx(MxEvent::Lines {
             room_id,
-            lines: lines.into_iter().map(|l| (None, l)).collect(),
+            lines: lines.into_iter().map(|l| (None, None, l)).collect(),
             backfill: false,
         });
         app
@@ -413,7 +429,11 @@ mod tests {
         let mut app = app();
         app.handle_mx(MxEvent::Lines {
             room_id: owned_room_id!("!b:example.org"),
-            lines: vec![(None, Line::Public { nick: "x".into(), own: false, text: "y".into() })],
+            lines: vec![(None, None, Line::Public {
+                nick: "x".into(),
+                own: false,
+                text: "y".into(),
+            })],
             backfill: false,
         });
         let buf = render(&mut app, 70, 8);
@@ -426,7 +446,7 @@ mod tests {
         for i in 0..30 {
             app.handle_mx(MxEvent::Lines {
                 room_id: owned_room_id!("!a:example.org"),
-                lines: vec![(None, Line::Info(format!("line {i}")))],
+                lines: vec![(None, None, Line::Info(format!("line {i}")))],
                 backfill: false,
             });
         }

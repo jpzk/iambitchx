@@ -44,7 +44,7 @@ use tokio::sync::mpsc::UnboundedSender;
 use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
-use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, nick_of};
+use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, nick_of};
 use crate::config::ApplicationSettings;
 use crate::login;
 use crate::session_guard::Mode;
@@ -215,7 +215,7 @@ fn state_lines(ev: AnySyncStateEvent) -> Vec<Line> {
 }
 
 /// Translate one timeline event. Unknown/irrelevant events yield nothing.
-pub fn convert(me: &UserId, tev: &TimelineEvent) -> Vec<(Option<String>, Line)> {
+pub fn convert(me: &UserId, tev: &TimelineEvent) -> Vec<Stamped> {
     if let TimelineEventKind::UnableToDecrypt { event, utd_info } = &tev.kind {
         let id = event.get_field::<String>("event_id").ok().flatten();
         let sender = event.get_field::<OwnedUserId>("sender").ok().flatten();
@@ -223,18 +223,20 @@ pub fn convert(me: &UserId, tev: &TimelineEvent) -> Vec<(Option<String>, Line)> 
             Some(s) => nick_of(s),
             None => "?".to_string(),
         };
+        let ts = event.get_field::<i64>("origin_server_ts").ok().flatten();
         let reason = utd_reason(&utd_info.reason);
-        return vec![(id, Line::Undecryptable { nick, reason })];
+        return vec![(id, ts, Line::Undecryptable { nick, reason })];
     }
     convert_raw(me, tev.raw())
 }
 
 /// Translate one (decrypted or plain) timeline event.
-pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<(Option<String>, Line)> {
+pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<Stamped> {
     let Ok(ev) = raw.deserialize() else {
         return vec![];
     };
     let id = Some(ev.event_id().to_string());
+    let ts = i64::try_from(u64::from(ev.origin_server_ts().0)).ok();
     let own = ev.sender() == me;
     let sender = ev.sender().to_string();
     let nick = nick_of(ev.sender());
@@ -271,11 +273,11 @@ pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<(Option<
         _ => vec![],
     };
 
-    lines.into_iter().map(|l| (id.clone(), l)).collect()
+    lines.into_iter().map(|l| (id.clone(), ts, l)).collect()
 }
 
 /// The last 50 events of a room, oldest first.
-pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<(Option<String>, Line)>> {
+pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<Stamped>> {
     let mut opts = MessagesOptions::backward();
     opts.limit = uint!(50);
     let msgs = room.messages(opts).await?;
@@ -414,7 +416,7 @@ async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> a
     };
     let _ = tx.send(MxEvent::Lines {
         room_id: room.room_id().to_owned(),
-        lines: vec![(Some(resp.response.event_id.to_string()), line)],
+        lines: vec![(Some(resp.response.event_id.to_string()), None, line)],
         backfill: false,
     });
     Ok(())
@@ -698,7 +700,10 @@ mod tests {
             ),
         ];
         let lines: Vec<_> = events.iter().flat_map(|e| convert_raw(&me, &ev(e))).collect();
-        assert_eq!(lines[1].1, Line::Public {
+        // Each line carries its event's origin_server_ts (millis).
+        assert_eq!(lines[1].1, Some(2));
+        assert_eq!(lines[2].1, Some(3));
+        assert_eq!(lines[1].2, Line::Public {
             nick: "carla".into(),
             own: true,
             text: "hello".into()

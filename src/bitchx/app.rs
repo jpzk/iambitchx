@@ -3,6 +3,7 @@
 //! Pure state: numbered windows, the input line, and slash-command dispatch.
 //! Keys and Matrix events go in, [`Effect`]s for the Matrix side come out.
 use std::collections::HashSet;
+use std::path::PathBuf;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
@@ -21,6 +22,7 @@ use crate::bitchx::model::{
     VerifyUpdate,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
+use crate::bitchx::vars::{Vars, lookup};
 
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
@@ -58,11 +60,19 @@ pub fn startup_lines(nick: &str) -> Vec<Line> {
 
 const MAX_LINES: usize = 2000;
 
+/// Now, in unix millis.
+pub fn now_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
 /// One numbered window: the status window (no room) or a room.
 #[derive(Clone, Debug, Default)]
 pub struct Window {
     pub room: RoomSnapshot,
     pub lines: Vec<Line>,
+    /// When each of `lines` happened (unix millis): the event's
+    /// `origin_server_ts`, or the time a client line was printed.
+    pub times: Vec<i64>,
     ids: HashSet<String>,
     pub unread: bool,
     /// Rows scrolled up from the bottom (PageUp/PageDown).
@@ -92,31 +102,50 @@ impl Window {
         }
     }
 
+    /// Append a client-generated line, stamped now.
     fn push(&mut self, id: Option<String>, line: Line) -> bool {
+        self.push_at(id, now_ms(), line)
+    }
+
+    /// Append a line stamped `ts` (unix millis).
+    fn push_at(&mut self, id: Option<String>, ts: i64, line: Line) -> bool {
         if let Some(id) = id &&
             !self.ids.insert(id)
         {
             return false;
         }
         self.lines.push(line);
+        self.times.push(ts);
         if self.lines.len() > MAX_LINES {
-            self.lines.drain(..self.lines.len() - MAX_LINES);
+            let n = self.lines.len() - MAX_LINES;
+            self.lines.drain(..n);
+            self.times.drain(..n);
         }
         true
     }
 
-    fn prepend(&mut self, lines: Vec<(Option<String>, Line)>) {
+    fn prepend(&mut self, lines: Vec<(Option<String>, i64, Line)>) {
         let mut fresh = vec![];
-        for (id, line) in lines {
+        let mut times = vec![];
+        for (id, ts, line) in lines {
             if let Some(id) = id &&
                 !self.ids.insert(id)
             {
                 continue;
             }
             fresh.push(line);
+            times.push(ts);
         }
         fresh.append(&mut self.lines);
+        times.append(&mut self.times);
         self.lines = fresh;
+        self.times = times;
+    }
+
+    /// Drop all scrollback (`/clear`).
+    fn clear(&mut self) {
+        self.lines.clear();
+        self.times.clear();
     }
 
     fn member_by_nick(&self, nick: &str) -> Option<&Member> {
@@ -175,12 +204,18 @@ pub struct App {
     pub confirm: Option<Confirm>,
     /// Key verifications in progress.
     pub verifications: Vec<PendingVerify>,
+    /// `/set` variables.
+    pub vars: Vars,
+    /// Where `/set` persists (`config.toml`); `None`: not saved.
+    pub config_toml: Option<PathBuf>,
 }
 
 impl App {
     pub fn new(me: OwnedUserId) -> Self {
         let mut status = Window::default();
-        status.lines.extend(startup_lines(me.localpart()));
+        for line in startup_lines(me.localpart()) {
+            status.push(None, line);
+        }
 
         App {
             nick: me.localpart().to_string(),
@@ -197,6 +232,8 @@ impl App {
             clock: None,
             confirm: None,
             verifications: vec![],
+            vars: Vars::default(),
+            config_toml: None,
         }
     }
 
@@ -344,13 +381,17 @@ impl App {
                     return vec![];
                 };
                 let win = &mut self.windows[idx];
-                let lines = lines.into_iter().map(|(id, l)| (id, win.query_line(l))).collect();
+                let now = now_ms();
+                let lines = lines
+                    .into_iter()
+                    .map(|(id, ts, l)| (id, ts.unwrap_or(now), win.query_line(l)))
+                    .collect();
                 if backfill {
                     win.prepend(lines);
                 } else {
                     let mut added = false;
-                    for (id, line) in lines {
-                        added |= win.push(id, line);
+                    for (id, ts, line) in lines {
+                        added |= win.push_at(id, ts, line);
                     }
                     if added && idx != self.current {
                         win.unread = true;
@@ -604,6 +645,40 @@ impl App {
         }
     }
 
+    /// `/set` (list), `/set NAME` (show), `/set NAME value` (set + persist).
+    fn set(&mut self, name: Option<String>, value: Option<String>) {
+        let show = |app: &mut Self, name: &str| {
+            let line = Line::SetVar { name: name.to_string(), value: app.vars.get(name) };
+            app.cur_mut().push(None, line);
+        };
+        let Some(name) = name else {
+            for name in crate::bitchx::vars::NAMES {
+                show(self, name);
+            }
+            return;
+        };
+        let name = match lookup(&name) {
+            Ok(n) => n,
+            Err(e) => return self.info(e),
+        };
+        let Some(value) = value else {
+            return show(self, name);
+        };
+        if let Err(e) = self.vars.set(name, &value) {
+            return self.info(e);
+        }
+        let shown = self.vars.get(name).unwrap_or_else(|| "<EMPTY>".into());
+        self.info(format!("Value of {name} set to {shown}"));
+        match self.config_toml.clone() {
+            Some(path) => {
+                if let Err(e) = self.vars.persist(&path) {
+                    self.error(format!("Could not save {}: {e:#}", path.display()));
+                }
+            },
+            None => self.error("Not saved: no config.toml (JSON config)"),
+        }
+    }
+
     pub fn command(&mut self, cmd: BitchxCommand) -> Vec<Effect> {
         match cmd {
             BitchxCommand::Me { text } | BitchxCommand::Action { text } => self.say(text, true),
@@ -681,7 +756,7 @@ impl App {
             BitchxCommand::Back => vec![Effect::Away(None)],
             BitchxCommand::Clear => {
                 let win = self.cur_mut();
-                win.lines.clear();
+                win.clear();
                 win.scroll = 0;
                 vec![]
             },
@@ -775,6 +850,10 @@ impl App {
                 user.map(Effect::Devices).into_iter().collect()
             },
             BitchxCommand::Trust => vec![Effect::Trust],
+            BitchxCommand::Set { name, value } => {
+                self.set(name, value);
+                vec![]
+            },
             BitchxCommand::Recover { key } => {
                 // Never echo the key.
                 self.info("Recovering secrets from secure backup with the given key (********)");
@@ -1147,8 +1226,8 @@ pub mod tests {
         app.handle_mx(MxEvent::Lines {
             room_id: dm.clone(),
             lines: vec![
-                (None, public("carla", true)),
-                (None, public("armin", false)),
+                (None, None, public("carla", true)),
+                (None, None, public("armin", false)),
             ],
             backfill: false,
         });
@@ -1168,7 +1247,7 @@ pub mod tests {
         // Channel windows keep `<nick>`.
         app.handle_mx(MxEvent::Lines {
             room_id: owned_room_id!("!a:example.org"),
-            lines: vec![(None, public("bob", false))],
+            lines: vec![(None, None, public("bob", false))],
             backfill: false,
         });
         assert_eq!(app.windows[1].lines.last(), Some(&public("bob", false)));
@@ -1254,7 +1333,7 @@ pub mod tests {
         for room in ["!b:example.org", "!c:example.org", "!a:example.org"] {
             app.handle_mx(MxEvent::Lines {
                 room_id: OwnedRoomId::try_from(room).unwrap(),
-                lines: vec![(Some(format!("$e{room}")), line.clone())],
+                lines: vec![(Some(format!("$e{room}")), None, line.clone())],
                 backfill: false,
             });
         }
@@ -1271,12 +1350,15 @@ pub mod tests {
         let l = |t: &str| Line::Public { nick: "a".into(), own: false, text: t.into() };
         app.handle_mx(MxEvent::Lines {
             room_id: room_id.clone(),
-            lines: vec![(Some("$2".into()), l("new"))],
+            lines: vec![(Some("$2".into()), None, l("new"))],
             backfill: false,
         });
         app.handle_mx(MxEvent::Lines {
             room_id: room_id.clone(),
-            lines: vec![(Some("$1".into()), l("old")), (Some("$2".into()), l("new"))],
+            lines: vec![
+                (Some("$1".into()), None, l("old")),
+                (Some("$2".into()), None, l("new")),
+            ],
             backfill: true,
         });
         let texts: Vec<_> = app.windows[1].lines.to_vec();
@@ -1680,5 +1762,151 @@ pub mod tests {
         // A missing key is an error that echoes nothing secret.
         typed(&mut app, "/recover");
         assert!(matches!(last(&app), Line::Error(t) if t.contains("missing argument")));
+    }
+
+    fn rows(app: &mut App) -> Vec<String> {
+        let lines = crate::bitchx::ui::scrollback(app, 200, 500);
+        crate::bitchx::format::plain(&lines)
+    }
+
+    fn local(ts: i64, fmt: &str) -> String {
+        use chrono::TimeZone;
+        chrono::Local.timestamp_millis_opt(ts).unwrap().format(fmt).to_string()
+    }
+
+    #[test]
+    fn test_timestamp_toggle_rerenders_with_origin_server_ts() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        let room_id = owned_room_id!("!a:example.org");
+        // Two events from different (past) times: history must show THEIR time.
+        let (t1, t2) = (1_700_000_000_000, 1_700_000_000_000 + 5 * 3_600_000 + 7 * 60_000);
+        let l = |t: &str| Line::Public { nick: "bob".into(), own: false, text: t.into() };
+        app.handle_mx(MxEvent::Lines {
+            room_id: room_id.clone(),
+            lines: vec![(Some("$2".into()), Some(t2), l("second"))],
+            backfill: false,
+        });
+        app.handle_mx(MxEvent::Lines {
+            room_id,
+            lines: vec![(Some("$1".into()), Some(t1), l("first"))],
+            backfill: true,
+        });
+        let off = rows(&mut app);
+        assert!(off.iter().any(|r| r.starts_with("<bob> first")), "{off:?}");
+
+        typed(&mut app, "/set timestamp on");
+        assert!(app.vars.timestamp);
+        let on = rows(&mut app);
+        let s1 = local(t1, "%I:%M%p ");
+        let s2 = local(t2, "%I:%M%p ");
+        assert!(on.contains(&format!("{s1}<bob> first")), "{on:?}");
+        assert!(on.contains(&format!("{s2}<bob> second")), "{on:?}");
+        // `-:-` lines (client output, stamped now) carry the prefix too.
+        let now = local(now_ms(), "%I:%M%p ");
+        assert!(
+            on.iter()
+                .any(|r| r.starts_with(&format!("{now} Value of TIMESTAMP set to ON")))
+        );
+
+        // Changing the format re-renders existing lines.
+        typed(&mut app, "/set timestamp_string [%H:%M] ");
+        let on = rows(&mut app);
+        assert!(on.contains(&format!("{}<bob> first", local(t1, "[%H:%M] "))), "{on:?}");
+
+        typed(&mut app, "/set timestamp off");
+        let off = rows(&mut app);
+        assert!(off.iter().any(|r| r.starts_with("<bob> first")), "{off:?}");
+        assert!(off.iter().any(|r| r.starts_with(" Value of TIMESTAMP set to OFF")), "{off:?}");
+    }
+
+    #[test]
+    fn test_timestamp_action_and_status_window() {
+        let mut app = app();
+        app.vars.timestamp = true;
+        app.handle_key(alt('2'));
+        let ts = 1_750_000_000_000;
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!a:example.org"),
+            lines: vec![(None, Some(ts), Line::Action {
+                nick: "bob".into(),
+                own: false,
+                text: "waves".into(),
+            })],
+            backfill: false,
+        });
+        let r = rows(&mut app);
+        let stamp = local(ts, "%I:%M%p ");
+        assert!(
+            r.iter()
+                .any(|x| x.starts_with(&format!("{stamp} bob")) && x.ends_with(" waves")),
+            "{r:?}"
+        );
+        // The startup logo stays unstamped; its ` iamBitchX:` lines do not.
+        app.handle_key(alt('1'));
+        let r = rows(&mut app);
+        assert!(r[0].starts_with("iamBitchX - Matrix client"), "{r:?}");
+        assert!(r.iter().any(|x| x.ends_with("iamBitchX: Type /help for help")), "{r:?}");
+        assert!(!r.iter().any(|x| x.starts_with(" iamBitchX: Type")), "{r:?}");
+    }
+
+    #[test]
+    fn test_set_list_show_errors() {
+        let mut app = app();
+        let n = app.cur().lines.len();
+        typed(&mut app, "/set");
+        assert_eq!(&app.cur().lines[n..], &[
+            Line::SetVar {
+                name: "TIMESTAMP".into(),
+                value: Some("OFF".into())
+            },
+            Line::SetVar {
+                name: "TIMESTAMP_STRING".into(),
+                value: Some("%I:%M%p ".into())
+            },
+        ]);
+        typed(&mut app, "/set timestamp_s");
+        assert_eq!(last(&app), Line::SetVar {
+            name: "TIMESTAMP_STRING".into(),
+            value: Some("%I:%M%p ".into())
+        });
+        typed(&mut app, "/set bogus 1");
+        assert_eq!(last(&app), Line::Info("No such variable \"BOGUS\"".into()));
+        typed(&mut app, "/set timestamp maybe");
+        assert_eq!(last(&app), Line::Info("Value must be either ON, OFF, or TOGGLE".into()));
+        assert!(!app.vars.timestamp);
+        let r = rows(&mut app);
+        assert!(
+            r.iter().any(|x| x.starts_with("     timestamp_string            %I:%M%p")),
+            "{r:?}"
+        );
+    }
+
+    #[test]
+    fn test_set_persists_to_config_toml() {
+        let dir = std::env::temp_dir().join(format!("bx-set-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        std::fs::write(
+            &path,
+            "[settings]\nlog_level = \"info\"\n[profiles.p]\nuser_id = \"@a:b\"\n",
+        )
+        .unwrap();
+        let mut app = app();
+        app.config_toml = Some(path.clone());
+        typed(&mut app, "/set timestamp on");
+        typed(&mut app, "/set timestamp_string %H:%M:%S ");
+        assert!(!matches!(last(&app), Line::Error(_)), "{:?}", last(&app));
+
+        let cfg =
+            crate::config::Config::parse_toml(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let settings = cfg.settings.unwrap();
+        assert_eq!(settings.log_level.as_deref(), Some("info"));
+        assert!(cfg.profiles.contains_key("p"));
+        let vars = Vars::from_config(&settings.bitchx.unwrap());
+        assert_eq!(vars, app.vars);
+        assert_eq!(vars.timestamp_string, "%H:%M:%S ");
+        assert!(vars.timestamp);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

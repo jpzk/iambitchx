@@ -18,6 +18,8 @@ use matrix_sdk::{AuthSession, SessionMeta, SessionTokens};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
+use crate::bitchx::vars::BitchxConfig;
+
 /// Name of this application's directory under the config, data and cache dirs.
 pub const APP_DIR_NAME: &str = "iambitchx";
 
@@ -192,6 +194,8 @@ fn expand(dir: &str) -> anyhow::Result<PathBuf> {
 pub struct Settings {
     pub log_level: Option<String>,
     pub request_timeout: Option<u64>,
+    /// `[settings.bitchx]`: `/set` variables.
+    pub bitchx: Option<BitchxConfig>,
 }
 
 impl Settings {
@@ -199,6 +203,10 @@ impl Settings {
         Settings {
             log_level: self.log_level.or(other.log_level),
             request_timeout: self.request_timeout.or(other.request_timeout),
+            bitchx: match (self.bitchx, other.bitchx) {
+                (Some(a), Some(b)) => Some(a.merge(b)),
+                (a, b) => a.or(b),
+            },
         }
     }
 }
@@ -261,6 +269,10 @@ pub struct ApplicationSettings {
     pub password_file: Option<PathBuf>,
     pub log_level: String,
     pub request_timeout: u64,
+    /// `/set` variables from `[settings.bitchx]`.
+    pub bitchx: BitchxConfig,
+    /// Where `/set` persists: the `config.toml`, or `None` if the config is JSON.
+    pub config_toml: Option<PathBuf>,
     pub session_json: PathBuf,
     pub session_json_old: PathBuf,
     pub device_json: PathBuf,
@@ -278,9 +290,17 @@ impl ApplicationSettings {
             .or_else(dirs::config_dir)
             .ok_or_else(|| anyhow!("No configuration directory found; use -C"))?;
         let config_dir = app_dir(&base);
-        let (config, _) = Config::load(&config_dir)?;
+        let (config, path) = Config::load(&config_dir)?;
 
-        Self::resolve(config, &config_dir, cli.profile.clone(), dirs::data_dir(), dirs::cache_dir())
+        let mut s = Self::resolve(
+            config,
+            &config_dir,
+            cli.profile.clone(),
+            dirs::data_dir(),
+            dirs::cache_dir(),
+        )?;
+        s.config_toml = path.extension().is_some_and(|e| e == "toml").then_some(path);
+        Ok(s)
     }
 
     /// Pick the profile and lay out its paths. `data_base`/`cache_base` are the
@@ -353,6 +373,8 @@ impl ApplicationSettings {
             password_file: profile.password_file,
             log_level: settings.log_level.unwrap_or_else(|| "off".into()),
             request_timeout: settings.request_timeout.unwrap_or(DEFAULT_REQ_TIMEOUT),
+            bitchx: settings.bitchx.unwrap_or_default(),
+            config_toml: None,
             session_json: profile_data.join("session.json"),
             session_json_old: config_dir.join("profiles").join(&profile_name).join("session.json"),
             device_json: profile_data.join("device.json"),

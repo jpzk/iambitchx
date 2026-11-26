@@ -12,3 +12,4 @@ pub mod input;
 pub mod model;
 pub mod status;
 pub mod ui;
+pub mod vars;

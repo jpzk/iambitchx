@@ -111,6 +111,11 @@ pub enum BitchxCommand {
     Recover {
         key: Secret,
     },
+    /// `/set`: list all variables; `/set NAME`: show one; `/set NAME value`: set it.
+    Set {
+        name: Option<String>,
+        value: Option<String>,
+    },
 }
 
 /// `/verify` subcommands.
@@ -221,8 +226,8 @@ impl std::error::Error for BitchxError {}
 pub const COMMAND_NAMES: &[&str] = &[
     "action", "away", "back", "channels", "clear", "close", "ctcp", "deop", "devices", "encrypt",
     "exit", "help", "ignore", "invite", "j", "join", "kick", "leave", "list", "me", "mode", "msg",
-    "names", "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "topic",
-    "trust", "unignore", "verify", "version", "who", "whois", "window",
+    "names", "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "set",
+    "topic", "trust", "unignore", "verify", "version", "who", "whois", "window",
 ];
 
 /// Split off the first whitespace-delimited word, returning it and the rest
@@ -439,6 +444,12 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             let target = args.word();
             args.finish()?;
             BitchxCommand::Query { target }
+        },
+        "set" => {
+            let name = args.word();
+            // The value keeps its spaces (`TIMESTAMP_STRING` has a trailing one).
+            let value = args.rest();
+            BitchxCommand::Set { name, value }
         },
         "ctcp" => {
             let target = args.required_word("target")?;
@@ -770,6 +781,24 @@ mod tests {
                 panic!("{name} reported unknown ({c})");
             }
         }
+    }
+
+    #[test]
+    fn test_bitchx_set_parse() {
+        assert_eq!(ok("set"), BitchxCommand::Set { name: None, value: None });
+        assert_eq!(ok("SET timestamp"), BitchxCommand::Set {
+            name: Some(s("timestamp")),
+            value: None
+        });
+        assert_eq!(ok("set timestamp on"), BitchxCommand::Set {
+            name: Some(s("timestamp")),
+            value: Some(s("on"))
+        });
+        // The value keeps inner and trailing spaces (`"%I:%M%p "`).
+        assert_eq!(ok("set timestamp_string [%H:%M] "), BitchxCommand::Set {
+            name: Some(s("timestamp_string")),
+            value: Some(s("[%H:%M] "))
+        });
     }
 
     #[test]

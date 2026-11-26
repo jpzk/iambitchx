@@ -44,6 +44,8 @@ pub enum Line {
     Mode { modes: String, nick: String },
     /// INVITE: ` nick invited target to #chan`.
     Invite { nick: String, target: String },
+    /// `/set` listing row: `    name                        value`.
+    SetVar { name: String, value: Option<String> },
     /// Any other ` text` line (server/login info, command output).
     Info(String),
     /// An error line: ` iamBitchX: text`.
@@ -74,6 +76,10 @@ pub enum Line {
 pub fn nick_of(user: &UserId) -> String {
     crate::bitchx::format::sanitize(user.localpart())
 }
+
+/// A line with the event id it came from (for dedup) and the event's
+/// `origin_server_ts` in unix millis (`None`: client-generated, use now).
+pub type Stamped = (Option<String>, Option<i64>, Line);
 
 /// A room member as the UI needs it.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -124,7 +130,7 @@ pub enum MxEvent {
     /// New lines for a room. `backfill` lines are older than everything shown.
     Lines {
         room_id: OwnedRoomId,
-        lines: Vec<(Option<String>, Line)>,
+        lines: Vec<Stamped>,
         backfill: bool,
     },
     /// We left (or were removed from) a room.
