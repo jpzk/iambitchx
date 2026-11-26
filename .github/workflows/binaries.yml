@@ -5,6 +5,14 @@ on:
 
 name: Binaries
 
+# Least privilege: build + upload workflow artifacts only, no write scopes.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
 jobs:
   package:
     strategy:
@@ -27,6 +35,8 @@ jobs:
             triple: pc-windows-msvc
       fail-fast: false
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: read
     env:
       TARGET: ${{ matrix.arch }}-${{ matrix.triple }}
       SCCACHE_GHA_ENABLED: "true"
@@ -36,11 +46,12 @@ jobs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         submodules: true
+        persist-credentials: false
     - name: Install Rust (stable)
-      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8
-      with:
-          toolchain: stable
-          targets: ${{ env.TARGET }}
+      # dtolnay/rust-toolchain removed, see docs/ci-supply-chain.md
+      run: |
+        rustup toolchain install stable --profile minimal --target "$TARGET"
+        rustup default stable
     - name: Install C cross-compilation toolchain
       if: matrix.platform == 'ubuntu-latest'
       run: |
@@ -57,49 +68,50 @@ jobs:
         echo CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc >> $GITHUB_ENV
         echo CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++ >> $GITHUB_ENV
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
     - name: Run sccache-cache
-      uses: mozilla-actions/sccache-action@v0.0.9
+      uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
     - name: 'Build: binary'
-      run: cargo +stable build --release --locked --target ${{ env.TARGET }}
+      run: cargo +stable build --release --locked --target "$TARGET"
     - name: 'Upload: binary'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: iambitchx-${{ env.TARGET }}-binary
         path: |
           ./target/${{ env.TARGET }}/release/iambitchx
           ./target/${{ env.TARGET }}/release/iambitchx.exe
     - name: 'Package: tgz'
+      # cargo-tar replaced, see docs/ci-supply-chain.md
       run: |
-        cargo +stable install --locked cargo-tar
-        cargo +stable tar --target ${{ env.TARGET }}
+        ver=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' Cargo.toml | head -n1)
+        .github/workflows/package-tar.sh "$ver" "$TARGET" release dist
     - name: 'Upload: tgz'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: iambitchx-${{ env.TARGET }}-tgz
-        path: ./target/tar/iambitchx*-${{ env.TARGET }}.tar.gz
+        path: ./dist/iambitchx*-${{ env.TARGET }}.tar.gz
     - name: 'Package: deb'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-deb
-        cargo +stable deb --no-strip --target ${{ env.TARGET }}
+        cargo +stable install cargo-deb --version 3.8.0 --locked
+        cargo +stable deb --no-strip --target "$TARGET"
     - name: 'Upload: deb'
       if: matrix.platform == 'ubuntu-latest'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: iambitchx-${{ env.TARGET }}-deb
         path: ./target/${{ env.TARGET }}/debian/iambitchx*.deb
     - name: 'Package: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
-        cargo +stable install --locked cargo-generate-rpm
-        cargo +stable generate-rpm --target ${{ env.TARGET }}
+        cargo +stable install cargo-generate-rpm --version 0.21.0 --locked
+        cargo +stable generate-rpm --target "$TARGET"
     - name: 'Upload: rpm'
       if: matrix.platform == 'ubuntu-latest'
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: iambitchx-${{ env.TARGET }}-rpm
         path: ./target/${{ env.TARGET }}/generate-rpm/iambitchx*.rpm
