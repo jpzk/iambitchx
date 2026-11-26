@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>iamBitchX — a BitchX-style Matrix client</title>
+<title>iamBitchX - a BitchX-style Matrix client</title>
 <pre>
 
   ██╗ █████╗ ███╗   ███╗ ██████╗ ██╗████████╗ ██████╗██╗  ██╗██╗  ██╗
@@ -11,25 +11,55 @@
   ██║██║  ██║██║ ╚═╝ ██║ ██████╔╝██║   ██║   ╚██████╗██║  ██║██╔╝ ██╗
   ╚═╝╚═╝  ╚═╝╚═╝     ╚═╝ ╚═════╝ ╚═╝   ╚═╝    ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝
 
-  a BitchX-style Matrix client for the terminal.
-  channels, not rooms. IRC vocabulary, Matrix underneath,
-  end-to-end encrypted.
+╔════════════════════════════════════════════════════════════════════╗
+║  iamBitchX -- a BitchX-style Matrix client for the terminal.       ║
+║  channels, not rooms. IRC vocabulary, Matrix underneath,           ║
+║  end-to-end encrypted.                                             ║
+╚════════════════════════════════════════════════════════════════════╝
 
-  [<a href="https://github.com/jpzk/iambitchx">source</a>] [<a href="https://github.com/jpzk/iambitchx/releases">releases</a>] [<a href="https://github.com/jpzk/iambitchx/blob/main/docs/bitchx-frontend.md">docs</a>] [<a href="https://github.com/jpzk/iambitchx/blob/main/docs/project.md">notes</a>] [<a href="https://github.com/jpzk/iambitchx/blob/main/NOTICE">licence</a>]
+  source    https://github.com/jpzk/iambitchx
+  releases  https://github.com/jpzk/iambitchx/releases
+  docs      https://github.com/jpzk/iambitchx/blob/main/docs/
+            bitchx-frontend.md
+  notes     https://github.com/jpzk/iambitchx/blob/main/docs/project.md
+  licence   https://github.com/jpzk/iambitchx/blob/main/NOTICE
 
-╭─ status ─────────────────────────────────────────────────────────╮
-│ iamBitchX - Matrix client in the style of BitchX by panasync     │
-│ Version (iambitchx-0.1.0) -- based on iamb by Ulyssa             │
-│ Using terminal type [xterm-256color]                             │
-│ *** Type /help for the command list                              │
-╰──────────────────────────────────────────────────────────────────╯
+  (no links on this page -- copy the URLs.)
 
-──[ what it does ]──────────────────────────────────────────────────────
+
+──[ status window ]─────────────────────────────────────────────────
+
+iamBitchX - Matrix client in the style of BitchX by panasync
+Version (iambitchx-0.1.0) -- based on iamb by Ulyssa
+Using terminal type [vt100] (original bitchx logo, acidjazz)
+
+                                                               ,
+                                       .                     ,$
+             .                                              ,$'
+                                       .        .          ,$'
+             :      ,g$p,              .         $,       ,$'
+           y&$       `"` .,.           $&y       `$,     ,$'
+           $$$     o oooy$$$yoo o      $$$        `$,   ,$' -acidjazz
+     .     $$$%%yyyp, gyp`$$$'gyyyyyyp, $$$yyyyp,   `$, ,$'     .
+   . yxxxx $$$"`"$$$ $$$ $$$ $y$"`"$$$ $$$"`"$$$ xxx`$,$'xxxxxxy .
+     $     $$7   l$$ $$$ $$$ $$7   """ $$7   ly$     .$'       $
+     $     $$b   dy$ $$$ $y$ $$b   $$$ $$b   d$$    ,$`$,      $
+   . $xxxx $$$uuu$$$ $$$ $$$ $$$uuu$$$ $$$   $$$ x ,$'x`$, xxxx$ .
+     .           """ """ """       """       """  ,$'   `$,    .
+       b i t c h    -      x                     ,$'     `$,
+                                                 $'       `$,
+                                                '          `$,
+                                                            `$,
+                                                             `$
+                                                               `
+
+
+──[ what it does ]──────────────────────────────────────────────────
 
   ▌ IRC vocabulary
-    /join /part /names /who /whois /msg /query /me /topic
-    /invite /kick /op /deop /mode /away /nick /set /window
-    /encrypt /verify /trust /devices /recover
+    /join /part /names /who /whois /msg /query /me /topic /invite
+    /kick /op /deop /mode /away /nick /set /window /encrypt /verify
+    /trust /devices /recover
 
   ▌ Matrix, properly
     end-to-end encryption, SAS emoji verification, device keys,
@@ -37,160 +67,156 @@
     refresh themselves before they expire.
 
   ▌ terminal native
-    BitchX-style status window, split windows, IRC-style
+    a BitchX-style status window, split windows, IRC-style
     timestamps, status bar and prompt. no mouse required.
 
-──[ install ]───────────────────────────────────────────────────────────
 
-  every release ships, per target, a bare binary, a .tar.gz
-  (binary + man pages + desktop files), and on linux .deb/.rpm.
-  grab them from <a href="https://github.com/jpzk/iambitchx/releases">https://github.com/jpzk/iambitchx/releases</a>
+──[ install ]───────────────────────────────────────────────────────
 
-    V=0.1.0
-    R=https://github.com/jpzk/iambitchx/releases/download/v$V
+  every release ships for x86_64 linux (static musl), aarch64 linux,
+  x86_64 macOS and x86_64 windows. current: v0.1.0 -- check the
+  releases page for newer tags and swap the version below.
 
-  ▌ debian / ubuntu (.deb, amd64 or arm64)
-    curl -LO $R/iambitchx_${V}-1_amd64.deb
-    sudo apt install ./iambitchx_${V}-1_amd64.deb
+  releases: https://github.com/jpzk/iambitchx/releases
 
-  ▌ fedora / rhel / suse (.rpm, x86_64 or aarch64)
-    curl -LO $R/iambitchx-${V}-1.x86_64.rpm
-    sudo dnf install ./iambitchx-${V}-1.x86_64.rpm
+  R=https://github.com/jpzk/iambitchx/releases/download/v0.1.0
 
-  ▌ any linux, static musl binary (x86_64)
-    T=x86_64-unknown-linux-musl
-    curl -LO $R/iambitchx-$V-$T.tar.gz
-    tar xzf iambitchx-$V-$T.tar.gz
-    ./iambitchx-$V-$T/iambitchx
+  ▌ deb  (debian, ubuntu; amd64 or arm64)
+    curl -LO $R/iambitchx_0.1.0-1_amd64.deb
+    sudo apt install ./iambitchx_0.1.0-1_amd64.deb
 
-  ▌ tarball, other targets
-    aarch64-unknown-linux-gnu      linux arm64 (glibc)
-    x86_64-apple-darwin            macOS intel
-    aarch64-apple-darwin           macOS apple silicon
-    x86_64-pc-windows-msvc         windows (.tar.gz or bare .exe)
+  ▌ rpm  (fedora, rhel, opensuse; x86_64 or aarch64)
+    curl -LO $R/iambitchx-0.1.0-1.x86_64.rpm
+    sudo dnf install ./iambitchx-0.1.0-1.x86_64.rpm
 
-  ▌ macOS
-    T=x86_64-apple-darwin   # or aarch64-apple-darwin
-    curl -LO $R/iambitchx-$V-$T.tar.gz
-    tar xzf iambitchx-$V-$T.tar.gz
+  ▌ tarball  (binary + man pages + desktop files)
+    curl -LO $R/iambitchx-0.1.0-aarch64-unknown-linux-gnu.tar.gz
+    tar xzf iambitchx-0.1.0-aarch64-unknown-linux-gnu.tar.gz
 
-  ▌ windows (powershell)
-    curl.exe -LO $R/iambitchx-$V-x86_64-pc-windows-msvc.exe
-    .\iambitchx-$V-x86_64-pc-windows-msvc.exe
+  ▌ musl  (static x86_64 linux, runs on any distro)
+    curl -LO $R/iambitchx-0.1.0-x86_64-unknown-linux-musl
+    chmod +x iambitchx-0.1.0-x86_64-unknown-linux-musl
+    ./iambitchx-0.1.0-x86_64-unknown-linux-musl
+    (also as iambitchx-0.1.0-x86_64-unknown-linux-musl.tar.gz)
+
+  ▌ mac  (x86_64; runs under rosetta on apple silicon)
+    curl -LO $R/iambitchx-0.1.0-x86_64-apple-darwin
+    chmod +x iambitchx-0.1.0-x86_64-apple-darwin
+    xattr -d com.apple.quarantine \
+      iambitchx-0.1.0-x86_64-apple-darwin
+    (also as iambitchx-0.1.0-x86_64-apple-darwin.tar.gz)
+
+  ▌ windows  (x86_64)
+    download iambitchx-0.1.0-x86_64-pc-windows-msvc.exe
+    (or the .tar.gz) from the releases page and run it in
+    windows terminal.
 
   ▌ from source
     cargo build --release
     ./target/release/iambitchx            # default profile
-    ./target/release/iambitchx -P &lt;name&gt;  # another profile
+    ./target/release/iambitchx -P NAME    # another profile
 
   first start logs you in (OAuth device link or password).
+  type /help for the command list.
 
-──[ verify ]────────────────────────────────────────────────────────────
 
-  don't trust, verify. every release file is listed in SHA256SUMS
-  and carries SLSA build provenance, signed via Sigstore with the
-  release workflow's OIDC identity.
+──[ verify ]────────────────────────────────────────────────────────
 
-  ▌ checksums (SHA256SUMS next to the downloads)
+  ▌ checksums -- download SHA256SUMS next to the files:
     curl -LO $R/SHA256SUMS
     sha256sum -c --ignore-missing SHA256SUMS
-    # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
+    (macOS: shasum -a 256 -c --ignore-missing SHA256SUMS)
 
-  ▌ provenance (GitHub CLI, gh 2.49+)
-    gh attestation verify iambitchx-$V-$T.tar.gz \
+  ▌ provenance -- proves the file was built by this repo's release
+    workflow (SLSA build provenance, signed via Sigstore; needs the
+    GitHub CLI, gh 2.49+):
+    gh attestation verify iambitchx-0.1.0-x86_64-unknown-linux-musl \
       --repo jpzk/iambitchx
 
-  ▌ stricter: pin the workflow and the tag
-    gh attestation verify iambitchx-$V-$T.tar.gz \
+  ▌ stricter -- pin the workflow and the tag ref:
+    gh attestation verify iambitchx-0.1.0-x86_64-unknown-linux-musl \
       --repo jpzk/iambitchx \
-      --signer-workflow \
-        jpzk/iambitchx/.github/workflows/release.yml \
-      --source-ref refs/tags/v$V
+      --signer-workflow jpzk/iambitchx/.github/workflows/release.yml \
+      --source-ref refs/tags/v0.1.0
 
-  ▌ SBOM attestation (CycloneDX, x86_64 linux binary + tgz)
-    gh attestation verify iambitchx-$V-x86_64-unknown-linux-musl \
+  ▌ SBOM attestation (CycloneDX, x86_64 linux binary and tgz):
+    gh attestation verify iambitchx-0.1.0-x86_64-unknown-linux-musl \
       --repo jpzk/iambitchx \
       --predicate-type https://cyclonedx.org/bom
 
-  full notes: <a href="https://github.com/jpzk/iambitchx/blob/main/docs/release.md">docs/release.md</a>
+  every release file has a build provenance attestation; without
+  gh, the raw bundles are at
+  https://api.github.com/repos/jpzk/iambitchx/attestations/
+  sha256:DIGEST
 
-──[ the acidjazz logo ]─────────────────────────────────────────────────
+  full notes: https://github.com/jpzk/iambitchx/blob/main/docs/
+              release.md
 
-                                                                 ,
-                                         .                     ,$
-               .                                              ,$'
-                                         .        .          ,$'
-               :      ,g$p,              .         $,       ,$'
-             y&amp;$       `"` .,.           $&amp;y       `$,     ,$'
-             $$$     o oooy$$$yoo o      $$$        `$,   ,$' -acidjazz
-       .     $$$%%yyyp, gyp`$$$'gyyyyyyp, $$$yyyyp,   `$, ,$'     .
-     . yxxxx $$$`"$$$ $$$ $$$ $y$`"$$$ $$$`"$$$ xxx`$,$'xxxxxxy .
-       $     $$7   l$$ $$$ $$$ $$7   """ $$7   ly$     .$'       $
-       $     $$b   dy$ $$$ $y$ $$b   $$$ $$b   d$$    ,$`$,      $
-     . $xxxx $$$uuu$$$ $$$ $$$ $$$uuu$$$ $$$   $$$ x ,$'x`$, xxxx$ .
-       .           """ """ """       """       """  ,$'   `$,    .
-         b i t c h    -      x                     ,$'     `$,
-                                                   $'       `$,
-                                                  '          `$,
-                                                              `$,
-                                                               `$
-                                                                 `
 
-──[ credits ]───────────────────────────────────────────────────────────
+──[ credits ]───────────────────────────────────────────────────────
 
   ▌ the splash art
-    the in-client startup logo is the original <a href="https://github.com/prime001/BitchX">BitchX</a> 1.3 art
-    (art.c, do_ansi_logo()) in two variants: the 3D block logo,
-    signed PhonyEye and Awe/Cia, and the "acidjazz" ASCII logo
-    above. shipped decoded from CP437 to Unicode -- the original
-    emits raw CP437 bytes, so a UTF-8 terminal always showed
-    mojibake. redistributed under the BSD 3-Clause licence; the
-    notice ships with the binaries (COPYRIGHT-BITCHX).
+    the startup logo is the original BitchX 1.3 art -- art.c,
+    do_ansi_logo() -- in two variants: the 3D block logo and the
+    "acidjazz" ASCII logo above. the block logo is too wide for
+    this page; the client draws it. original source:
+    https://github.com/prime001/BitchX
+    the artwork is signed PhonyEye and Awe/Cia, and those credits
+    stay in the artwork. BitchX was created by panasync (Colten
+    Edwards) in 1995. we ship the art decoded from CP437 to
+    Unicode -- the original emits raw CP437 bytes, so a UTF-8
+    terminal has always shown mojibake -- and the notice ships
+    with the binaries (COPYRIGHT-BITCHX). both variants are
+    redistributed under the BSD 3-Clause licence:
+
+    Copyright (c) 1990 Michael Sandroff.
+    Copyright (c) 1991, 1992 Troy Rollo.
+    Copyright (c) 1992-1996 Matthew Green.
+    Copyright 1993, 1997 Jeremy Nelson.
+    Copyright 1994 Jake Khuon.
+    Copyright 1995, 1998 Jeremy Nelson and others
+      ("EPIC Software Labs").
+    Copyright 1996-2004 Colten Edwards et al.
+    Copyright 2008-2012 Kevin Easton et al.
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the
+    following conditions are met:
+    1. Redistributions of source code must retain the above
+       copyright notice, this list of conditions and the following
+       disclaimer.
+    2. Redistributions in binary form must reproduce the above
+       copyright notice, this list of conditions and the following
+       disclaimer in the documentation and/or other materials
+       provided with the distribution.
+    3. The names of the author(s) may not be used to endorse or
+       promote products derived from this software without
+       specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE AUTHORS ''AS IS'' AND ANY
+    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO,
+    THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A
+    PARTICULAR PURPOSE ARE DISCLAIMED.
 
   ▌ the base code
-    iamBitchX is a fork of <a href="https://github.com/ulyssa/iamb">iamb</a> by Ulyssa (<a href="https://iamb.chat">iamb.chat</a>),
-    Apache License 2.0. iamb's Matrix engine, sync loop, E2EE stack
-    and store make this client possible; the frontend is new.
-    support the project.
+    iamBitchX is a fork of iamb by Ulyssa -- project home
+    https://iamb.chat, source https://github.com/ulyssa/iamb --
+    under the Apache License 2.0. iamb's Matrix engine, sync loop,
+    E2EE stack and store are what make this client possible; the
+    frontend is new. support the project.
 
   ▌ everything else
-    <a href="https://github.com/matrix-org/matrix-rust-sdk">matrix-rust-sdk</a> -- Apache-2.0 -- the Matrix SDK underneath.
+    matrix-rust-sdk -- Apache-2.0 -- the Matrix SDK underneath.
+    https://github.com/matrix-org/matrix-rust-sdk
 
-    BitchX is by panasync (Colten Edwards) and contributors, created
-    in 1995. iamBitchX shares no code with it -- only the look and
-    the attitude.
+  ▌ licence
+    iamBitchX: Apache License 2.0 (LICENSE, NOTICE in the repo).
+    BitchX art: BSD 3-Clause (COPYRIGHT-BITCHX).
 
-──[ licence ]───────────────────────────────────────────────────────────
-
-  iamBitchX: Apache-2.0. splash art: BSD-3-Clause, see <a href="https://github.com/jpzk/iambitchx/blob/main/NOTICE">NOTICE</a>.
-
-Copyright (c) 1990 Michael Sandroff.
-Copyright (c) 1991, 1992 Troy Rollo.
-Copyright (c) 1992-1996 Matthew Green.
-Copyright 1993, 1997 Jeremy Nelson.
-Copyright 1994 Jake Khuon.
-Copyright 1995, 1998 Jeremy Nelson and others ("EPIC Software Labs").
-Copyright 1996-2004 Colten Edwards et al.
-Copyright 2008-2012 Kevin Easton et al.
-All rights reserved.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions
-are met:
-1. Redistributions of source code must retain the above copyright
-   notice, this list of conditions and the following disclaimer.
-2. Redistributions in binary form must reproduce the above copyright
-   notice, this list of conditions and the following disclaimer in the
-   documentation and/or other materials provided with the distribution.
-3. The names of the author(s) may not be used to endorse or promote
-   products derived from this software without specific prior written
-   permission.
-
-THIS SOFTWARE IS PROVIDED BY THE AUTHORS ``AS IS'' AND ANY EXPRESS OR
-IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED.
-
-────────────────────────────────────────────────────────────────────────
-  <a href="https://github.com/jpzk/iambitchx">github.com/jpzk/iambitchx</a> · utf-8 only · no css, no fonts, no js
+────────────────────────────────────────────────────────────────────
+  BitchX is by panasync (Colten Edwards) and contributors.
+  iamBitchX shares no code with it -- only the look and the
+  attitude.
+────────────────────────────────────────────────────────────────────
 </pre>

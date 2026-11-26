@@ -19,7 +19,8 @@ for that.
 ### Changed
 
 - The project page is pure UTF-8 text: one `<pre>`, box-drawing and block
-  glyphs, every line within 72 columns. No CSS, no graphics, no web fonts
+  glyphs, every line within 72 columns. Monochrome: no CSS, no colours,
+  no links (URLs are plain text), no graphics, no web fonts
   (JetBrains Mono and `site/fonts` are gone). Adds install (deb, rpm,
   tarball, musl, macOS, Windows) and verify (SHA256SUMS,
   `gh attestation verify`) sections.
