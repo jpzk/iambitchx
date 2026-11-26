@@ -9,6 +9,7 @@ use ratatui::Terminal;
 use ratatui::backend::TestBackend;
 
 use crate::bitchx::app::App;
+use crate::bitchx::channels::list_lines;
 use crate::bitchx::model::MxEvent;
 use crate::bitchx::ui::draw;
 use crate::matrix;
@@ -46,7 +47,7 @@ pub fn encryption_report(app: &App) -> Vec<String> {
         })
         .collect();
     if rows.is_empty() {
-        vec!["(no rooms)".to_string()]
+        vec!["(no channels)".to_string()]
     } else {
         rows
     }
@@ -76,8 +77,16 @@ pub async fn run(client: Client, mut app: App) -> anyhow::Result<()> {
         println!("{row}");
     }
 
+    // /list: the public channel directory of our homeserver.
+    let entries = matrix::public_channels(&client, None, None).await?;
+    println!("=== /list ===");
+    let server = app.me.server_name().to_string();
+    for row in list_lines(&server, None, &entries, WIDTH as usize - 2) {
+        println!("{row}");
+    }
+
     if app.windows.len() < 2 {
-        println!("(no joined rooms)");
+        println!("(no joined channels)");
         return Ok(());
     }
 
@@ -113,6 +122,6 @@ mod tests {
             "4: armin -e not encrypted".to_string(),
         ]);
         let empty = App::new(app.me.clone());
-        assert_eq!(encryption_report(&empty), vec!["(no rooms)".to_string()]);
+        assert_eq!(encryption_report(&empty), vec!["(no channels)".to_string()]);
     }
 }

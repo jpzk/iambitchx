@@ -70,6 +70,7 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
     }
     let rows = (area.height - 3 - top) as usize;
     app.page = rows.saturating_sub(1).max(1);
+    app.cols = area.width as usize;
 
     let lines = scrollback(app, area.width as usize, rows);
     frame.render_widget(
@@ -261,6 +262,47 @@ mod tests {
         assert!(r[28].trim_end().ends_with("[::::]"), "{:?}", r[28]);
         // Recon 02: the idle prompt is `[0]`.
         assert!(r[29].starts_with("[0] "), "{:?}", r[29]);
+    }
+
+    /// IRC vocabulary: Matrix rooms are channels everywhere the user can see.
+    #[test]
+    fn test_status_window_says_channel_never_room() {
+        use crate::bitchx::app::tests::{room, typed};
+        use crate::bitchx::channels::ListEntry;
+
+        let mut app = App::new(matrix_sdk::ruma::owned_user_id!("@carla:example.org"));
+        app.clock = Some("09:24pm".into());
+        app.channel_list_header("https://matrix.example.org/");
+        app.handle_mx(MxEvent::Room(room("!a:example.org", "#lobby")));
+        app.handle_mx(MxEvent::Room(room("!b:example.org", "#rust:matrix.org")));
+        let mut dm = room("!c:example.org", "armin");
+        dm.dm_peer = Some(matrix_sdk::ruma::owned_user_id!("@armin:remote.tld"));
+        app.handle_mx(MxEvent::Room(dm));
+        typed(&mut app, "/channels");
+        typed(&mut app, "/rooms");
+        typed(&mut app, "/help");
+        typed(&mut app, "/join @bob:x");
+        typed(&mut app, "/part");
+        typed(&mut app, "/list -s");
+        let entries = vec![ListEntry {
+            alias: Some("#welcome:example.org".into()),
+            room_id: "!w:example.org".into(),
+            members: 9,
+            topic: Some("say hi".into()),
+            ..Default::default()
+        }];
+        let server = "example.org".to_string();
+        app.handle_mx(MxEvent::List { server, search: None, entries });
+        assert_eq!(app.current, 0);
+
+        let buf = render(&mut app, 100, 80);
+        let text = rows(&buf).join("\n");
+        assert!(text.contains("Channel list:"), "{text}");
+        assert!(text.contains("Listing public channels on example.org"), "{text}");
+        assert!(text.contains("#welcome:example.org     9  say hi"), "{text}");
+        assert!(text.contains("End of /LIST"), "{text}");
+        assert!(text.contains("/channels"), "{text}");
+        assert!(!text.to_lowercase().contains("room"), "{text}");
     }
 
     /// `%T` is a 12-hour `hh:mmam`/`hh:mmpm` clock (recon 02, 22).

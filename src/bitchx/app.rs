@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
+use crate::bitchx::channels::{list_lines, normalize_join, short_name};
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, VerifyCmd, parse};
 use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
 use crate::bitchx::input::Input;
@@ -195,6 +196,8 @@ pub struct App {
     pub quit: bool,
     /// Rows of scrollback on screen; set by the renderer, used for paging.
     pub page: usize,
+    /// Terminal width in columns; set by the renderer, used for `/list`.
+    pub cols: usize,
     /// Fixed clock for tests; `None` uses local time.
     pub clock: Option<String>,
     /// A pending y/n question (`/encrypt`).
@@ -225,6 +228,7 @@ impl App {
             split: false,
             quit: false,
             page: 20,
+            cols: 80,
             clock: None,
             confirm: None,
             verifications: vec![],
@@ -256,6 +260,16 @@ impl App {
 
     pub fn error(&mut self, text: impl Into<String>) {
         self.cur_mut().push(None, Line::Error(text.into()));
+    }
+
+    /// The status window header above the numbered channel list (recon 7):
+    /// BitchX prints its server list grouped by network; we print the
+    /// joined channels grouped by homeserver, numbered by window.
+    pub fn channel_list_header(&mut self, homeserver: &str) {
+        self.status_info(format!("Current homeserver: {homeserver}"));
+        self.status_info("Channel list:");
+        let server = self.me.server_name().to_string();
+        self.status_info(format!("[{server}]"));
     }
 
     /// Print a `-:-` line in the status window.
@@ -430,6 +444,13 @@ impl App {
             },
             MxEvent::Lag(lag) => self.lag = Some(lag),
             MxEvent::Verify { user, update } => self.verify_update(user, update),
+            MxEvent::List { server, search, entries } => {
+                // Text width after the line glyph.
+                let width = self.cols.saturating_sub(2).max(20);
+                for l in list_lines(&server, search.as_deref(), &entries, width) {
+                    self.info(l);
+                }
+            },
         }
         vec![]
     }
@@ -699,12 +720,7 @@ impl App {
                 }
                 self.user_cmd(&target).map(Effect::Query).into_iter().collect()
             },
-            BitchxCommand::Join { room, .. } => {
-                if let Some(idx) = self.find_window(&room).filter(|i| *i > 0) {
-                    return self.switch(idx);
-                }
-                vec![Effect::Join(room)]
-            },
+            BitchxCommand::Join { room, .. } => self.join(&room),
             BitchxCommand::Part { room, reason } => {
                 let idx = match room {
                     Some(r) => self.find_window(&r).filter(|i| *i > 0),
@@ -755,10 +771,11 @@ impl App {
             BitchxCommand::Whois { target } => {
                 self.user_cmd(&target).map(Effect::Whois).into_iter().collect()
             },
-            BitchxCommand::Rooms | BitchxCommand::List => {
-                self.rooms();
+            BitchxCommand::Channels => {
+                self.channels();
                 vec![]
             },
+            BitchxCommand::List(args) => vec![Effect::List(args)],
             BitchxCommand::Window { target: None } => {
                 let w = self.cur();
                 let name = w.channel().unwrap_or("(status)").to_string();
@@ -1078,7 +1095,26 @@ impl App {
         self.info(format!("End of /WHO list for {}", room.name));
     }
 
-    fn rooms(&mut self) {
+    /// `/join`: an already joined channel just switches to its window;
+    /// otherwise ask the Matrix side, which opens a window on success.
+    fn join(&mut self, target: &str) -> Vec<Effect> {
+        let own = self.me.server_name().to_string();
+        let t = match normalize_join(target, &own) {
+            Ok(t) => t,
+            Err(e) => {
+                self.error(e);
+                return vec![];
+            },
+        };
+        let short = short_name(&t.id, &own);
+        let idx = self.find_window(&short).or_else(|| self.find_window(&t.id));
+        if let Some(idx) = idx.filter(|i| *i > 0) {
+            return self.switch(idx);
+        }
+        vec![Effect::Join(t)]
+    }
+
+    fn channels(&mut self) {
         let rows: Vec<String> = self
             .windows
             .iter()
@@ -1093,7 +1129,7 @@ impl App {
             })
             .collect();
         if rows.is_empty() {
-            self.info("No rooms joined");
+            self.info("No channels joined");
         }
         for r in rows {
             self.info(r);
@@ -1113,6 +1149,7 @@ pub mod tests {
     use matrix_sdk::ruma::{owned_room_id, owned_user_id};
 
     use super::*;
+    use crate::bitchx::channels::{JoinTarget, ListArgs};
 
     pub fn key(code: KeyCode) -> KeyEvent {
         KeyEvent::new(code, KeyModifiers::NONE)
@@ -1159,7 +1196,7 @@ pub mod tests {
         app
     }
 
-    fn typed(app: &mut App, s: &str) -> Vec<Effect> {
+    pub fn typed(app: &mut App, s: &str) -> Vec<Effect> {
         for c in s.chars() {
             app.handle_key(key(KeyCode::Char(c)));
         }
@@ -1363,7 +1400,29 @@ pub mod tests {
         app.handle_key(alt('2'));
         let a = owned_room_id!("!a:example.org");
         let armin = owned_user_id!("@armin:remote.tld");
-        assert_eq!(typed(&mut app, "/join #new:x"), vec![Effect::Join("#new:x".into())]);
+        assert_eq!(typed(&mut app, "/join #new:x"), vec![Effect::Join(JoinTarget {
+            id: "#new:x".into(),
+            implicit_server: false,
+            via: vec![],
+        })]);
+        // No server: our own homeserver.
+        assert_eq!(typed(&mut app, "/join #new"), vec![Effect::Join(JoinTarget {
+            id: "#new:example.org".into(),
+            implicit_server: true,
+            via: vec![],
+        })]);
+        // Already joined (window name is the short alias): just switch.
+        assert!(
+            typed(&mut app, "/join #other:example.org")
+                .iter()
+                .all(|e| !matches!(e, Effect::Join(_)))
+        );
+        assert_eq!(app.cur().room.name, "#other");
+        app.handle_key(alt('2'));
+        assert_eq!(typed(&mut app, "/list matrix.org -s rust"), vec![Effect::List(ListArgs {
+            server: Some("matrix.org".into()),
+            search: Some("rust".into()),
+        })]);
         assert_eq!(typed(&mut app, "/topic hi there"), vec![Effect::Topic {
             room_id: a.clone(),
             topic: "hi there".into()

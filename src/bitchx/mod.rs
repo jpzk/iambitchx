@@ -4,6 +4,7 @@
 //! an IRC input line. See `docs/v2-design.md` and `docs/bitchx-formats.md`.
 
 pub mod app;
+pub mod channels;
 pub mod commands;
 pub mod e2ee;
 pub mod format;

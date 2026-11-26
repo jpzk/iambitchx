@@ -4,6 +4,7 @@
 //! driven by tests.
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
+use crate::bitchx::channels::{JoinTarget, ListArgs, ListEntry};
 pub use crate::bitchx::commands::Secret;
 
 /// One scrollback line, already translated from Matrix into IRC terms.
@@ -149,6 +150,12 @@ pub enum MxEvent {
     Lag(u64),
     /// A key verification with `user` progressed.
     Verify { user: OwnedUserId, update: VerifyUpdate },
+    /// The public channel directory of `server` (`/list`).
+    List {
+        server: String,
+        search: Option<String>,
+        entries: Vec<ListEntry>,
+    },
 }
 
 /// Something the UI wants the Matrix side to do.
@@ -159,7 +166,9 @@ pub enum Effect {
         text: String,
         emote: bool,
     },
-    Join(String),
+    Join(JoinTarget),
+    /// `/list`: fetch the public channel directory.
+    List(ListArgs),
     Part {
         room_id: OwnedRoomId,
         reason: Option<String>,

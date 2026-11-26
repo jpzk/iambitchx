@@ -9,8 +9,10 @@ use std::time::{Duration, Instant};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::deserialized_responses::{TimelineEvent, TimelineEventKind};
 use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered::v3::Request as PublicRoomsRequest;
 use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as PresenceRequest;
 use matrix_sdk::ruma::api::client::profile::DisplayName;
+use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::member::MembershipChange;
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
@@ -23,11 +25,21 @@ use matrix_sdk::ruma::events::{
 };
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::room::JoinRuleKind;
+use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::serde::Raw;
-use matrix_sdk::ruma::{Int, OwnedRoomId, OwnedRoomOrAliasId, OwnedUserId, UserId, uint};
+use matrix_sdk::ruma::{
+    Int,
+    OwnedRoomId,
+    OwnedRoomOrAliasId,
+    OwnedServerName,
+    OwnedUserId,
+    UserId,
+    uint,
+};
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
 
+use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, nick_of};
@@ -153,7 +165,7 @@ fn state_lines(ev: AnySyncStateEvent) -> Vec<Line> {
         },
         AnySyncStateEvent::RoomName(SyncStateEvent::Original(n)) => {
             vec![Line::Info(format!(
-                "{sender} changed the room name to {}",
+                "{sender} changed the channel name to {}",
                 n.content.name
             ))]
         },
@@ -163,7 +175,7 @@ fn state_lines(ev: AnySyncStateEvent) -> Vec<Line> {
             ))]
         },
         AnySyncStateEvent::RoomCreate(SyncStateEvent::Original(_)) => {
-            vec![Line::Info(format!("{sender} created the room"))]
+            vec![Line::Info(format!("{sender} created the channel"))]
         },
         AnySyncStateEvent::RoomPowerLevels(SyncStateEvent::Original(p)) => {
             let old = p
@@ -340,7 +352,7 @@ pub fn spawn_lag(client: Client, tx: Tx) {
 fn room_of(client: &Client, room_id: &OwnedRoomId) -> anyhow::Result<Room> {
     client
         .get_room(room_id)
-        .ok_or_else(|| anyhow::anyhow!("Unknown room {room_id}"))
+        .ok_or_else(|| anyhow::anyhow!("Unknown channel {room_id}"))
 }
 
 /// The DM with `user`, created if needed. New DMs are end-to-end encrypted:
@@ -373,6 +385,59 @@ async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> a
     Ok(())
 }
 
+/// The homeserver answered M_NOT_FOUND (unknown alias).
+fn is_not_found(e: &matrix_sdk::Error) -> bool {
+    e.client_api_error_kind() == Some(&ErrorKind::NotFound)
+}
+
+/// Fetch up to [`LIST_MAX`] public channels from the directory of `server`
+/// (our own homeserver if `None`), optionally filtered by `search`.
+pub async fn public_channels(
+    client: &Client,
+    server: Option<&str>,
+    search: Option<&str>,
+) -> anyhow::Result<Vec<ListEntry>> {
+    let server = match server {
+        Some(s) => {
+            Some(OwnedServerName::try_from(s).map_err(|e| anyhow::anyhow!("bad server {s}: {e}"))?)
+        },
+        None => None,
+    };
+    let mut out = vec![];
+    let mut since = None;
+    loop {
+        let mut req = PublicRoomsRequest::new();
+        req.server = server.clone();
+        req.limit = Some(uint!(50));
+        req.since = since.take();
+        req.filter.generic_search_term = search.map(ToOwned::to_owned);
+        let resp = client.public_rooms_filtered(req).await?;
+        for c in resp.chunk {
+            out.push(ListEntry {
+                alias: c.canonical_alias.map(|a| a.to_string()),
+                room_id: c.room_id.to_string(),
+                name: c.name.map(|n| sanitize(&n)),
+                members: u64::from(c.num_joined_members),
+                topic: c.topic.map(|t| sanitize(&t)),
+                space: c.room_type == Some(RoomType::Space),
+            });
+        }
+        match resp.next_batch {
+            Some(next) if out.len() < LIST_MAX => since = Some(next),
+            _ => break,
+        }
+    }
+    out.truncate(LIST_MAX);
+    Ok(out)
+}
+
+async fn list(client: &Client, me: &UserId, args: ListArgs, tx: &Tx) -> anyhow::Result<()> {
+    let entries = public_channels(client, args.server.as_deref(), args.search.as_deref()).await?;
+    let server = args.server.unwrap_or_else(|| me.server_name().to_string());
+    let _ = tx.send(MxEvent::List { server, search: args.search, entries });
+    Ok(())
+}
+
 async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
     let me = client
         .user_id()
@@ -384,19 +449,32 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             send(&room_of(client, &room_id)?, &me, text, emote, tx).await?;
         },
         Effect::Join(target) => {
-            let target = if target.starts_with('#') && !target.contains(':') {
-                format!("{target}:{}", me.server_name())
-            } else {
-                target
-            };
-            let id = OwnedRoomOrAliasId::try_from(target.as_str())
-                .map_err(|e| anyhow::anyhow!("{target}: {e}"))?;
+            let id = OwnedRoomOrAliasId::try_from(target.id.as_str())
+                .map_err(|e| anyhow::anyhow!("Bad channel name {}: {e}", target.id))?;
+            let via: Vec<OwnedServerName> = target
+                .via
+                .iter()
+                .filter_map(|s| OwnedServerName::try_from(s.as_str()).ok())
+                .collect();
             let t0 = std::time::Instant::now();
-            let room = client.join_room_by_id_or_alias(&id, &[]).await?;
+            let room = match client.join_room_by_id_or_alias(&id, &via).await {
+                Ok(room) => room,
+                Err(e) if is_not_found(&e) => {
+                    let msg = if target.implicit_server {
+                        not_found_hint(&target.id)
+                    } else {
+                        format!("Cannot join channel {} (no such channel)", target.id)
+                    };
+                    let _ = tx.send(MxEvent::Info { room_id: None, line: Line::Error(msg) });
+                    return Ok(());
+                },
+                Err(e) => return Err(e.into()),
+            };
             let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
             let millis = t0.elapsed().as_millis() as u64;
             let _ = tx.send(MxEvent::Synched { room_id: room.room_id().to_owned(), millis });
         },
+        Effect::List(args) => list(client, &me, args, tx).await?,
         Effect::Part { room_id, .. } => {
             room_of(client, &room_id)?.leave().await?;
             let _ = tx.send(MxEvent::Left(room_id));

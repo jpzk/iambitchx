@@ -4,6 +4,8 @@
 //! Nothing here knows about Matrix; dispatch happens elsewhere.
 use std::fmt;
 
+use crate::bitchx::channels::{ListArgs, parse_list_args};
+
 /// A parsed BitchX/IRC-style slash command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BitchxCommand {
@@ -47,11 +49,13 @@ pub enum BitchxCommand {
     Whois {
         target: String,
     },
-    Rooms,
+    /// `/channels` (hidden alias `/rooms`): the joined channels.
+    Channels,
     Names {
         target: Option<String>,
     },
-    List,
+    /// `/list [server] [-s text]`: the public channel directory.
+    List(ListArgs),
     Mode {
         target: String,
         modes: Option<String>,
@@ -220,10 +224,10 @@ impl std::error::Error for BitchxError {}
 
 /// Every command word understood by [`parse`], including aliases, for `/help`.
 pub const COMMAND_NAMES: &[&str] = &[
-    "action", "away", "back", "clear", "close", "ctcp", "deop", "devices", "encrypt", "exit",
-    "help", "ignore", "invite", "j", "join", "kick", "leave", "list", "me", "mode", "msg", "names",
-    "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "rooms", "set",
-    "topic", "trust", "unignore", "verify", "version", "who", "whois", "window",
+    "action", "away", "back", "channels", "clear", "close", "ctcp", "deop", "devices", "encrypt",
+    "exit", "help", "ignore", "invite", "j", "join", "kick", "leave", "list", "me", "mode", "msg",
+    "names", "next", "nick", "op", "part", "prev", "previous", "query", "quit", "recover", "set", "topic",
+    "trust", "unignore", "verify", "version", "who", "whois", "window",
 ];
 
 /// Split off the first whitespace-delimited word, returning it and the rest
@@ -339,6 +343,7 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         "exit" => "quit",
         "j" => "join",
         "previous" => "prev",
+        "rooms" => "channels",
         other => {
             match COMMAND_NAMES.iter().copied().find(|name| *name == other) {
                 Some(name) => name,
@@ -358,14 +363,14 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         "me" => BitchxCommand::Me { text: args.required_rest("text")? },
         "action" => BitchxCommand::Action { text: args.required_rest("text")? },
         "join" => {
-            let room = args.required_word("room")?;
+            let room = args.required_word("channel")?;
             let key = args.word();
             args.finish()?;
             BitchxCommand::Join { room, key }
         },
         "part" => {
-            // IRC-style: `/part [#room] [reason]`; a first word that is not a
-            // room reference starts the reason.
+            // IRC-style: `/part [#chan] [reason]`; a first word that is not a
+            // channel reference starts the reason.
             let room = match args.peek_word() {
                 Some(w) if is_room_ref(w) => args.word(),
                 _ => None,
@@ -391,8 +396,19 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             args.finish()?;
             BitchxCommand::Names { target }
         },
-        "list" => args.none(BitchxCommand::List)?,
-        "rooms" => args.none(BitchxCommand::Rooms)?,
+        "list" => {
+            let rest = args.rest().unwrap_or_default();
+            match parse_list_args(&rest) {
+                Ok(l) => BitchxCommand::List(l),
+                Err(_) => {
+                    return Err(BitchxError::InvalidArgument {
+                        command: "list",
+                        argument: rest.trim().to_string(),
+                    });
+                },
+            }
+        },
+        "channels" => args.none(BitchxCommand::Channels)?,
         "whois" => {
             let target = args.required_word("nick")?;
             args.finish()?;
@@ -577,7 +593,7 @@ mod tests {
             key: Some(s("secret")),
         });
         assert_eq!(ok("j #a:b"), BitchxCommand::Join { room: s("#a:b"), key: None });
-        assert_eq!(parse("join"), Err(missing("join", "room")));
+        assert_eq!(parse("join"), Err(missing("join", "channel")));
         assert_eq!(parse("join #a:b key extra"), Err(invalid("join", "extra")));
     }
 
@@ -631,7 +647,8 @@ mod tests {
         let cases = [
             ("clear", BitchxCommand::Clear),
             ("close", BitchxCommand::Close),
-            ("list", BitchxCommand::List),
+            ("channels", BitchxCommand::Channels),
+            ("rooms", BitchxCommand::Channels),
             ("next", BitchxCommand::NextWindow),
             ("prev", BitchxCommand::PrevWindow),
             ("previous", BitchxCommand::PrevWindow),
@@ -649,6 +666,26 @@ mod tests {
                 "{input}: {err:?}"
             );
         }
+    }
+
+    #[test]
+    fn test_bitchx_list_and_channels() {
+        let l = |server: Option<&str>, search: Option<&str>| {
+            BitchxCommand::List(ListArgs {
+                server: server.map(Into::into),
+                search: search.map(Into::into),
+            })
+        };
+        assert_eq!(ok("list"), l(None, None));
+        assert_eq!(ok("LIST matrix.org"), l(Some("matrix.org"), None));
+        assert_eq!(ok("list -s rust"), l(None, Some("rust")));
+        assert_eq!(ok("list matrix.org -s rust lang"), l(Some("matrix.org"), Some("rust lang")));
+        assert_eq!(parse("list -s"), Err(invalid("list", "-s")));
+        assert_eq!(parse("list a b"), Err(invalid("list", "a b")));
+        // /rooms is a hidden alias: works, but /help never says room.
+        assert_eq!(ok("rooms"), BitchxCommand::Channels);
+        assert!(COMMAND_NAMES.contains(&"channels"));
+        assert!(!COMMAND_NAMES.iter().any(|n| n.contains("room")));
     }
 
     #[test]
