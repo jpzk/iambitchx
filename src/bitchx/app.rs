@@ -12,6 +12,7 @@ use crate::bitchx::channels::{list_lines, normalize_join, short_name};
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, VerifyCmd, parse};
 use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
 use crate::bitchx::input::Input;
+use crate::bitchx::mention::Matcher;
 use crate::bitchx::model::{
     Effect,
     Line,
@@ -75,6 +76,8 @@ pub struct Window {
     pub times: Vec<i64>,
     ids: HashSet<String>,
     pub unread: bool,
+    /// Unread mention (BitchX AUTO_REPLY): shown apart in `Act:`.
+    pub hilite: bool,
     /// Rows scrolled up from the bottom (PageUp/PageDown).
     pub scroll: usize,
     pub backfill_requested: bool,
@@ -227,6 +230,9 @@ pub struct App {
     pub display_name: Option<String>,
     /// The silent self-whois that learns [`Self::display_name`].
     pub probe: Probe,
+    /// A live mention arrived and `BEEP` is on: ring the bell once at the
+    /// next draw (see [`Self::take_bell`]).
+    pub bell: bool,
 }
 
 /// The connect-time self-whois: its lines are swallowed, the `ircname` row
@@ -278,6 +284,7 @@ impl App {
             presence_away: HashMap::new(),
             display_name: None,
             probe: Probe::Start,
+            bell: false,
         }
     }
 
@@ -331,6 +338,7 @@ impl App {
         self.current = idx;
         let win = &mut self.windows[idx];
         win.unread = false;
+        win.hilite = false;
         win.scroll = 0;
         self.backfill_current()
     }
@@ -353,6 +361,27 @@ impl App {
     pub fn prev_window(&mut self) -> Vec<Effect> {
         let n = self.windows.len();
         self.switch((self.current + n - 1) % n)
+    }
+
+    /// The mention matcher: our mxid, display name and `AUTO_REPLY`.
+    pub fn matcher(&self) -> Matcher {
+        Matcher::new(&self.me, self.display_name.as_deref(), &self.vars.auto_reply)
+    }
+
+    /// Whether the bell is due; clears it.
+    pub fn take_bell(&mut self) -> bool {
+        std::mem::take(&mut self.bell)
+    }
+
+    /// Refnums of other windows with an unread mention (shown highlighted
+    /// in `Act:`).
+    pub fn hilite(&self) -> Vec<usize> {
+        self.windows
+            .iter()
+            .enumerate()
+            .filter(|(i, w)| *i != self.current && w.hilite)
+            .map(|(i, _)| i + 1)
+            .collect()
     }
 
     /// Refnums of other windows with unread activity (`Act:`).
@@ -408,6 +437,7 @@ impl App {
                 .is_some_and(|p| self.presence_away.contains_key(p)),
             modes,
             act: self.act(),
+            hilite: self.hilite(),
             users,
             lag: self.lag,
         }
@@ -442,6 +472,7 @@ impl App {
                 if let Some(name) = own_name.filter(|_| !backfill) {
                     self.own_name(name);
                 }
+                let matcher = self.matcher();
                 let win = &mut self.windows[idx];
                 let now = now_ms();
                 let lines = lines
@@ -453,11 +484,14 @@ impl App {
                 } else {
                     let mut added = false;
                     let mut msgs = 0;
+                    let mut mentioned = false;
                     for (id, ts, line) in lines {
                         let incoming = matches!(line, Line::Private { own: false, .. });
+                        let mention = matcher.is_mention(&line);
                         if win.push_at(id, ts, line) {
                             added = true;
                             msgs += usize::from(incoming);
+                            mentioned |= mention;
                         }
                     }
                     if self.away.is_some() {
@@ -465,6 +499,11 @@ impl App {
                     }
                     if added && idx != self.current {
                         win.unread = true;
+                    }
+                    // BitchX `do_beep` after an AR line (`source/parse.c:596`).
+                    if mentioned {
+                        win.hilite |= idx != self.current;
+                        self.bell |= self.vars.beep;
                     }
                 }
             },
@@ -931,6 +970,11 @@ impl App {
                 show(self, name);
             }
             return;
+        };
+        // `/set -NAME` clears a variable, as in BitchX.
+        let (name, value) = match name.strip_prefix('-') {
+            Some(n) => (n.to_string(), Some(String::new())),
+            None => (name, value),
         };
         let name = match lookup(&name) {
             Ok(n) => n,
@@ -1632,6 +1676,76 @@ pub mod tests {
     }
 
     #[test]
+    fn test_mention_hilites_window_and_beeps_once() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        let say = |app: &mut App, room: &str, id: &str, own: bool, text: &str| {
+            app.handle_mx(MxEvent::Lines {
+                room_id: OwnedRoomId::try_from(room).unwrap(),
+                lines: vec![(Some(id.into()), None, Line::Public {
+                    nick: "bob".into(),
+                    own,
+                    text: text.into(),
+                })],
+                backfill: false,
+            })
+        };
+        say(&mut app, "!b:example.org", "$1", false, "plain chatter");
+        say(&mut app, "!c:example.org", "$2", false, "carla: look");
+        say(&mut app, "!c:example.org", "$3", false, "CARLA again");
+        assert_eq!(app.act(), vec![3, 4]);
+        assert_eq!(app.hilite(), vec![4], "only the mention window is highlighted");
+        assert_eq!(app.status().hilite, vec![4]);
+        assert!(app.take_bell(), "bell rings");
+        assert!(!app.take_bell(), "...once");
+        // A duplicate (already seen event) neither beeps nor highlights.
+        say(&mut app, "!b:example.org", "$1", false, "carla");
+        assert!(!app.take_bell());
+        // Own messages and near-misses never highlight.
+        say(&mut app, "!b:example.org", "$4", true, "i am carla");
+        say(&mut app, "!b:example.org", "$5", false, "carlax is not me");
+        assert_eq!(app.hilite(), vec![4]);
+        assert!(!app.take_bell());
+        // Switching to the window clears its highlight.
+        app.handle_key(alt('4'));
+        assert_eq!(app.hilite(), Vec::<usize>::new());
+        // In the current window: beep, but nothing to mark.
+        say(&mut app, "!c:example.org", "$6", false, "@carla:example.org hi");
+        assert!(app.take_bell());
+        assert!(!app.windows[3].hilite);
+        // BEEP off: highlighted, silent.
+        typed(&mut app, "/set beep off");
+        say(&mut app, "!b:example.org", "$7", false, "hey carla");
+        assert_eq!(app.hilite(), vec![3]);
+        assert!(!app.take_bell());
+        // AUTO_REPLY words and the display name highlight too.
+        typed(&mut app, "/set auto_reply creed, bx");
+        assert_eq!(app.vars.auto_reply, "creed,bx");
+        app.display_name = Some("Big Boss".into());
+        assert!(app.matcher().matches("yo creed"));
+        assert!(app.matcher().matches("big boss"));
+        typed(&mut app, "/set -auto_reply");
+        assert_eq!(app.vars.auto_reply, "");
+        assert!(!app.matcher().matches("yo creed"));
+    }
+
+    #[test]
+    fn test_backfilled_mention_is_silent() {
+        let mut app = app();
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!b:example.org"),
+            lines: vec![(Some("$old".into()), None, Line::Public {
+                nick: "bob".into(),
+                own: false,
+                text: "carla".into(),
+            })],
+            backfill: true,
+        });
+        assert!(!app.take_bell());
+        assert_eq!(app.hilite(), Vec::<usize>::new());
+    }
+
+    #[test]
     fn test_dedupe_and_backfill_order() {
         let mut app = app();
         let room_id = owned_room_id!("!a:example.org");
@@ -2153,6 +2267,7 @@ pub mod tests {
                 name: "AUTO_AWAY_TIME".into(),
                 value: Some("600".into())
             },
+            Line::SetVar { name: "AUTO_REPLY".into(), value: None },
             Line::SetVar {
                 name: "AWAY_MSG".into(),
                 value: Some("away".into())
@@ -2161,6 +2276,7 @@ pub mod tests {
                 name: "AWAY_NICK".into(),
                 value: Some("%n afk".into())
             },
+            Line::SetVar { name: "BEEP".into(), value: Some("ON".into()) },
             Line::SetVar {
                 name: "TIMESTAMP".into(),
                 value: Some("OFF".into())
@@ -2201,6 +2317,8 @@ pub mod tests {
         app.config_toml = Some(path.clone());
         typed(&mut app, "/set timestamp on");
         typed(&mut app, "/set timestamp_string %H:%M:%S ");
+        typed(&mut app, "/set auto_reply creed,bx");
+        typed(&mut app, "/set beep off");
         assert!(!matches!(last(&app), Line::Error(_)), "{:?}", last(&app));
 
         let cfg =
@@ -2212,6 +2330,8 @@ pub mod tests {
         assert_eq!(vars, app.vars);
         assert_eq!(vars.timestamp_string, "%H:%M:%S ");
         assert!(vars.timestamp);
+        assert_eq!(vars.auto_reply, "creed,bx");
+        assert!(!vars.beep);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 

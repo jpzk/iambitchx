@@ -16,6 +16,10 @@
 //! iamBitchX extras. While the away nick is on, the original display name is
 //! kept in `away_nick_orig` (not a `/set` var) so a restart can restore it.
 //!
+//! `AUTO_REPLY` (comma list of extra highlight words, default empty; our
+//! nick, mxid and display name always highlight) and `BEEP` (bool, default
+//! ON, `source/vars.c` BEEP): see [`crate::bitchx::mention`].
+//!
 //! Values persist in `config.toml` under `[settings.bitchx]`.
 use std::fmt::Write as _;
 use std::path::Path;
@@ -32,8 +36,10 @@ pub const NAMES: &[&str] = &[
     "AUTO_AWAY",
     "AUTO_AWAY_MSG",
     "AUTO_AWAY_TIME",
+    "AUTO_REPLY",
     "AWAY_MSG",
     "AWAY_NICK",
+    "BEEP",
     "TIMESTAMP",
     "TIMESTAMP_STRING",
 ];
@@ -90,9 +96,11 @@ pub struct BitchxConfig {
     pub auto_away: Option<bool>,
     pub auto_away_time: Option<u32>,
     pub auto_away_msg: Option<String>,
+    pub auto_reply: Option<String>,
     pub away_msg: Option<String>,
     pub away_nick: Option<String>,
     pub away_nick_orig: Option<String>,
+    pub beep: Option<bool>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
 }
@@ -103,9 +111,11 @@ impl BitchxConfig {
             auto_away: self.auto_away.or(other.auto_away),
             auto_away_time: self.auto_away_time.or(other.auto_away_time),
             auto_away_msg: self.auto_away_msg.or(other.auto_away_msg),
+            auto_reply: self.auto_reply.or(other.auto_reply),
             away_msg: self.away_msg.or(other.away_msg),
             away_nick: self.away_nick.or(other.away_nick),
             away_nick_orig: self.away_nick_orig.or(other.away_nick_orig),
+            beep: self.beep.or(other.beep),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
         }
@@ -120,11 +130,15 @@ pub struct Vars {
     pub auto_away_time: u32,
     /// `%t` = minutes.
     pub auto_away_msg: String,
+    /// Extra highlight words, comma separated (see [`crate::bitchx::mention`]).
+    pub auto_reply: String,
     pub away_msg: String,
     /// `%n` = display name before going away; empty = off.
     pub away_nick: String,
     /// The display name to restore on `/back` while the away nick is on.
     pub away_nick_orig: Option<String>,
+    /// Ring the terminal bell on a mention.
+    pub beep: bool,
     pub timestamp: bool,
     pub timestamp_string: String,
 }
@@ -135,9 +149,11 @@ impl Default for Vars {
             auto_away: true,
             auto_away_time: DEFAULT_AUTO_AWAY_TIME,
             auto_away_msg: DEFAULT_AUTO_AWAY_MSG.to_string(),
+            auto_reply: String::new(),
             away_msg: DEFAULT_AWAY_MSG.to_string(),
             away_nick: DEFAULT_AWAY_NICK.to_string(),
             away_nick_orig: None,
+            beep: true,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
         }
@@ -186,9 +202,11 @@ impl Vars {
             auto_away: c.auto_away.unwrap_or(d.auto_away),
             auto_away_time: c.auto_away_time.map(clamp_away_time).unwrap_or(d.auto_away_time),
             auto_away_msg: c.auto_away_msg.clone().unwrap_or(d.auto_away_msg),
+            auto_reply: c.auto_reply.clone().unwrap_or(d.auto_reply),
             away_msg: c.away_msg.clone().unwrap_or(d.away_msg),
             away_nick: c.away_nick.clone().unwrap_or(d.away_nick),
             away_nick_orig: c.away_nick_orig.clone().filter(|s| !s.is_empty()),
+            beep: c.beep.unwrap_or(d.beep),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
         }
@@ -200,8 +218,10 @@ impl Vars {
             "AUTO_AWAY" => Some(if self.auto_away { "ON" } else { "OFF" }.to_string()),
             "AUTO_AWAY_TIME" => Some(self.auto_away_time.to_string()),
             "AUTO_AWAY_MSG" => Some(self.auto_away_msg.clone()).filter(|s| !s.is_empty()),
+            "AUTO_REPLY" => Some(self.auto_reply.clone()).filter(|s| !s.is_empty()),
             "AWAY_MSG" => Some(self.away_msg.clone()).filter(|s| !s.is_empty()),
             "AWAY_NICK" => Some(self.away_nick.clone()).filter(|s| !s.is_empty()),
+            "BEEP" => Some(if self.beep { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -227,6 +247,13 @@ impl Vars {
                 self.auto_away_time = clamp_away_time(u32::try_from(v).unwrap_or(u32::MAX));
             },
             "AUTO_AWAY_MSG" => self.auto_away_msg = value.to_string(),
+            "AUTO_REPLY" => {
+                self.auto_reply = crate::bitchx::mention::split_words(value).join(",");
+            },
+            "BEEP" => {
+                self.beep =
+                    boolean(value, self.beep).ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
             "AWAY_MSG" => self.away_msg = value.to_string(),
             "AWAY_NICK" => {
                 if value.matches("%n").count() > 1 {
@@ -287,6 +314,8 @@ impl Vars {
         bx.insert("auto_away_msg".into(), Value::String(self.auto_away_msg.clone()));
         bx.insert("away_msg".into(), Value::String(self.away_msg.clone()));
         bx.insert("away_nick".into(), Value::String(self.away_nick.clone()));
+        bx.insert("auto_reply".into(), Value::String(self.auto_reply.clone()));
+        bx.insert("beep".into(), Value::Boolean(self.beep));
         match &self.away_nick_orig {
             Some(orig) => bx.insert("away_nick_orig".into(), Value::String(orig.clone())),
             None => bx.remove("away_nick_orig"),
@@ -398,6 +427,8 @@ mod tests {
             away_msg: "lunch".into(),
             away_nick: "%n|zz".into(),
             away_nick_orig: Some("Carla".into()),
+            auto_reply: "creed,bx".into(),
+            beep: false,
         };
         v.persist(&path).unwrap();
 
@@ -439,6 +470,30 @@ mod tests {
         assert_eq!(strip_away_nick("[%n]", "[x]").as_deref(), Some("x"));
         assert_eq!(strip_away_nick("gone", "gone"), None);
         assert_eq!(strip_away_nick("%n", "x"), None);
+    }
+
+    #[test]
+    fn test_auto_reply_and_beep_vars() {
+        let v = Vars::default();
+        assert!(v.beep, "BEEP defaults to ON");
+        assert_eq!(v.get("AUTO_REPLY"), None, "AUTO_REPLY defaults to empty");
+        assert_eq!(lookup("auto_r"), Ok("AUTO_REPLY"));
+        assert_eq!(lookup("beep"), Ok("BEEP"));
+        let mut v = Vars::default();
+        v.set("BEEP", "off").unwrap();
+        assert_eq!(v.get("BEEP").as_deref(), Some("OFF"));
+        assert!(v.set("BEEP", "loud").is_err());
+        v.set("AUTO_REPLY", " creed , ,bx ").unwrap();
+        assert_eq!(v.get("AUTO_REPLY").as_deref(), Some("creed,bx"));
+        v.set("AUTO_REPLY", "").unwrap();
+        assert_eq!(v.get("AUTO_REPLY"), None);
+        let c = BitchxConfig {
+            auto_reply: Some("x".into()),
+            beep: Some(false),
+            ..Default::default()
+        };
+        let v = Vars::from_config(&c);
+        assert_eq!((v.auto_reply.as_str(), v.beep), ("x", false));
     }
 
     #[test]

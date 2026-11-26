@@ -34,6 +34,12 @@ fn st_away() -> Style {
     status_bg().fg(Color::Green).add_modifier(StyleModifier::BOLD)
 }
 
+/// A window with an unread mention in `Act:`: bold yellow on blue, as the
+/// `%Y` nick of the AR formats.
+pub fn st_hilite() -> Style {
+    status_bg().fg(Color::Yellow).add_modifier(StyleModifier::BOLD)
+}
+
 /// `%C` is cut to this many columns (`#bxrecon-0122` shows as `#bxrecon-0`).
 pub const CHANNEL_WIDTH: usize = 10;
 
@@ -83,6 +89,8 @@ pub struct BxStatus {
     pub modes: String,
     /// `%F`: refnums of other windows with unread activity.
     pub act: Vec<usize>,
+    /// The subset of `act` with an unread mention (AUTO_REPLY), highlighted.
+    pub hilite: Vec<usize>,
     /// `%!`; `None` outside of channels.
     pub users: Option<UserCounts>,
     /// `%L`: lag to the homeserver in seconds; `None` before the first sample.
@@ -157,10 +165,19 @@ impl BxStatus {
         }
 
         if !self.act.is_empty() {
-            let act: Vec<String> = self.act.iter().map(usize::to_string).collect();
             s.push(sp(" [", st_punct()));
             s.push(sp("Act: ", st_text()));
-            s.push(sp(act.join(","), st_bright()));
+            for (i, n) in self.act.iter().enumerate() {
+                if i > 0 {
+                    s.push(sp(",", st_bright()));
+                }
+                let style = if self.hilite.contains(n) {
+                    st_hilite()
+                } else {
+                    st_bright()
+                };
+                s.push(sp(n.to_string(), style));
+            }
             s.push(sp("]", st_punct()));
         }
 

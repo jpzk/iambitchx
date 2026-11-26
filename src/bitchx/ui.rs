@@ -11,7 +11,7 @@ use ratatui::widgets::Paragraph;
 use unicode_width::UnicodeWidthChar;
 
 use crate::bitchx::app::App;
-use crate::bitchx::format::{format_line, n, sanitize, sp, wrap};
+use crate::bitchx::format::{format_line_hl, n, sanitize, sp, wrap};
 use crate::bitchx::model::Line;
 use crate::bitchx::status::status_bg;
 
@@ -24,12 +24,13 @@ pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static
     let win = &app.windows[app.current];
     let chan = win.channel().unwrap_or("").to_string();
     let vars = &app.vars;
+    let matcher = app.matcher();
     let formatted: Vec<TLine<'static>> = win
         .lines
         .iter()
         .zip(&win.times)
         .flat_map(|(l, ts)| {
-            let mut out = format_line(l, &chan);
+            let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
             // `%@`: the stamp leads the first row, in the default colours.
             let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_));
             if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped) &&
@@ -67,6 +68,13 @@ pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
             Paragraph::new(bar).style(status_bg()),
             Rect::new(area.x, area.y, area.width, 1),
         );
+    }
+    // BitchX `do_beep` for a mention: one BEL straight to the terminal
+    // (it moves no cursor, so it cannot disturb the frame being drawn).
+    if app.take_bell() {
+        use std::io::Write as _;
+        let mut out = std::io::stdout();
+        let _ = out.write_all(b"\x07").and_then(|()| out.flush());
     }
     let rows = (area.height - 3 - top) as usize;
     app.page = rows.saturating_sub(1).max(1);
@@ -151,6 +159,77 @@ mod tests {
         for x in 0..buf.area.width {
             assert_eq!(buf[(x, y)].bg, Color::Blue, "row {y} col {x} not blue");
         }
+    }
+
+    #[test]
+    fn test_mention_line_renders_highlighted_with_timestamp() {
+        let mut app = app();
+        app.handle_key(alt('2'));
+        app.vars.timestamp = true;
+        app.vars.timestamp_string = "[%H] ".into();
+        let lines = vec![
+            Line::Public {
+                nick: "armin".into(),
+                own: false,
+                text: "yo carla".into(),
+            },
+            Line::Public {
+                nick: "armin".into(),
+                own: false,
+                text: "carlax".into(),
+            },
+        ];
+        app.handle_mx(MxEvent::Lines {
+            room_id: owned_room_id!("!a:example.org"),
+            lines: lines.into_iter().map(|l| (None, Some(0), l)).collect(),
+            backfill: false,
+        });
+        assert!(app.take_bell(), "mention in the current window still beeps");
+        let buf = render(&mut app, 40, 8);
+        let stamp = app.vars.stamp(0).unwrap();
+        let col = stamp.chars().count() as u16;
+        assert_eq!(row(&buf, 0).trim_end(), format!("{stamp}<armin> yo carla"));
+        assert_eq!(row(&buf, 1).trim_end(), format!("{stamp}<armin> carlax"));
+        // stamp: default colours on both rows
+        assert_eq!(buf[(0, 0)].fg, Color::Reset);
+        // AR: nick bold yellow, text bold bright white
+        let nick = &buf[(col + 1, 0)];
+        assert_eq!((nick.fg, nick.modifier.contains(Modifier::BOLD)), (Color::Yellow, true));
+        let txt = &buf[(col + 8, 0)];
+        assert_eq!(txt.symbol(), "y");
+        assert_eq!((txt.fg, txt.modifier.contains(Modifier::BOLD)), (Color::White, true));
+        // the near-miss stays plain
+        let nick = &buf[(col + 1, 1)];
+        assert_eq!(nick.fg, Color::Reset);
+        let txt = &buf[(col + 8, 1)];
+        assert!(!txt.modifier.contains(Modifier::BOLD));
+    }
+
+    #[test]
+    fn test_hilite_window_in_act_is_yellow() {
+        let mut app = app();
+        for (room, text) in [("!b:example.org", "hi"), ("!c:example.org", "carla?")] {
+            app.handle_mx(MxEvent::Lines {
+                room_id: matrix_sdk::ruma::OwnedRoomId::try_from(room).unwrap(),
+                lines: vec![(None, None, Line::Public {
+                    nick: "bob".into(),
+                    own: false,
+                    text: text.into(),
+                })],
+                backfill: false,
+            });
+        }
+        assert!(app.take_bell());
+        let buf = render(&mut app, 80, 8);
+        let y = 5;
+        let r = row(&buf, y);
+        let at = r.find("[Act: 3,4]").unwrap_or_else(|| panic!("{r:?}"));
+        let x3 = (r[..at].chars().count() + 6) as u16;
+        assert_eq!(buf[(x3, y)].symbol(), "3");
+        assert_eq!(buf[(x3, y)].fg, Color::White, "plain activity");
+        assert_eq!(buf[(x3 + 2, y)].symbol(), "4");
+        assert_eq!(buf[(x3 + 2, y)].fg, Color::Yellow, "mention");
+        assert_eq!(buf[(x3 + 2, y)].bg, Color::Blue);
     }
 
     fn room_app() -> App {

@@ -76,7 +76,69 @@ fn body_lines(prefix: Vec<Span<'static>>, text: &str, style: Style) -> Vec<TLine
 
 /// Format one line for the window whose channel name is `chan`.
 /// Formats and colours follow the BitchX recon captures 22-32.
+#[cfg(test)]
 pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
+    format_line_hl(line, chan, false)
+}
+
+/// The whole-line highlight of a mention: the text bold bright white.
+pub fn hl_text() -> Style {
+    w()
+}
+
+/// The AR (auto-reply, i.e. mention) FSETs of BitchX1.3 `include/color.h`
+/// (`FORMAT_PUBLIC_AR` `%b<%Y$1%b>%n $3-`, `FORMAT_ACTION_AR`
+/// `%K* %Y$1 %n$4-`, `FORMAT_MSG_AR` `%K[%Y$1%K(%Y$2%K)]%n $3-`), the nick
+/// bold yellow; on top of BitchX the text is bold bright white so the line
+/// stands out in a busy channel. Lines without an AR form get the text
+/// highlight only.
+fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
+    let y = bold(Color::Yellow);
+    Some(match line {
+        Line::Public { nick, own: false, text } => {
+            let prefix = vec![
+                sp("<", fg(Color::Blue)),
+                sp(nick.clone(), y),
+                sp(">", fg(Color::Blue)),
+                sp(" ", n()),
+            ];
+            body_lines(prefix, text, hl_text())
+        },
+        Line::Action { nick, own: false, text } => {
+            body_lines(vec![sp("* ", k()), sp(format!("{nick} "), y)], text, hl_text())
+        },
+        Line::Private { nick, mxid, own: false, text } => {
+            let prefix = vec![
+                sp("[", k()),
+                sp(nick.clone(), y),
+                sp("(", k()),
+                sp(mxid.clone(), y),
+                sp(")]", k()),
+                sp(" ", n()),
+            ];
+            body_lines(prefix, text, hl_text())
+        },
+        Line::Notice { nick, mxid, text } => {
+            let prefix = vec![
+                sp("-", k()),
+                sp(nick.clone(), y),
+                sp("(", k()),
+                sp(mxid.clone(), fg(Color::Magenta)),
+                sp(")-", k()),
+                sp(" ", n()),
+            ];
+            body_lines(prefix, text, hl_text())
+        },
+        _ => return None,
+    })
+}
+
+/// [`format_line`], with `hl` (a mention, see [`crate::bitchx::mention`])
+/// rendering the AR form.
+pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> {
+    if hl && let Some(out) = format_ar(line) {
+        return out;
+    }
     match line {
         // `<nick> text`: only the brackets are coloured, bold magenta for
         // our own lines and bold blue for everyone else.
@@ -417,6 +479,52 @@ mod tests {
             .find(|s| s.content.contains(needle))
             .unwrap_or_else(|| panic!("no span {needle:?}"))
             .style
+    }
+
+    #[test]
+    fn test_mention_renders_ar_and_highlights_line() {
+        let l = Line::Public {
+            nick: "armin".into(),
+            own: false,
+            text: "yo carla".into(),
+        };
+        let r = format_line_hl(&l, "#r", true);
+        assert_eq!(plain(&r), vec!["<armin> yo carla"]);
+        // FORMAT_PUBLIC_AR `%b<%Y$1%b>%n $3-`, plus the whole text bold white.
+        assert_eq!(style_of(&r, "<"), fg(Color::Blue));
+        assert_eq!(style_of(&r, "armin"), bold(Color::Yellow));
+        assert_eq!(style_of(&r, "yo carla"), hl_text());
+        assert_eq!(hl_text(), bold(Color::White));
+        // Not a mention: unchanged default bx.
+        assert_eq!(format_line_hl(&l, "#r", false), format_line(&l, "#r"));
+        assert_eq!(style_of(&format_line(&l, "#r"), "yo carla"), n());
+        // Own lines and event lines never take the AR form.
+        let own = Line::Public {
+            nick: "carla".into(),
+            own: true,
+            text: "carla".into(),
+        };
+        assert_eq!(format_line_hl(&own, "#r", true), format_line(&own, "#r"));
+        // FORMAT_ACTION_AR `%K* %Y$1 %n$4-` and FORMAT_MSG_AR.
+        let act = Line::Action {
+            nick: "armin".into(),
+            own: false,
+            text: "pokes carla".into(),
+        };
+        let r = format_line_hl(&act, "#r", true);
+        assert_eq!(plain(&r), vec!["* armin pokes carla"]);
+        assert_eq!(style_of(&r, "armin"), bold(Color::Yellow));
+        assert_eq!(style_of(&r, "pokes"), hl_text());
+        let q = Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:x".into(),
+            own: false,
+            text: "carla?\nline2".into(),
+        };
+        let r = format_line_hl(&q, "#r", true);
+        assert_eq!(plain(&r), vec!["[armin(@armin:x)] carla?", "                  line2"]);
+        assert_eq!(style_of(&r, "@armin:x"), bold(Color::Yellow));
+        assert_eq!(r[1].spans[1].style, hl_text(), "continuation lines highlighted too");
     }
 
     #[test]
