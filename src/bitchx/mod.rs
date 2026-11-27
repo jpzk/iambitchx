@@ -8,6 +8,8 @@ pub(crate) mod channels;
 pub(crate) mod commands;
 pub(crate) mod e2ee;
 pub(crate) mod format;
+#[cfg(test)]
+mod golden;
 pub(crate) mod input;
 pub(crate) mod mention;
 pub(crate) mod model;
