@@ -40,7 +40,7 @@ fn setup() -> std::io::Result<Terminal<CrosstermBackend<Stdout>>> {
 }
 
 /// Seed the app with the rooms the client already knows about.
-pub async fn seed(app: &mut App, client: &Client) {
+pub(crate) async fn seed(app: &mut App, client: &Client) {
     let me = app.me.clone();
     app.channel_list_header(client.homeserver().as_str());
     let mut rooms = client.joined_rooms();
@@ -50,7 +50,7 @@ pub async fn seed(app: &mut App, client: &Client) {
     }
 }
 
-pub async fn run(
+pub(crate) async fn run(
     client: Client,
     mut app: App,
     settings: ApplicationSettings,

@@ -29,18 +29,18 @@ mod state;
 mod verify;
 
 #[cfg(test)]
-pub use logo::{BANNER_BLOCKS, BANNER_SHADOW};
-pub use logo::{Logo, startup_lines_for, utf8_terminal};
-pub use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
+pub(crate) use logo::{BANNER_BLOCKS, BANNER_SHADOW};
+pub(crate) use logo::{Logo, startup_lines_for, utf8_terminal};
+pub(crate) use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
 
 /// The status window's name, shown where a channel window shows its
 /// channel: prompt `[status]`, status bar `[status]`.
-pub const STATUS_NAME: &str = "status";
+pub(crate) const STATUS_NAME: &str = "status";
 
 /// Refnum of the status window.
-pub const STATUS_REFNUM: usize = 1;
+pub(crate) const STATUS_REFNUM: usize = 1;
 
-pub struct App {
+pub(crate) struct App {
     pub me: OwnedUserId,
     pub nick: String,
     pub windows: Vec<Window>,
@@ -106,12 +106,12 @@ pub struct App {
     logo_len: usize,
 }
 impl App {
-    pub fn new(me: OwnedUserId) -> Self {
+    pub(crate) fn new(me: OwnedUserId) -> Self {
         Self::new_with_logo(me, Logo::pick(utf8_terminal(), 0, 0))
     }
 
     /// [`App::new`] with an explicit logo.
-    pub fn new_with_logo(me: OwnedUserId, logo: Logo) -> Self {
+    pub(crate) fn new_with_logo(me: OwnedUserId, logo: Logo) -> Self {
         let lines = startup_lines_for(me.localpart(), logo);
         let logo_start = lines
             .iter()
@@ -129,7 +129,7 @@ impl App {
     ///
     /// `utf8` is passed in rather than read from the environment, so the
     /// choice is testable and does not depend on the ambient `TERM`.
-    pub fn fit_logo(&mut self, utf8: bool, width: u16, height: u16) {
+    pub(crate) fn fit_logo(&mut self, utf8: bool, width: u16, height: u16) {
         let want = Logo::pick(utf8, width, height);
         if want == self.logo {
             return;
@@ -200,7 +200,7 @@ impl App {
         }
     }
 
-    pub fn cur(&self) -> &Window {
+    pub(crate) fn cur(&self) -> &Window {
         &self.windows[self.current]
     }
 
@@ -208,27 +208,27 @@ impl App {
         &mut self.windows[self.current]
     }
 
-    pub fn refnum(&self) -> usize {
+    pub(crate) fn refnum(&self) -> usize {
         self.current + 1
     }
 
-    pub fn window_of(&self, room_id: &OwnedRoomId) -> Option<usize> {
+    pub(crate) fn window_of(&self, room_id: &OwnedRoomId) -> Option<usize> {
         self.windows.iter().position(|w| w.room_id() == Some(room_id))
     }
 
     /// Print a `-:-` line in the current window.
-    pub fn info(&mut self, text: impl Into<String>) {
+    pub(crate) fn info(&mut self, text: impl Into<String>) {
         self.cur_mut().push(None, Line::Info(text.into()));
     }
 
-    pub fn error(&mut self, text: impl Into<String>) {
+    pub(crate) fn error(&mut self, text: impl Into<String>) {
         self.cur_mut().push(None, Line::Error(text.into()));
     }
 
     /// The status window header above the numbered channel list (recon 7):
     /// BitchX prints its server list grouped by network; we print the
     /// joined channels grouped by homeserver, numbered by window.
-    pub fn channel_list_header(&mut self, homeserver: &str) {
+    pub(crate) fn channel_list_header(&mut self, homeserver: &str) {
         self.status_info(format!("Current homeserver: {homeserver}"));
         self.status_info("Channel list:");
         let server = self.me.server_name().to_string();
@@ -236,13 +236,13 @@ impl App {
     }
 
     /// Print a `-:-` line in the status window.
-    pub fn status_info(&mut self, text: impl Into<String>) {
+    pub(crate) fn status_info(&mut self, text: impl Into<String>) {
         self.windows[0].push(None, Line::Info(text.into()));
     }
 
     /// Switch to window index `idx`; asks for history the first time a room
     /// window is shown.
-    pub fn switch(&mut self, idx: usize) -> Vec<Effect> {
+    pub(crate) fn switch(&mut self, idx: usize) -> Vec<Effect> {
         if idx >= self.windows.len() {
             self.error(format!("No such window: {}", idx + 1));
             return vec![];
@@ -255,7 +255,7 @@ impl App {
         self.backfill_current()
     }
 
-    pub fn backfill_current(&mut self) -> Vec<Effect> {
+    pub(crate) fn backfill_current(&mut self) -> Vec<Effect> {
         let win = self.cur_mut();
         match win.room.room_id.clone() {
             Some(room_id) if !win.backfill_requested => {
@@ -266,28 +266,28 @@ impl App {
         }
     }
 
-    pub fn next_window(&mut self) -> Vec<Effect> {
+    pub(crate) fn next_window(&mut self) -> Vec<Effect> {
         self.switch((self.current + 1) % self.windows.len())
     }
 
-    pub fn prev_window(&mut self) -> Vec<Effect> {
+    pub(crate) fn prev_window(&mut self) -> Vec<Effect> {
         let n = self.windows.len();
         self.switch((self.current + n - 1) % n)
     }
 
     /// The mention matcher: our mxid, display name and `AUTO_REPLY`.
-    pub fn matcher(&self) -> Matcher {
+    pub(crate) fn matcher(&self) -> Matcher {
         Matcher::new(&self.me, self.display_name.as_deref(), &self.vars.auto_reply)
     }
 
     /// Whether the bell is due; clears it.
-    pub fn take_bell(&mut self) -> bool {
+    pub(crate) fn take_bell(&mut self) -> bool {
         std::mem::take(&mut self.bell)
     }
 
     /// Refnums of other windows with an unread mention (shown highlighted
     /// in `Act:`).
-    pub fn hilite(&self) -> Vec<usize> {
+    pub(crate) fn hilite(&self) -> Vec<usize> {
         self.windows
             .iter()
             .enumerate()
@@ -297,7 +297,7 @@ impl App {
     }
 
     /// Refnums of other windows with unread activity (`Act:`).
-    pub fn act(&self) -> Vec<usize> {
+    pub(crate) fn act(&self) -> Vec<usize> {
         self.windows
             .iter()
             .enumerate()
@@ -307,11 +307,11 @@ impl App {
     }
 
     /// Nicks for Tab completion in the current window.
-    pub fn nicks(&self) -> Vec<String> {
+    pub(crate) fn nicks(&self) -> Vec<String> {
         self.cur().room.members.iter().map(|m| m.nick.clone()).collect()
     }
 
-    pub fn status(&self) -> BxStatus {
+    pub(crate) fn status(&self) -> BxStatus {
         let win = self.cur();
         let me = win.room.members.iter().find(|m| m.user_id == self.me);
         let mut modes = String::new();
@@ -357,7 +357,7 @@ impl App {
     }
 
     /// The input prompt: `[#channel] `.
-    pub fn prompt(&self) -> String {
+    pub(crate) fn prompt(&self) -> String {
         match self.cur().channel() {
             Some(c) => format!("[{c}] "),
             None => format!("[{STATUS_NAME}] "),
@@ -367,19 +367,19 @@ impl App {
     // ---- clocks ----------------------------------------------------------
 
     /// The monotonic clock presence ages tick on (the fake one in tests).
-    pub fn mono(&self) -> Instant {
+    pub(crate) fn mono(&self) -> Instant {
         self.fake_mono.unwrap_or_else(Instant::now)
     }
 
     /// Now in unix millis (the fake clock in tests).
-    pub fn now(&self) -> i64 {
+    pub(crate) fn now(&self) -> i64 {
         self.fake_now.unwrap_or_else(now_ms)
     }
 
     // ---- input line ---------------------------------------------------
 
     /// Handle a submitted input line: a `/command` or text for the room.
-    pub fn submit(&mut self, line: &str) -> Vec<Effect> {
+    pub(crate) fn submit(&mut self, line: &str) -> Vec<Effect> {
         if line.trim().is_empty() {
             return vec![];
         }
@@ -432,7 +432,7 @@ impl App {
     /// is not in the current one) the command is refused with the
     /// candidates rather than guessing: `/op`, `/kick`, `/msg` ... must hit
     /// the user the operator meant.
-    pub fn resolve_user(&self, target: &str) -> Result<OwnedUserId, String> {
+    pub(crate) fn resolve_user(&self, target: &str) -> Result<OwnedUserId, String> {
         if target.starts_with('@') {
             return UserId::parse(target).map_err(|e| format!("Invalid user ID {target}: {e}"));
         }
@@ -481,7 +481,7 @@ impl App {
 
     /// Find a window by refnum, `#name`, room ID or alias. A name that fits
     /// several windows finds none (see [`Self::window_clash`]).
-    pub fn find_window(&self, target: &str) -> Option<usize> {
+    pub(crate) fn find_window(&self, target: &str) -> Option<usize> {
         if let Ok(n) = target.parse::<usize>() {
             return (n >= 1 && n <= self.windows.len()).then(|| n - 1);
         }
@@ -506,7 +506,7 @@ impl App {
     /// F29: room names are free text, so `#rust:matrix.org` may be the name
     /// of more than one room. Commands that pick a window by name refuse
     /// such a name and list the room IDs.
-    pub fn window_clash(&self, target: &str) -> Option<String> {
+    pub(crate) fn window_clash(&self, target: &str) -> Option<String> {
         let ids: Vec<String> = self
             .windows
             .iter()
@@ -595,7 +595,7 @@ impl App {
         }
     }
 
-    pub fn command(&mut self, cmd: BitchxCommand) -> Vec<Effect> {
+    pub(crate) fn command(&mut self, cmd: BitchxCommand) -> Vec<Effect> {
         match cmd {
             BitchxCommand::Me { text } | BitchxCommand::Action { text } => self.say(text, true),
             BitchxCommand::Msg { target, text } => {
@@ -978,10 +978,10 @@ impl App {
 
 #[cfg(test)]
 impl App {
-    pub fn cur_scroll_for_test(&mut self, scroll: usize) {
+    pub(crate) fn cur_scroll_for_test(&mut self, scroll: usize) {
         self.cur_mut().scroll = scroll;
     }
 }
 
 #[cfg(test)]
-pub mod tests;
+pub(crate) mod tests;

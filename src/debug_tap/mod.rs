@@ -20,12 +20,12 @@ mod sync;
 #[cfg(test)]
 pub(crate) mod tests;
 
-pub use layer::layer;
-pub use sync::on_sync;
+pub(crate) use layer::layer;
+pub(crate) use sync::on_sync;
 
 /// Debug categories, same names/order as `bitchx::vars::DEBUG_CATEGORIES`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Cat {
+pub(crate) enum Cat {
     Http = 0,
     Sync = 1,
     Event = 2,
@@ -37,7 +37,7 @@ pub enum Cat {
 }
 
 impl Cat {
-    pub const ALL: [Cat; 8] = [
+    pub(crate) const ALL: [Cat; 8] = [
         Cat::Http,
         Cat::Sync,
         Cat::Event,
@@ -48,7 +48,7 @@ impl Cat {
         Cat::ToDevice,
     ];
 
-    pub fn name(self) -> &'static str {
+    pub(crate) fn name(self) -> &'static str {
         match self {
             Cat::Http => "http",
             Cat::Sync => "sync",
@@ -61,7 +61,7 @@ impl Cat {
         }
     }
 
-    pub fn from_name(s: &str) -> Option<Cat> {
+    pub(crate) fn from_name(s: &str) -> Option<Cat> {
         Cat::ALL.into_iter().find(|c| c.name() == s)
     }
 
@@ -73,7 +73,7 @@ impl Cat {
 /// One line for the UI. `room` = room id for room-scoped lines (rendered in
 /// that window), `None` = status window. `text` is already redacted.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct DbgLine {
+pub(crate) struct DbgLine {
     pub cat: Cat,
     pub room: Option<String>,
     pub text: String,
@@ -97,14 +97,14 @@ fn chan() -> &'static Chan {
 }
 
 /// Take the receiver (once); `None` afterwards.
-pub fn init() -> Option<Receiver<DbgLine>> {
+pub(crate) fn init() -> Option<Receiver<DbgLine>> {
     chan().1.lock().ok()?.take()
 }
 
 /// Start (once) the thread that moves `DbgLine`s into the UI channel as
 /// `MxEvent::Debug`. A plain thread, not a tokio task: it blocks on the
 /// receiver and must never hold up runtime shutdown on `/quit`.
-pub fn start_forwarder(tx: &crate::matrix::Tx) {
+pub(crate) fn start_forwarder(tx: &crate::matrix::Tx) {
     static STARTED: AtomicBool = AtomicBool::new(false);
     if STARTED.swap(true, Ordering::Relaxed) {
         return;
@@ -124,14 +124,14 @@ pub fn start_forwarder(tx: &crate::matrix::Tx) {
 }
 
 /// Apply `/set debug`, `/set debug_filter`, `/set debug_raw`.
-pub fn configure(on: bool, filter: &str, raw: bool) {
+pub(crate) fn configure(on: bool, filter: &str, raw: bool) {
     MASK.store(filter_mask(filter), Ordering::Relaxed);
     RAW.store(raw, Ordering::Relaxed);
     ENABLED.store(on, Ordering::Relaxed);
 }
 
 /// Mask for a normalized `debug_filter` value (`all` or comma list).
-pub fn filter_mask(filter: &str) -> u8 {
+pub(crate) fn filter_mask(filter: &str) -> u8 {
     let mut m = 0u8;
     for w in filter.split([',', ' ']).map(str::trim).filter(|w| !w.is_empty()) {
         let w = w.to_ascii_lowercase();
@@ -147,23 +147,23 @@ pub fn filter_mask(filter: &str) -> u8 {
 
 /// Cheap gate: is debug on at all?
 #[inline]
-pub fn on() -> bool {
+pub(crate) fn on() -> bool {
     ENABLED.load(Ordering::Relaxed)
 }
 
 /// Is debug on and this category selected?
 #[inline]
-pub fn wants(cat: Cat) -> bool {
+pub(crate) fn wants(cat: Cat) -> bool {
     on() && MASK.load(Ordering::Relaxed) & cat.bit() != 0
 }
 
-pub fn raw() -> bool {
+pub(crate) fn raw() -> bool {
     RAW.load(Ordering::Relaxed)
 }
 
 /// Send a line (redacted again defensively). Never blocks; drops when the
 /// channel is full or not initialised.
-pub fn emit(cat: Cat, room: Option<&str>, text: impl AsRef<str>) {
+pub(crate) fn emit(cat: Cat, room: Option<&str>, text: impl AsRef<str>) {
     if !wants(cat) {
         return;
     }

@@ -10,7 +10,7 @@ impl App {
     /// Push `DEBUG` / `DEBUG_FILTER` / `DEBUG_RAW` to the debug tap when they
     /// differ from what it has (cheap; runs before every Matrix event and
     /// after `/set`).
-    pub fn apply_debug(&mut self) {
+    pub(crate) fn apply_debug(&mut self) {
         let v = &self.vars;
         let want = (v.debug, v.debug_filter.clone(), v.debug_raw);
         if want != self.dbg_applied {

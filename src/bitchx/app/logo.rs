@@ -10,7 +10,7 @@ use crate::bitchx::model::{Ink, Line, Run};
 /// wide, so every block mapping (full-block doubling, half-block pairing,
 /// quadrant bridging) turned the letterforms into mush. The wordmark is
 /// therefore drawn in a block font instead.
-pub const BANNER_BLOCKS: [&str; 5] = [
+pub(crate) const BANNER_BLOCKS: [&str; 5] = [
     "█  ███ █████████ █  █   ███ █    █   █",
     "  █   ██ █ ██   █   █  █    █     █ █ ",
     "█ █   ██ █ █████ █ ███ █    ████   █  ",
@@ -20,7 +20,7 @@ pub const BANNER_BLOCKS: [&str; 5] = [
 
 /// The logo's drop shadow: a half-block row (hard edge) and a light-shade
 /// dither row fading it out, offset one column to the right.
-pub const BANNER_SHADOW: [&str; 2] = [
+pub(crate) const BANNER_SHADOW: [&str; 2] = [
     " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
     " ░  ░░░ ░ ░ ░░░░░ ░  ░░░ ░░░ ░   ░░   ░",
 ];
@@ -32,7 +32,7 @@ pub const BANNER_SHADOW: [&str; 2] = [
 /// version slot the original filled with its own version string.
 ///
 /// BSD-3-Clause, (c) 1990-2012 the BitchX authors -- see NOTICE.
-pub const BANNER_ORIGINAL: [&str; 23] = [
+pub(crate) const BANNER_ORIGINAL: [&str; 23] = [
     "               ",
     "         ▄▄▄                                                                  ",
     "      ▄█▀▀▄▄▄▄▄          ░▓                             ▐▄   ▄▄ ",
@@ -58,7 +58,7 @@ pub const BANNER_ORIGINAL: [&str; 23] = [
     "                       ",
 ];
 
-pub const BANNER_ORIGINAL_INK: [&[(u8, Ink, Ink, bool)]; 23] = [
+pub(crate) const BANNER_ORIGINAL_INK: [&[(u8, Ink, Ink, bool)]; 23] = [
     &[(12, Ink::Magenta, Ink::Default, false)],
     &[
         (4, Ink::Magenta, Ink::Default, false),
@@ -719,7 +719,7 @@ pub const BANNER_ORIGINAL_INK: [&[(u8, Ink, Ink, bool)]; 23] = [
 
 /// The original BitchX ASCII "acidjazz" logo (`art.c`, ASCII build,
 /// case 2). BSD-3-Clause, (c) 1990-2012 the BitchX authors.
-pub const BANNER_ACID: [&str; 19] = [
+pub(crate) const BANNER_ACID: [&str; 19] = [
     "                                                                   ,",
     "                                           .                     ,$",
     "                 .                                              ,$'",
@@ -743,7 +743,7 @@ pub const BANNER_ACID: [&str; 19] = [
 
 /// The ASCII fallback logo, in figlet `slant` style (47 columns). Used when
 /// the terminal cannot render the UTF-8 block wordmark.
-pub const BANNER_ASCII: [&str; 5] = [
+pub(crate) const BANNER_ASCII: [&str; 5] = [
     r"    _               ____  _ __       __   _  __",
     r"   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /",
     r"  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /",
@@ -756,7 +756,7 @@ pub const BANNER_ASCII: [&str; 5] = [
 /// `TERM` decides first: `dumb` and the legacy `vt1xx`/`ansi` names mean no,
 /// names carrying `utf`/`256`/`color` mean yes. For everything else the
 /// locale decides (`LC_ALL`/`LC_CTYPE`/`LANG` containing `UTF-8`).
-pub fn utf8_terminal() -> bool {
+pub(crate) fn utf8_terminal() -> bool {
     let term = std::env::var("TERM").unwrap_or_default();
     let locale = ["LC_ALL", "LC_CTYPE", "LANG"]
         .iter()
@@ -766,7 +766,7 @@ pub fn utf8_terminal() -> bool {
 }
 
 /// The pure decision behind [`utf8_terminal`], so it can be tested.
-pub fn utf8_supported(term: &str, locale: &str) -> bool {
+pub(crate) fn utf8_supported(term: &str, locale: &str) -> bool {
     let term = term.to_ascii_lowercase();
     if !term.is_empty() {
         if term.contains("utf") || term.contains("256") || term.contains("color") {
@@ -810,7 +810,7 @@ pub fn utf8_supported(term: &str, locale: &str) -> bool {
 
 /// Which splash logo the status window shows.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Logo {
+pub(crate) enum Logo {
     /// The original BitchX 1.3 art, decoded from CP437 to Unicode (78 cols).
     Original,
     /// The original BitchX ASCII "acidjazz" art (78 cols).
@@ -826,7 +826,7 @@ impl Logo {
     ///
     /// The original art wants 78 columns and about 36 rows; without that
     /// room the compact wordmark (UTF-8) or the ASCII slant is used.
-    pub fn pick(utf8: bool, width: u16, height: u16) -> Logo {
+    pub(crate) fn pick(utf8: bool, width: u16, height: u16) -> Logo {
         let room = width >= 78 && height >= 36;
         match (utf8, room) {
             (true, true) => Logo::Original,
@@ -837,7 +837,7 @@ impl Logo {
     }
 
     /// The logo's lines, ready for the startup window.
-    pub fn lines(self, ver: &str) -> Vec<Line> {
+    pub(crate) fn lines(self, ver: &str) -> Vec<Line> {
         let slot = format!("{:>15}", ver);
         match self {
             Logo::Original => {
@@ -860,7 +860,7 @@ impl Logo {
     }
 
     /// How the startup header names the logo.
-    pub fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Logo::Original => "original bitchx logo",
             Logo::Acid => "acidjazz logo",
@@ -914,7 +914,7 @@ pub(super) fn header_line(logo: Logo) -> Line {
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, the iamb credit line, logo with its `[ version]` credit, then
 /// ` iamBitchX:` lines.
-pub fn startup_lines_for(nick: &str, logo: Logo) -> Vec<Line> {
+pub(crate) fn startup_lines_for(nick: &str, logo: Logo) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");
     let mut v = vec![

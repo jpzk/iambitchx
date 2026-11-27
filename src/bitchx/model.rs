@@ -7,11 +7,11 @@ use std::time::{Duration, Instant};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 use crate::bitchx::channels::{JoinTarget, ListArgs, ListEntry};
-pub use crate::bitchx::commands::Secret;
+pub(crate) use crate::bitchx::commands::Secret;
 
 /// A terminal colour, for the splash art.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Ink {
+pub(crate) enum Ink {
     Default,
     Black,
     Red,
@@ -24,7 +24,7 @@ pub enum Ink {
 /// One run of the splash art: text with a foreground, a background and a
 /// bold flag.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Run {
+pub(crate) struct Run {
     pub text: String,
     pub fg: Ink,
     pub bg: Ink,
@@ -34,7 +34,7 @@ pub struct Run {
 /// One scrollback line, already translated from Matrix into IRC terms.
 /// The channel name is filled in by the formatter from the window.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Line {
+pub(crate) enum Line {
     /// PUBLIC / SEND_PUBLIC: `<nick> text`.
     Public { nick: String, own: bool, text: String },
     /// ACTION / SEND_ACTION: ` nick text` / ` nick/#chan text`.
@@ -127,13 +127,13 @@ pub enum Line {
 /// Case twins on the same server (`@Bob:x`, `@bob:x`) stay bare: `@server`
 /// cannot tell them apart, their case does (and nick commands refuse them
 /// as ambiguous).
-pub fn nick_of(user: &UserId) -> String {
+pub(crate) fn nick_of(user: &UserId) -> String {
     nicks::nick(user)
 }
 
 /// Remember `me` as one of our own accounts (preferred bare nick, own
 /// homeserver).
-pub fn register_me(me: &UserId) {
+pub(crate) fn register_me(me: &UserId) {
     nicks::with(|r| {
         r.mine.insert(me.to_owned());
         r.see(me);
@@ -141,7 +141,7 @@ pub fn register_me(me: &UserId) {
 }
 
 /// All users seen with this (case-insensitive) localpart.
-pub fn same_localpart(localpart: &str) -> Vec<OwnedUserId> {
+pub(crate) fn same_localpart(localpart: &str) -> Vec<OwnedUserId> {
     nicks::with(|r| r.by_local.get(&localpart.to_lowercase()).cloned().unwrap_or_default())
         .into_iter()
         .collect()
@@ -154,13 +154,13 @@ mod nicks {
 
     /// Every user ID seen (members, senders), by lowercased localpart.
     #[derive(Default)]
-    pub struct Registry {
+    pub(super) struct Registry {
         pub mine: HashSet<OwnedUserId>,
         pub by_local: HashMap<String, BTreeSet<OwnedUserId>>,
     }
 
     impl Registry {
-        pub fn see(&mut self, user: &UserId) {
+        pub(super) fn see(&mut self, user: &UserId) {
             self.by_local
                 .entry(user.localpart().to_lowercase())
                 .or_default()
@@ -194,19 +194,19 @@ mod nicks {
     }
 
     #[cfg(test)]
-    pub fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
+    pub(super) fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
         REG.with(|r| f(&mut r.borrow_mut()))
     }
 
     #[cfg(not(test))]
-    pub fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
+    pub(super) fn with<T>(f: impl FnOnce(&mut Registry) -> T) -> T {
         static REG: std::sync::LazyLock<std::sync::Mutex<Registry>> =
             std::sync::LazyLock::new(Default::default);
         let mut r = REG.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         f(&mut r)
     }
 
-    pub fn nick(user: &UserId) -> String {
+    pub(super) fn nick(user: &UserId) -> String {
         let bare = with(|r| {
             r.see(user);
             r.bare(user)
@@ -222,7 +222,7 @@ mod nicks {
 
 /// Matrix presence state of another user.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum PresenceState {
+pub(crate) enum PresenceState {
     Online,
     Unavailable,
     Offline,
@@ -232,7 +232,7 @@ pub enum PresenceState {
 /// by the homeserver when the event arrived at `received_at`, so the age
 /// ticks forward locally: `age = last_active_ago + (now - received_at)`.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Presence {
+pub(crate) struct Presence {
     pub state: PresenceState,
     pub status_msg: Option<String>,
     pub last_active_ago: Option<Duration>,
@@ -243,19 +243,19 @@ pub struct Presence {
 /// The compact marker next to a peer: `zZzZ 4h` (unavailable) or `off 2d`
 /// (offline); the age is missing when the homeserver sent none.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PresenceMark {
+pub(crate) struct PresenceMark {
     pub offline: bool,
     pub age: Option<String>,
 }
 
 impl PresenceMark {
     /// The marker word: `zZzZ` (BitchX STATUS_AWAY) or `off`.
-    pub fn word(&self) -> &'static str {
+    pub(crate) fn word(&self) -> &'static str {
         if self.offline { "off" } else { "zZzZ" }
     }
 
     /// `zZzZ 4h`, `off 2d`, `zZzZ`.
-    pub fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         match &self.age {
             Some(age) => format!("{} {age}", self.word()),
             None => self.word().to_string(),
@@ -265,7 +265,7 @@ impl PresenceMark {
 
 impl Presence {
     /// The away message while `unavailable` (BitchX `away : nick - msg`).
-    pub fn away(&self) -> Option<String> {
+    pub(crate) fn away(&self) -> Option<String> {
         (self.state == PresenceState::Unavailable).then(|| {
             let msg = self.status_msg.as_deref().unwrap_or("").trim();
             if msg.is_empty() {
@@ -278,13 +278,13 @@ impl Presence {
 
     /// Time since the user was last active, as of `now`; `None` when the
     /// homeserver sent no `last_active_ago`.
-    pub fn age(&self, now: Instant) -> Option<Duration> {
+    pub(crate) fn age(&self, now: Instant) -> Option<Duration> {
         let since = now.saturating_duration_since(self.received_at);
         self.last_active_ago.map(|ago| ago + since)
     }
 
     /// The status bar / NAMES marker; nothing for online or currently active.
-    pub fn mark(&self, now: Instant) -> Option<PresenceMark> {
+    pub(crate) fn mark(&self, now: Instant) -> Option<PresenceMark> {
         if self.currently_active || self.state == PresenceState::Online {
             return None;
         }
@@ -296,7 +296,7 @@ impl Presence {
 }
 
 /// Compact age, largest unit only, rounded down: `45s 12m 4h 2d 3w`.
-pub fn compact_age(age: Duration) -> String {
+pub(crate) fn compact_age(age: Duration) -> String {
     let s = age.as_secs();
     match s {
         0..60 => format!("{s}s"),
@@ -310,7 +310,7 @@ pub fn compact_age(age: Duration) -> String {
 /// WHOIS_IDLE `: idle     : $0 hours $1 mins $2 secs` (`include/color.h:731`,
 /// split as in `source/numbers.c:870-877`). Matrix has no signon time, so
 /// the `(signon: ...)` part is left out.
-pub fn whois_idle(idle: Duration) -> String {
+pub(crate) fn whois_idle(idle: Duration) -> String {
     let secs = idle.as_secs();
     let hours = secs / 3600;
     let minutes = (secs - hours * 3600) / 60;
@@ -321,7 +321,7 @@ pub fn whois_idle(idle: Duration) -> String {
 /// Matrix presence as the UI keeps it. `unavailable` is away (BitchX shows
 /// `away : nick - msg`, the message defaulting to `away`); unknown states
 /// count as offline. The status message is sanitized for the terminal.
-pub fn away_of(
+pub(crate) fn away_of(
     presence: &str,
     status_msg: Option<&str>,
     last_active_ago: Option<Duration>,
@@ -344,11 +344,11 @@ pub fn away_of(
 
 /// A line with the event id it came from (for dedup) and the event's
 /// `origin_server_ts` in unix millis (`None`: client-generated, use now).
-pub type Stamped = (Option<String>, Option<i64>, Line);
+pub(crate) type Stamped = (Option<String>, Option<i64>, Line);
 
 /// A room member as the UI needs it.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Member {
+pub(crate) struct Member {
     pub user_id: OwnedUserId,
     pub nick: String,
     pub power: i64,
@@ -358,24 +358,24 @@ impl Member {
     /// A member whose nick is the mxid localpart. The display name (which may
     /// be capitalised, e.g. `Carla`) is deliberately NOT used; BitchX shows it
     /// only as the ircname in /whois.
-    pub fn new(user_id: OwnedUserId, power: i64) -> Self {
+    pub(crate) fn new(user_id: OwnedUserId, power: i64) -> Self {
         Member { nick: nick_of(&user_id), user_id, power }
     }
 
     /// `@` in IRC terms: power level 50 or more.
-    pub fn is_op(&self) -> bool {
+    pub(crate) fn is_op(&self) -> bool {
         self.power >= 50
     }
 
     /// `+` in IRC terms: above the default, below op.
-    pub fn is_voice(&self) -> bool {
+    pub(crate) fn is_voice(&self) -> bool {
         self.power > 0 && self.power < 50
     }
 }
 
 /// Everything the UI shows about a room.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct RoomSnapshot {
+pub(crate) struct RoomSnapshot {
     pub room_id: Option<OwnedRoomId>,
     /// `#alias`, or the room name, or the DM peer's nick.
     pub name: String,
@@ -389,7 +389,7 @@ pub struct RoomSnapshot {
 
 /// Something that happened on the Matrix side.
 #[derive(Clone, Debug, PartialEq)]
-pub enum MxEvent {
+pub(crate) enum MxEvent {
     /// A joined room appeared or changed.
     Room(RoomSnapshot),
     /// New lines for a room. `backfill` lines are older than everything shown.
@@ -429,7 +429,7 @@ pub enum MxEvent {
 
 /// Something the UI wants the Matrix side to do.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Effect {
+pub(crate) enum Effect {
     Send {
         room_id: OwnedRoomId,
         text: String,
@@ -489,7 +489,7 @@ pub enum Effect {
 
 /// What `/verify ...` asks the Matrix side to do.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum VerifyAction {
+pub(crate) enum VerifyAction {
     Accept,
     Start { device: Option<String> },
     Confirm,
@@ -499,7 +499,7 @@ pub enum VerifyAction {
 
 /// Progress of a key verification, as reported by the Matrix side.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum VerifyUpdate {
+pub(crate) enum VerifyUpdate {
     /// A request exists (theirs or ours). In-room requests carry the room.
     Requested {
         flow_id: String,

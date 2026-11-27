@@ -9,7 +9,7 @@ impl App {
     /// The timer: `check_auto_away` (`source/misc.c:1204-1225`). After
     /// AUTO_AWAY_TIME seconds without a keypress, go away with
     /// `Auto-Away after N mins`, unless already away (by hand or not).
-    pub fn tick(&mut self) -> Vec<Effect> {
+    pub(crate) fn tick(&mut self) -> Vec<Effect> {
         self.flush_debug();
         let secs = self.vars.auto_away_time;
         let now = self.now();
@@ -33,7 +33,7 @@ impl App {
 
     /// Keyboard activity: resets the idle clock; ends an automatic away
     /// (a `/away` by hand stays until `/back`).
-    pub fn activity(&mut self) -> Vec<Effect> {
+    pub(crate) fn activity(&mut self) -> Vec<Effect> {
         self.last_input = self.now();
         if self.auto_away && self.away.is_some() {
             self.auto_away = false;

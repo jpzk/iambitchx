@@ -7,7 +7,7 @@ use crate::bitchx::model::{Effect, Line, MxEvent, RoomSnapshot, VerifyUpdate, ni
 use crate::bitchx::text::{clean_line, clean_snapshot, one_line};
 
 impl App {
-    pub fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
+    pub(crate) fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
         let ev = clean_event(ev);
         self.apply_debug();
         match ev {

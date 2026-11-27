@@ -5,15 +5,15 @@ use std::fmt;
 /// A secret typed by the user (recovery key). Never printed: `Debug` is
 /// redacted and there is no `Display`.
 #[derive(Clone, Eq, PartialEq)]
-pub struct Secret(String);
+pub(crate) struct Secret(String);
 
 impl Secret {
-    pub fn new(s: impl Into<String>) -> Self {
+    pub(crate) fn new(s: impl Into<String>) -> Self {
         Secret(s.into())
     }
 
     /// The secret itself, for handing to the SDK only.
-    pub fn expose(&self) -> &str {
+    pub(crate) fn expose(&self) -> &str {
         &self.0
     }
 }
@@ -25,11 +25,11 @@ impl fmt::Debug for Secret {
 }
 
 /// Commands whose arguments are secrets: masked in history and on screen.
-pub const SECRET_COMMANDS: &[&str] = &["recover"];
+pub(super) const SECRET_COMMANDS: &[&str] = &["recover"];
 
 /// If `line` is `/recover ...` (any case), the byte offset where the secret
 /// argument starts (after the command word and one separator).
-pub fn secret_offset(line: &str) -> Option<usize> {
+pub(super) fn secret_offset(line: &str) -> Option<usize> {
     let rest = line.strip_prefix('/')?;
     let lead = rest.len() - rest.trim_start().len();
     let rest = &rest[lead..];
@@ -42,7 +42,7 @@ pub fn secret_offset(line: &str) -> Option<usize> {
 }
 
 /// For the screen while typing: every char of the secret becomes `*`.
-pub fn mask_secret(line: &str) -> String {
+pub(crate) fn mask_secret(line: &str) -> String {
     match secret_offset(line) {
         Some(off) => format!("{}{}", &line[..off], "*".repeat(line[off..].chars().count())),
         None => line.to_string(),
@@ -50,7 +50,7 @@ pub fn mask_secret(line: &str) -> String {
 }
 
 /// For history: the secret becomes a fixed `********` (no length leak).
-pub fn redact_secret(line: &str) -> String {
+pub(crate) fn redact_secret(line: &str) -> String {
     match secret_offset(line) {
         Some(off) => format!("{}********", &line[..off]),
         None => line.to_string(),

@@ -8,46 +8,46 @@ use unicode_width::UnicodeWidthChar;
 
 use crate::bitchx::model::{Ink, Line, PresenceMark};
 
-pub fn fg(c: Color) -> Style {
+pub(crate) fn fg(c: Color) -> Style {
     Style::default().fg(c)
 }
 
-pub fn bold(c: Color) -> Style {
+pub(crate) fn bold(c: Color) -> Style {
     fg(c).add_modifier(Modifier::BOLD)
 }
 
 /// `%n`: the terminal's default colours.
-pub fn n() -> Style {
+pub(crate) fn n() -> Style {
     Style::default()
 }
 
 /// `%K`: dark gray (bold black).
-pub fn k() -> Style {
+pub(crate) fn k() -> Style {
     bold(Color::DarkGray)
 }
 
 /// `%W`: bold bright white.
-pub fn w() -> Style {
+pub(crate) fn w() -> Style {
     bold(Color::White)
 }
 
 /// `%c`: cyan.
-pub fn c() -> Style {
+pub(crate) fn c() -> Style {
     fg(Color::Cyan)
 }
 
 /// Replace control characters (escape sequences, newlines) with spaces and
 /// drop invisible format characters (bidi controls, zero-width, F30).
-pub fn sanitize(s: &str) -> String {
+pub(crate) fn sanitize(s: &str) -> String {
     crate::bitchx::text::one_line(s)
 }
 
-pub fn sp(text: impl Into<String>, style: Style) -> Span<'static> {
+pub(crate) fn sp(text: impl Into<String>, style: Style) -> Span<'static> {
     Span::styled(sanitize(&text.into()), style)
 }
 
 /// The terminal colour for an [`Ink`]; `Default` keeps the terminal's own.
-pub fn ink_color(ink: Ink) -> Option<Color> {
+pub(crate) fn ink_color(ink: Ink) -> Option<Color> {
     Some(match ink {
         Ink::Default => return None,
         Ink::Black => Color::Black,
@@ -61,7 +61,7 @@ pub fn ink_color(ink: Ink) -> Option<Color> {
 
 /// The leading glyph of every client/event line: a single (dark-grey) space,
 /// as captured from BitchX (recon §3).
-pub fn g() -> Vec<Span<'static>> {
+pub(crate) fn g() -> Vec<Span<'static>> {
     vec![Span::styled(" ", k())]
 }
 
@@ -91,12 +91,12 @@ fn body_lines(prefix: Vec<Span<'static>>, text: &str, style: Style) -> Vec<TLine
 /// Format one line for the window whose channel name is `chan`.
 /// Formats and colours follow the BitchX recon captures 22-32.
 #[cfg(test)]
-pub fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
+pub(crate) fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
     format_line_hl(line, chan, false)
 }
 
 /// The whole-line highlight of a mention: the text bold bright white.
-pub fn hl_text() -> Style {
+pub(crate) fn hl_text() -> Style {
     w()
 }
 
@@ -149,7 +149,7 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
 
 /// [`format_line`], with `hl` (a mention, see [`crate::bitchx::mention`])
 /// rendering the AR form.
-pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> {
+pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> {
     if hl && let Some(out) = format_ar(line) {
         return out;
     }
@@ -489,7 +489,7 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
 
 /// A presence marker `zZzZ 4h` / `off 2d`: green zZzZ like STATUS_AWAY,
 /// grey `off`, the age in the default colour.
-pub fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
+pub(crate) fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
     let word = if mark.offline { k() } else { fg(Color::Green) };
     let mut out = vec![sp(mark.word(), word)];
     if let Some(age) = &mark.age {
@@ -499,13 +499,13 @@ pub fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
 }
 
 /// Columns of a NAMES cell: the nick plus ` (marker)`.
-pub fn names_cell_width(nick: &str, mark: Option<&PresenceMark>) -> usize {
+pub(crate) fn names_cell_width(nick: &str, mark: Option<&PresenceMark>) -> usize {
     let nick = nick.chars().count();
     mark.map_or(nick, |m| nick + m.text().chars().count() + 3)
 }
 
 /// Split lines so that none is wider than `width` cells.
-pub fn wrap(lines: Vec<TLine<'static>>, width: usize) -> Vec<TLine<'static>> {
+pub(crate) fn wrap(lines: Vec<TLine<'static>>, width: usize) -> Vec<TLine<'static>> {
     let mut out = vec![];
 
     if width == 0 {
@@ -547,7 +547,7 @@ pub fn wrap(lines: Vec<TLine<'static>>, width: usize) -> Vec<TLine<'static>> {
 
 /// The plain text of rendered lines.
 #[cfg(test)]
-pub fn plain(lines: &[TLine<'_>]) -> Vec<String> {
+pub(crate) fn plain(lines: &[TLine<'_>]) -> Vec<String> {
     lines
         .iter()
         .map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect())

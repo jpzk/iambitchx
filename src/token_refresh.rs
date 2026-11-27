@@ -33,37 +33,42 @@ use crate::session_guard::{self, Done, Mode};
 
 /// Access-token lifetime assumed when the SDK hides `expires_in` (measured
 /// from MAS: 300s; see module docs).
-pub const ACCESS_TOKEN_TTL: Duration = Duration::from_secs(300);
+pub(crate) const ACCESS_TOKEN_TTL: Duration = Duration::from_secs(300);
 
 /// Refresh this long before the access token expires.
-pub const REFRESH_MARGIN: Duration = Duration::from_secs(60);
+pub(crate) const REFRESH_MARGIN: Duration = Duration::from_secs(60);
 
 /// After a failed proactive refresh, try again this much later (the 401
 /// recovery remains armed meanwhile).
-pub const RETRY_AFTER_ERROR: Duration = Duration::from_secs(30);
+pub(crate) const RETRY_AFTER_ERROR: Duration = Duration::from_secs(30);
 
 /// A `session.json` younger than this at wake-up was rewritten after we
 /// scheduled (e.g. by the 401 recovery): skip and reschedule. Slightly less
 /// than `TTL - margin` so a normal, on-time wake-up always refreshes.
-pub const fn fresh_within(ttl: Duration, margin: Duration) -> Duration {
+pub(crate) const fn fresh_within(ttl: Duration, margin: Duration) -> Duration {
     ttl.saturating_sub(margin).saturating_sub(Duration::from_secs(5))
 }
 
 /// Delay from `now` until the refresh is due: `issued + ttl - margin`
 /// (i.e. expiry minus margin), zero if already past.
-pub fn due_in(issued: SystemTime, now: SystemTime, ttl: Duration, margin: Duration) -> Duration {
+pub(crate) fn due_in(
+    issued: SystemTime,
+    now: SystemTime,
+    ttl: Duration,
+    margin: Duration,
+) -> Duration {
     let due = issued + ttl.saturating_sub(margin);
     due.duration_since(now).unwrap_or(Duration::ZERO)
 }
 
 /// Whether a process in `mode` runs the proactive refresh at all.
-pub fn enabled(mode: Mode) -> bool {
+pub(crate) fn enabled(mode: Mode) -> bool {
     mode.may_write()
 }
 
 /// Start the background refresh task for a live client. No-op (returns
 /// `None`) in read-only mode.
-pub fn spawn(
+pub(crate) fn spawn(
     client: Client,
     settings: ApplicationSettings,
     mode: Mode,

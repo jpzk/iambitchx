@@ -8,11 +8,11 @@ use crate::bitchx::channels::{ListArgs, parse_list_args};
 
 mod secret;
 
-pub use self::secret::{Secret, mask_secret, redact_secret};
+pub(crate) use self::secret::{Secret, mask_secret, redact_secret};
 
 /// A parsed BitchX/IRC-style slash command.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BitchxCommand {
+pub(crate) enum BitchxCommand {
     Msg {
         target: String,
         text: String,
@@ -124,7 +124,7 @@ pub enum BitchxCommand {
 
 /// `/verify` subcommands.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum VerifyCmd {
+pub(crate) enum VerifyCmd {
     /// `/verify`: list pending verifications.
     List,
     /// `flow` picks one of several pending flows with `user` (F44).
@@ -152,7 +152,7 @@ pub enum VerifyCmd {
 
 /// Why a slash command could not be parsed.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum BitchxError {
+pub(crate) enum BitchxError {
     UnknownCommand(String),
     MissingArgument { command: &'static str, argument: &'static str },
     InvalidArgument { command: &'static str, argument: String },
@@ -177,7 +177,7 @@ impl fmt::Display for BitchxError {
 impl std::error::Error for BitchxError {}
 
 /// Every command word understood by [`parse`], including aliases, for `/help`.
-pub const COMMAND_NAMES: &[&str] = &[
+pub(crate) const COMMAND_NAMES: &[&str] = &[
     "action",
     "away",
     "back",
@@ -226,12 +226,12 @@ pub const COMMAND_NAMES: &[&str] = &[
 ];
 
 /// The original BitchX slap (script/menu.bx:1385).
-pub fn slap_text(nick: &str) -> String {
+pub(crate) fn slap_text(nick: &str) -> String {
     format!("slaps {nick} around a bit with a substantially large Brown Cow...")
 }
 
 /// The classic mIRC slap.
-pub fn mircslap_text(nick: &str) -> String {
+pub(crate) fn mircslap_text(nick: &str) -> String {
     format!("slaps {nick} around a bit with a large trout")
 }
 
@@ -350,7 +350,7 @@ fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
 ///
 /// Returns `Ok(None)` for empty/whitespace-only input, which the caller
 /// should treat as a normal message.
-pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
+pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
     let Some((word, rest)) = split_word(input) else {
         return Ok(None);
     };

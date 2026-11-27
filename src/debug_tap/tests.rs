@@ -95,7 +95,7 @@ fn http_method() -> http_like::Method {
 
 mod http_like {
     /// Debug-prints like `http::Method::GET`.
-    pub struct Method;
+    pub(super) struct Method;
     impl std::fmt::Debug for Method {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             f.write_str("GET")

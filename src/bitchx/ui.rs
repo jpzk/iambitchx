@@ -16,11 +16,11 @@ use crate::bitchx::model::Line;
 use crate::bitchx::status::status_bg;
 
 /// `STATUS_FORMAT3`, the top bar shown with `/window split on` (capture 19).
-pub const TOP_BAR: &str = "iamBitchX (BitchX by panasync)";
+pub(crate) const TOP_BAR: &str = "iamBitchX (BitchX by panasync)";
 
 /// The scrollback rows of the current window that fit in `rows` x `width`,
 /// honouring (and clamping) its scroll offset. Top-aligned when short.
-pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static>> {
+pub(crate) fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static>> {
     let win = &app.windows[app.current];
     let chan = win.channel().unwrap_or("").to_string();
     let vars = &app.vars;
@@ -53,7 +53,7 @@ pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static
 }
 
 /// Draw the whole screen.
-pub fn draw(frame: &mut Frame<'_>, app: &mut App) {
+pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
     let area = frame.area();
     if area.height < 4 || area.width < 10 {
         return;
