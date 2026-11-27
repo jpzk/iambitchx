@@ -1,3 +1,5 @@
+//! Tests for slash-command dispatch and plain-text sending.
+
 use super::*;
 
 #[test]

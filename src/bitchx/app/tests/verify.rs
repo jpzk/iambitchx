@@ -1,3 +1,5 @@
+//! Tests for the /encrypt confirmation and SAS verification flow.
+
 use super::*;
 
 use crate::bitchx::model::VerifyAction;
