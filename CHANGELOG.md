@@ -16,6 +16,38 @@ for that.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-11-27
+
+First release after `v0.1.0`. `v0.1.1` was tagged but never released (its
+gated release run was cancelled, and it lacks the security fixes below);
+everything listed under `[0.1.1]` ships in this release.
+
+### Security
+
+- **Terminal-escape sanitiser (F-04, AUTH-3, F-FMT-1).** Remote text (login
+  errors, device-link instructions, `/list` directory entries) goes through
+  one central sanitiser; Info/Error lines render as one row, so an embedded
+  LF can no longer forge rows.
+- **Config (CONF-1).** An empty or relative `XDG_CONFIG_HOME` is ignored.
+- **Session pinning (CONF-2).** A saved session is pinned to its homeserver.
+- **Debug tap.** Fail-closed free-text redaction, raw bodies masked,
+  status-window only, session-scoped debug switches; debug is never
+  persisted.
+- **Verification / E2E (E2–E6, B1).** Incoming SAS flows are offered, never
+  auto-accepted; `/verify start` never guesses a pending flow; the
+  requesting device is shown as resolved by the SDK; what a verification
+  verifies is named; a SAS that fails to start is an error; `/encrypt`
+  prompts name the spoof-safe label plus the room id.
+- **Room id (M-03).** A window named from `m.room.name` shows the room id.
+- **DM member cap (M-04).** An `m.direct` room with more than two members is
+  never treated as a private query; `/msg`/`/query` into one is refused.
+
+### Added
+
+- `/theme` with a live-preview picker: 62 embedded iamb themes plus a
+  `terminal` theme that uses the terminal's own colours.
+- Website FEATURES section, `llms.txt`, `robots.txt`, `sitemap.xml`.
+
 ### Changed
 
 - A terminal too small for the splash (< 78 columns or < 36 rows) now
@@ -28,7 +60,7 @@ for that.
 - The splash swap on resize no longer duplicates or loses the version
   credit line: the logo slot is tracked by position, not by line kind.
 
-## [0.1.1] — 2026-11-27
+## [0.1.1] — 2026-11-27 (tagged, never released)
 
 ### Changed
 
@@ -213,6 +245,7 @@ for that.
   with it.
 - **matrix-rust-sdk** — Apache-2.0.
 
-[Unreleased]: https://github.com/jpzk/iambitchx/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/jpzk/iambitchx/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/jpzk/iambitchx/releases/tag/v0.1.2
 [0.1.1]: https://github.com/jpzk/iambitchx/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jpzk/iambitchx/releases/tag/v0.1.0
