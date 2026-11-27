@@ -191,6 +191,18 @@ fn sas_started<T>(started: Option<T>) -> anyhow::Result<T> {
     })
 }
 
+/// E5: `/verify start` on a pending request drives only a ready request
+/// that WE sent; one the peer started is theirs to start (we accepted it).
+/// `Ok(false)`: not ready, a fresh request is sent instead.
+fn start_on_request(user: &UserId, ready: bool, we_started: bool) -> anyhow::Result<bool> {
+    if ready && !we_started {
+        anyhow::bail!(
+            "the verification with {user} was started by them -- wait for their emoji, or /verify cancel it and /verify start again"
+        );
+    }
+    Ok(ready)
+}
+
 async fn start_sas(req: &VerificationRequest) -> anyhow::Result<SasVerification> {
     sas_started(req.start_sas().await?)
 }
@@ -227,8 +239,8 @@ pub(crate) async fn verify(
             );
         },
         VerifyAction::Start { device } => {
-            if let Some(req) =
-                req.filter(matrix_sdk::encryption::verification::VerificationRequest::is_ready)
+            if let Some(req) = req
+                && start_on_request(&user, req.is_ready(), req.we_started())?
             {
                 // The tracker picks up the SAS when the request transitions.
                 start_sas(&req).await?;
@@ -391,5 +403,15 @@ mod tests {
         let err = sas_started::<()>(None).unwrap_err().to_string();
         assert!(err.contains("did not start"), "{err}");
         assert_eq!(sas_started(Some(7)).unwrap(), 7);
+    }
+
+    #[test]
+    fn test_e5_start_requires_our_ready_request() {
+        let u = matrix_sdk::ruma::user_id!("@a:x");
+        // a ready request the peer sent is refused, not driven into a SAS
+        assert!(start_on_request(u, true, false).is_err());
+        assert!(start_on_request(u, true, true).unwrap());
+        assert!(!start_on_request(u, false, true).unwrap());
+        assert!(!start_on_request(u, false, false).unwrap());
     }
 }
