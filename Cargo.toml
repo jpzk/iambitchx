@@ -1,6 +1,6 @@
 [package]
 name = "iambitchx"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 authors = ["jpzk"]
 repository = "https://github.com/jpzk/iambitchx"
@@ -94,7 +94,7 @@ assets = [
 ]
 
 [package.metadata.generate-rpm]
-version = "0.1.0"
+version = "0.1.1"
 assets = [
     # Binary:
     { source = "target/release/iambitchx", dest = "/usr/bin/iambitchx", mode = "755" },

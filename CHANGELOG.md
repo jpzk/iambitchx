@@ -16,14 +16,37 @@ for that.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-11-27
+
 ### Changed
 
-- The project page is pure UTF-8 text: one `<pre>`, box-drawing and block
-  glyphs, every line within 72 columns. Monochrome: no CSS, no colours,
-  no links (URLs are plain text), no graphics, no web fonts
-  (JetBrains Mono and `site/fonts` are gone). Adds install (deb, rpm,
-  tarball, musl, macOS, Windows) and verify (SHA256SUMS,
-  `gh attestation verify`) sections.
+- **Module refactor (pure moves, no behaviour change).** `app.rs` became
+  `app/` (`state`, `logo`, `verify`, `events`, `keys`, `away`, `debug`,
+  with tests split by topic under `app/tests/`); `debug_tap` became
+  `debug_tap/{mod,layer,redact,sync,tests}.rs`; `commands` became
+  `commands/{mod,secret,tests}.rs`. No source file is over 1000 lines.
+  Visibility narrowed to `pub(crate)`/`pub(super)`, every module has a
+  `//!` doc, and remaining `unwrap`/`expect` in non-test code are justified.
+- **Lints.** `Cargo.toml` gains a `[lints]` table: `unsafe_code` and
+  `clippy::all` deny, `clippy::pedantic` warn with a short allow-list,
+  plus `clippy.toml` (`doc-valid-idents: BitchX`). Pedantic warnings went
+  from 174 to 0. Formatting now checked with stable rustfmt in CI.
+- **Website redesign.** The project page is pure UTF-8 text: one `<pre>`,
+  box-drawing and block glyphs, lines within 72 columns, a barely-there
+  dark page (#000/#fff, monospace, 16px), no graphics, no web fonts
+  (JetBrains Mono and `site/fonts` are gone). URLs are clickable links.
+  Adds install (deb, rpm, tarball, musl, macOS, Windows) and verify
+  (SHA256SUMS, `gh attestation verify`) sections.
+
+### Added
+
+- `SECURITY.md`: security policy with private vulnerability reporting,
+  scope and release verification; linked from README and CONTRIBUTING.
+
+### Fixed
+
+- Changelog compare links: `[Unreleased]` now compares `v0.1.1...HEAD`,
+  and `[0.1.1]` links to its release tag.
 
 ## [0.1.0] — planned first release
 
@@ -178,5 +201,6 @@ for that.
   with it.
 - **matrix-rust-sdk** — Apache-2.0.
 
-[Unreleased]: https://github.com/jpzk/iambitchx/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/jpzk/iambitchx/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/jpzk/iambitchx/releases/tag/v0.1.1
 [0.1.0]: https://github.com/jpzk/iambitchx/releases/tag/v0.1.0
