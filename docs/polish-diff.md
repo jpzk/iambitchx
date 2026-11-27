@@ -69,10 +69,10 @@ shows, and how it was resolved: **fixed** (plus the test that pins it) or **just
     `Date (yyyymmdd)` field shows the git commit instead (`Commit (sha)`), because no build
     date is embedded and adding one would need build.rs or crate changes.
 17. **Logo.** BitchX prints about 20 rows of CP437 ANSI art, which turns into mojibake in a
-    UTF-8 terminal (recon 7, "DO NOT"). **Justified:** we keep the ASCII figlet logo in bold
-    blue, indented, followed by the `[ iambitchx-ver]` credit row like `[ BitchX-1.3-git]`.
-    Block glyphs were left out on purpose, because `ui::assert_no_box_glyphs` bans
-    U+2500..U+259F everywhere.
+    UTF-8 terminal (recon 7, "DO NOT"). **Superseded:** the original art is now replayed
+    onto a canvas (see `docs/project.md`, "The splash logo"); a terminal smaller than
+    78x36 gets no logo at all, only the `[ iamBitchX-ver]` credit row like
+    `[ BitchX-1.3-git]`. The earlier figlet/compact fallbacks are gone.
 18. **BitchX: lines.** v2 printed `iambitchx x -- BitchX for Matrix. Type /help`. BitchX
     prints ` BitchX: Auto Response is set to - nick`, with "BitchX" in bold. **Fixed:** both
     lines now use that form.
