@@ -838,7 +838,7 @@ impl Logo {
 
     /// The logo's lines, ready for the startup window.
     pub(crate) fn lines(self, ver: &str) -> Vec<Line> {
-        let slot = format!("{:>15}", ver);
+        let slot = format!("{ver:>15}");
         match self {
             Logo::Original => {
                 // The original art, in the original's own colours: the text
@@ -877,7 +877,7 @@ fn art_row(text: &str, ink: &[(u8, Ink, Ink, bool)], slot: &str) -> Line {
     let mut runs: Vec<Run> = Vec::new();
     let mut cur = (Ink::Default, Ink::Default, false);
     let mut start = 0usize;
-    for (at, fg, bg, bold) in ink.iter() {
+    for (at, fg, bg, bold) in ink {
         let upto = (*at as usize).min(chars.len());
         if upto > start {
             runs.push(Run {

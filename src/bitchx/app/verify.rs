@@ -167,12 +167,12 @@ impl App {
     /// F44: the Matrix side reports progress per user (no flow id yet), so an
     /// update is tied to a flow only while that user has exactly one. With
     /// several flows, SAS emoji mark them all `ambiguous` (confirm refused).
-    pub(super) fn verify_update(&mut self, user: OwnedUserId, update: VerifyUpdate) {
-        let n = self.flows_of(&user).len();
-        let room_id = self.flows_of(&user).last().and_then(|v| v.room_id.clone());
+    pub(super) fn verify_update(&mut self, user: &OwnedUserId, update: VerifyUpdate) {
+        let n = self.flows_of(user).len();
+        let room_id = self.flows_of(user).last().and_then(|v| v.room_id.clone());
         let set_state = |app: &mut App, state| {
             if n == 1
-                && let Some(v) = app.verifications.iter_mut().find(|v| v.user == user)
+                && let Some(v) = app.verifications.iter_mut().find(|v| v.user == *user)
             {
                 v.state = state;
             }
@@ -188,7 +188,7 @@ impl App {
                     )
                 })];
                 self.verifications.retain(|v| v.flow_id != flow_id);
-                if !self.flows_of(&user).is_empty() {
+                if !self.flows_of(user).is_empty() {
                     lines.push(Line::Error(format!(
                         "{user} has another verification pending -- commands now need the flow id ({flow_id}), see /verify"
                     )));
@@ -214,7 +214,7 @@ impl App {
                 set_state(self, "emoji");
                 let mut lines = sas_lines(user.as_str(), &emojis);
                 if n > 1 {
-                    for v in self.verifications.iter_mut().filter(|v| v.user == user) {
+                    for v in self.verifications.iter_mut().filter(|v| v.user == *user) {
                         v.ambiguous = true;
                     }
                     lines.push(Line::Error(format!(
@@ -231,13 +231,13 @@ impl App {
             },
             VerifyUpdate::Done => {
                 if n == 1 {
-                    self.verifications.retain(|v| v.user != user);
+                    self.verifications.retain(|v| v.user != *user);
                 } else {
                     // The flow we confirmed (never an ambiguous one) finished.
                     let done = self
                         .verifications
                         .iter()
-                        .position(|v| v.user == user && v.state == "confirmed");
+                        .position(|v| v.user == *user && v.state == "confirmed");
                     if let Some(i) = done {
                         self.verifications.remove(i);
                     }
@@ -251,14 +251,14 @@ impl App {
                 let ours = self
                     .verifications
                     .iter()
-                    .position(|v| v.user == user && v.state == "cancelled");
+                    .position(|v| v.user == *user && v.state == "cancelled");
                 if n == 1 {
-                    self.verifications.retain(|v| v.user != user);
+                    self.verifications.retain(|v| v.user != *user);
                 } else if let Some(i) = ours {
                     self.verifications.remove(i);
                 } else if n > 1 {
                     // Which flow ended is unknown: keep them, see /verify.
-                    for v in self.verifications.iter_mut().filter(|v| v.user == user) {
+                    for v in self.verifications.iter_mut().filter(|v| v.user == *user) {
                         v.ambiguous = true;
                     }
                     lines.push(Line::Error(format!(

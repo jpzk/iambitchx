@@ -35,11 +35,11 @@ pub(crate) struct Run {
 /// The channel name is filled in by the formatter from the window.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum Line {
-    /// PUBLIC / SEND_PUBLIC: `<nick> text`.
+    /// PUBLIC / `SEND_PUBLIC`: `<nick> text`.
     Public { nick: String, own: bool, text: String },
-    /// ACTION / SEND_ACTION: ` nick text` / ` nick/#chan text`.
+    /// ACTION / `SEND_ACTION`: ` nick text` / ` nick/#chan text`.
     Action { nick: String, own: bool, text: String },
-    /// Query (DM) message. SEND_MSG `[msg(nick)] text` when `own` (`nick`
+    /// Query (DM) message. `SEND_MSG` `[msg(nick)] text` when `own` (`nick`
     /// is the peer), MSG `[nick(mxid)] text` otherwise.
     Private {
         nick: String,
@@ -62,7 +62,7 @@ pub(crate) enum Line {
     /// ` nick changed display name to name` -- the nick (mxid localpart)
     /// itself cannot change; `name: None` means the display name was removed.
     DisplayName { nick: String, name: Option<String> },
-    /// TOPIC / TOPIC_CHANGE: ` Topic (#chan): [changed by nick:] topic`.
+    /// TOPIC / `TOPIC_CHANGE`: ` Topic (#chan): [changed by nick:] topic`.
     Topic { nick: Option<String>, topic: String },
     /// MODE: ` mode/#chan [modes] by nick`.
     Mode { modes: String, nick: String },
@@ -249,7 +249,7 @@ pub(crate) struct PresenceMark {
 }
 
 impl PresenceMark {
-    /// The marker word: `zZzZ` (BitchX STATUS_AWAY) or `off`.
+    /// The marker word: `zZzZ` (BitchX `STATUS_AWAY`) or `off`.
     pub(crate) fn word(&self) -> &'static str {
         if self.offline { "off" } else { "zZzZ" }
     }
@@ -307,7 +307,7 @@ pub(crate) fn compact_age(age: Duration) -> String {
     }
 }
 
-/// WHOIS_IDLE `: idle     : $0 hours $1 mins $2 secs` (`include/color.h:731`,
+/// `WHOIS_IDLE` `: idle     : $0 hours $1 mins $2 secs` (`include/color.h:731`,
 /// split as in `source/numbers.c:870-877`). Matrix has no signon time, so
 /// the `(signon: ...)` part is left out.
 pub(crate) fn whois_idle(idle: Duration) -> String {

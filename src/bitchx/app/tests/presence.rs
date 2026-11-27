@@ -51,7 +51,7 @@ fn test_names_show_presence_marks() {
     };
     let marks: Vec<_> = cells
         .iter()
-        .map(|(_, n, m)| (n.clone(), m.as_ref().map(|m| m.text())))
+        .map(|(_, n, m)| (n.clone(), m.as_ref().map(crate::bitchx::model::PresenceMark::text)))
         .collect();
     assert_eq!(
         marks,

@@ -82,6 +82,10 @@ impl App {
                 if let Some(idx) = self.window_of(&room_id) {
                     self.names_in(idx);
                     let chan = self.windows[idx].room.name.clone();
+                    #[allow(
+                        clippy::cast_precision_loss,
+                        reason = "join latency in ms is far below 2^52; display-only"
+                    )]
                     let secs = millis as f64 / 1000.0;
                     let line =
                         Line::Error(format!("Join to {chan} was synched in {secs:.3} secs!!"));
@@ -120,7 +124,7 @@ impl App {
                     return vec![Effect::Whois(self.me.clone())];
                 }
             },
-            MxEvent::Verify { user, update } => self.verify_update(user, update),
+            MxEvent::Verify { user, update } => self.verify_update(&user, update),
             MxEvent::List { server, search, entries } => {
                 // Text width after the line glyph.
                 let width = self.cols.saturating_sub(2).max(20);

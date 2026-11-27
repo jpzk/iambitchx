@@ -108,7 +108,7 @@ mod tests {
         assert!(rendered[0].starts_with(" Verification with armin"));
         assert!(rendered[8].contains("/verify confirm armin"));
         assert!(rendered[8].contains("/verify mismatch armin"));
-        assert!(rendered.iter().all(|l| l.starts_with(" ")));
+        assert!(rendered.iter().all(|l| l.starts_with(' ')));
     }
 
     #[test]

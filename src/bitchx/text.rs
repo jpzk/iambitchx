@@ -70,8 +70,7 @@ pub(crate) fn body(s: &str) -> String {
         .chars()
         .filter(|c| !is_format(*c))
         .map(|c| match c {
-            '\n' => '\n',
-            '\u{2028}' | '\u{2029}' => '\n',
+            '\n' | '\u{2028}' | '\u{2029}' => '\n',
             c if is_break(c) => ' ',
             c => c,
         })

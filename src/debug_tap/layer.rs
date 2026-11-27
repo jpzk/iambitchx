@@ -4,10 +4,10 @@
 //! Watches a handful of callsites only (everything else gets
 //! `Interest::never`, so the tap costs nothing on unrelated logs):
 //!
-//! * matrix_sdk `send` spans (http_client): method/path/status/time/size
-//! * matrix_sdk `refresh_access_token` span + its warnings (OAuth refresh)
-//! * our own token_refresh / session_guard events (proactive refresh)
-//! * matrix_sdk_crypto INFO events about room keys
+//! * `matrix_sdk` `send` spans (`http_client)`: method/path/status/time/size
+//! * `matrix_sdk` `refresh_access_token` span + its warnings (OAuth refresh)
+//! * our own `token_refresh` / `session_guard` events (proactive refresh)
+//! * `matrix_sdk_crypto` INFO events about room keys
 //!
 //! Only the `message` and the named span fields are read; `uri` goes through
 //! `redact_path`, every text through `redact_text` in `emit`.
@@ -60,7 +60,7 @@ where
 
 struct Tap;
 
-/// Fields of a matrix_sdk `send` span.
+/// Fields of a `matrix_sdk` `send` span.
 #[derive(Default)]
 struct SendFields {
     method: String,
@@ -85,7 +85,7 @@ impl SendFields {
     fn line(&self) -> (Cat, String) {
         let path = redact_path(&self.uri);
         let cat = http_cat(&path);
-        let status = self.status.map(|s| s.to_string()).unwrap_or_else(|| "ERR".into());
+        let status = self.status.map_or_else(|| "ERR".into(), |s| s.to_string());
         let text = [self.method.as_str(), &path, &status, &self.dur, &self.size]
             .iter()
             .filter(|s| !s.is_empty())
@@ -150,7 +150,7 @@ impl Visit for Msg {
 
     fn record_str(&mut self, f: &Field, v: &str) {
         if f.name() == "message" {
-            self.0 = v.to_owned();
+            v.clone_into(&mut self.0);
         }
     }
 }

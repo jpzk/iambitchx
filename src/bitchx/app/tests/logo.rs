@@ -63,9 +63,7 @@ fn test_startup_logos() {
         ls.iter()
             .map(|l| match l {
                 Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) => t.clone(),
-                Line::LogoRuns(runs) => {
-                    runs.iter().map(|r| r.text.clone()).collect::<Vec<_>>().join("")
-                },
+                Line::LogoRuns(runs) => runs.iter().map(|r| r.text.clone()).collect::<String>(),
                 _ => String::new(),
             })
             .collect::<Vec<_>>()

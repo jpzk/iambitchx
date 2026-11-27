@@ -3,6 +3,8 @@
 //! raw JSON / ids out of the response; the `*_line` helpers are pure and
 //! unit-tested.
 
+use std::fmt::Write as _;
+
 use super::redact::{compact_json, short_id, truncate};
 use super::{Cat, emit, on, raw, start_forwarder, wants};
 use serde_json::Value;
@@ -36,7 +38,7 @@ pub(crate) fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix:
                 let enc = match &tev.kind {
                     TimelineEventKind::Decrypted(_) => Enc::Decrypted,
                     TimelineEventKind::UnableToDecrypt { .. } => Enc::Utd,
-                    _ => Enc::Plain,
+                    TimelineEventKind::PlainText { .. } => Enc::Plain,
                 };
                 let v = raw_value(tev.raw().json().get());
                 emit(Cat::Event, room, event_line(&v, enc));
@@ -116,15 +118,16 @@ pub(super) struct SyncCounts<'a> {
 pub(super) fn sync_line(c: &SyncCounts<'_>) -> String {
     let mut s = format!("next_batch={} joined={}", short_id(c.next_batch, 8), c.joined);
     if c.invited > 0 {
-        s.push_str(&format!(" invited={}", c.invited));
+        let _ = write!(s, " invited={}", c.invited);
     }
     if c.left > 0 {
-        s.push_str(&format!(" left={}", c.left));
+        let _ = write!(s, " left={}", c.left);
     }
-    s.push_str(&format!(
+    let _ = write!(
+        s,
         " events={} presence={} ephemeral={} to_device={}",
         c.events, c.presence, c.ephemeral, c.to_device
-    ));
+    );
     s
 }
 
@@ -143,18 +146,20 @@ pub(super) fn event_line(v: &Value, enc: Enc) -> String {
     let from = str_at(v, &["sender"]).unwrap_or("?");
     let mut s = ty.to_string();
     if let Some(sk) = str_at(v, &["state_key"]).filter(|k| !k.is_empty()) {
-        s.push_str(&format!(" [{sk}]"));
+        let _ = write!(s, " [{sk}]");
     }
     if !id.is_empty() {
         s.push(' ');
         s.push_str(&id);
     }
-    s.push_str(&format!(" from {from}"));
+    let _ = write!(s, " from {from}");
     let alg = str_at(v, &["content", "algorithm"]).unwrap_or("m.megolm.v1.aes-sha2");
     match enc {
         Enc::Plain => {},
         Enc::Decrypted => s.push_str(" (m.megolm.v1.aes-sha2 -> decrypted)"),
-        Enc::Utd => s.push_str(&format!(" ({alg} -> UTD)")),
+        Enc::Utd => {
+            let _ = write!(s, " ({alg} -> UTD)");
+        },
     }
     s
 }
@@ -166,13 +171,13 @@ pub(super) fn presence_line(v: &Value) -> Option<String> {
     let state = c.get("presence").and_then(Value::as_str).unwrap_or("?");
     let mut s = format!("{user} {state}");
     if let Some(ms) = c.get("last_active_ago").and_then(Value::as_u64) {
-        s.push_str(&format!(" last_active {}", ago(ms)));
+        let _ = write!(s, " last_active {}", ago(ms));
     }
     if c.get("currently_active").and_then(Value::as_bool) == Some(true) {
         s.push_str(" active");
     }
     if let Some(m) = c.get("status_msg").and_then(Value::as_str).filter(|m| !m.is_empty()) {
-        s.push_str(&format!(" \"{}\"", truncate(m, 40)));
+        let _ = write!(s, " \"{}\"", truncate(m, 40));
     }
     Some(s)
 }

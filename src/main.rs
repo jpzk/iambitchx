@@ -22,12 +22,36 @@ use crate::session_guard::Mode;
 mod bitchx;
 mod config;
 mod debug_tap;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod device_link;
 mod e2ee;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod login;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod matrix;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod oauth;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod session_guard;
+#[allow(
+    clippy::pedantic,
+    reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
+)]
 mod smoke;
 mod token_refresh;
 mod tui;
@@ -95,6 +119,10 @@ fn main() {
 
     // Tokens, keys etc. are only readable by the user.
     #[cfg(unix)]
+    #[allow(
+        unsafe_code,
+        reason = "umask(2) has no safe std wrapper; it only sets the process file-mode mask"
+    )]
     unsafe {
         libc::umask(0o077);
     };

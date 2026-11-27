@@ -137,17 +137,18 @@ pub(crate) fn parse_list_args(rest: &str) -> Result<ListArgs, String> {
             }
             args.search = Some(tail.to_string());
             break;
-        } else if word.starts_with('-') {
-            return Err(format!("/list: unknown option {word}"));
-        } else if args.server.is_some() {
-            return Err(format!("/list: unexpected {word:?} (use /list [server] [-s text])"));
-        } else {
-            let server = word.trim_start_matches("https://").trim_end_matches('/');
-            if server.is_empty() || server.contains('/') {
-                return Err(format!("/list: bad server {word:?}"));
-            }
-            args.server = Some(server.to_string());
         }
+        if word.starts_with('-') {
+            return Err(format!("/list: unknown option {word}"));
+        }
+        if args.server.is_some() {
+            return Err(format!("/list: unexpected {word:?} (use /list [server] [-s text])"));
+        }
+        let server = word.trim_start_matches("https://").trim_end_matches('/');
+        if server.is_empty() || server.contains('/') {
+            return Err(format!("/list: bad server {word:?}"));
+        }
+        args.server = Some(server.to_string());
         rest = tail;
     }
     Ok(args)
