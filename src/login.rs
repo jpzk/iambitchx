@@ -352,7 +352,9 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
                 set_callbacks(client, settings)?;
                 return Ok(());
             },
-            Err(e) => println!("Login failed: {e}"),
+            Err(e) => {
+                println!("Login failed: {}", crate::bitchx::text::terminal_text(&e.to_string()))
+            },
         }
     }
 }

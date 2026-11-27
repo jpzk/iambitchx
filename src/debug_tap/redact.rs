@@ -42,7 +42,7 @@ pub(super) fn is_secret_key(key: &str) -> bool {
 
 /// Mask bare Matrix token strings (`mat_…`, `mar_…`, `syt_…`) and
 /// `Bearer …` values anywhere in free text.
-pub(super) fn redact_text(s: &str) -> String {
+pub(crate) fn redact_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let b = s.as_bytes();
     let mut i = 0;

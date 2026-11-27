@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TrySendError, sync_channel};
 use std::sync::{Mutex, OnceLock};
 
-use self::redact::redact_text;
+pub(crate) use self::redact::redact_text;
 
 mod layer;
 mod redact;
