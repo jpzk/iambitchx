@@ -518,10 +518,12 @@ mod tests {
         assert_eq!(config_base(None, Some("".into()), home), home());
         assert_eq!(config_base(None, Some("cfg".into()), home), home());
         assert_eq!(config_base(None, Some("./cfg".into()), home), home());
-        // A valid absolute value and an explicit -C still win.
-        assert_eq!(config_base(None, Some("/xdg".into()), home), Some(PathBuf::from("/xdg")));
+        // A valid absolute value and an explicit -C still win (temp_dir is
+        // absolute on every OS; "/xdg" is not absolute on Windows).
+        let xdg = std::env::temp_dir().join("xdg");
+        assert_eq!(config_base(None, Some(xdg.clone().into()), home), Some(xdg.clone()));
         assert_eq!(
-            config_base(Some(PathBuf::from("/cli")), Some("/xdg".into()), home),
+            config_base(Some(PathBuf::from("/cli")), Some(xdg.into()), home),
             Some(PathBuf::from("/cli"))
         );
         assert_eq!(config_base(None, None, home), home());
