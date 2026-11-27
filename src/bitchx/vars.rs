@@ -114,6 +114,8 @@ pub(crate) struct BitchxConfig {
     pub debug_raw: Option<bool>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
+    /// `/theme`: the theme name.
+    pub theme: Option<String>,
 }
 
 impl BitchxConfig {
@@ -132,6 +134,7 @@ impl BitchxConfig {
             debug_raw: self.debug_raw.or(other.debug_raw),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
+            theme: self.theme.or(other.theme),
         }
     }
 }
@@ -161,6 +164,8 @@ pub(crate) struct Vars {
     pub debug_raw: bool,
     pub timestamp: bool,
     pub timestamp_string: String,
+    /// The `/theme` in use (see [`crate::bitchx::theme`]).
+    pub theme: String,
 }
 
 impl Default for Vars {
@@ -179,6 +184,7 @@ impl Default for Vars {
             debug_raw: false,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
+            theme: crate::bitchx::theme::DEFAULT_THEME.to_string(),
         }
     }
 }
@@ -288,6 +294,7 @@ impl Vars {
             debug_raw: d.debug_raw,
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
+            theme: c.theme.clone().filter(|s| !s.is_empty()).unwrap_or(d.theme),
         }
     }
 
@@ -411,6 +418,7 @@ impl Vars {
         bx.remove("debug");
         bx.insert("debug_filter".into(), Value::String(self.debug_filter.clone()));
         bx.remove("debug_raw");
+        bx.insert("theme".into(), Value::String(self.theme.clone()));
         match &self.away_nick_orig {
             Some(orig) => bx.insert("away_nick_orig".into(), Value::String(orig.clone())),
             None => bx.remove("away_nick_orig"),
@@ -527,6 +535,7 @@ mod tests {
             debug: true,
             debug_filter: "http,sync".into(),
             debug_raw: true,
+            theme: "gruvbox-dark".into(),
         };
         v.persist(&path).unwrap();
 

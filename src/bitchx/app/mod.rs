@@ -26,12 +26,14 @@ mod events;
 mod keys;
 mod logo;
 mod state;
+mod theme;
 mod verify;
 
 #[cfg(test)]
 pub(crate) use logo::{BANNER_BLOCKS, BANNER_SHADOW};
 pub(crate) use logo::{Logo, startup_lines_for, utf8_terminal};
 pub(crate) use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
+pub(crate) use theme::{PICKER_ITEMS, PICKER_ROWS, Picker};
 
 /// The status window's name, shown where a channel window shows its
 /// channel: prompt `[status]`, status bar `[status]`.
@@ -101,6 +103,10 @@ pub(crate) struct App {
     /// DBG flood guard per window: (second, lines this second, suppressed).
     dbg_flood: HashMap<usize, (i64, u32, u32)>,
     /// The splash logo currently drawn, and where its lines sit in window 0.
+    /// `/theme`: every theme that can be picked.
+    pub themes: crate::bitchx::theme::Themes,
+    /// The open `/theme` picker, if any.
+    pub picker: Option<Picker>,
     logo: Logo,
     logo_start: usize,
     logo_len: usize,
@@ -194,6 +200,8 @@ impl App {
             bell: false,
             dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
             dbg_flood: HashMap::new(),
+            themes: crate::bitchx::theme::Themes::load(None).0,
+            picker: None,
             logo,
             logo_start,
             logo_len,
@@ -761,8 +769,13 @@ impl App {
             },
             BitchxCommand::Op { target } => self.power(&target, 50),
             BitchxCommand::Deop { target } => self.power(&target, 0),
+            BitchxCommand::Theme { name } => {
+                self.theme_cmd(name);
+                vec![]
+            },
             BitchxCommand::Help => {
                 self.info(format!("iamBitchX commands: /{}", COMMAND_NAMES.join(" /")));
+                self.info("/theme [name]: colour themes, Up/Down preview, Enter keep, Esc cancel");
                 self.info(
                     "Keys: Alt-1..9 window, Ctrl-N/Ctrl-P next/prev, PgUp/PgDn scroll, Tab nick",
                 );

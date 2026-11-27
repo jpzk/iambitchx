@@ -20,6 +20,11 @@ impl App {
         let ctrl = key.modifiers.contains(KeyModifiers::CONTROL);
         let alt = key.modifiers.contains(KeyModifiers::ALT);
 
+        if self.picker.is_some() {
+            self.picker_key(key);
+            return vec![];
+        }
+
         if key.code != KeyCode::Tab {
             self.input.reset_tab();
         }
@@ -61,7 +66,12 @@ impl App {
             KeyCode::Up => self.input.history_prev(),
             KeyCode::Down => self.input.history_next(),
             KeyCode::Tab => {
-                let nicks = self.nicks();
+                // `/theme <Tab>` completes theme names, anything else nicks.
+                let nicks = if self.input.text().to_lowercase().starts_with("/theme ") {
+                    self.theme_names()
+                } else {
+                    self.nicks()
+                };
                 self.input.complete(&nicks);
             },
             KeyCode::PageUp => {

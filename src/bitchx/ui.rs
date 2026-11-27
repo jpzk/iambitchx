@@ -5,15 +5,16 @@
 //! borders, no box drawing.
 use ratatui::Frame;
 use ratatui::layout::{Position, Rect};
-use ratatui::style::{Color, Modifier};
+use ratatui::style::{Modifier, Style};
 use ratatui::text::{Line as TLine, Span};
-use ratatui::widgets::Paragraph;
+use ratatui::widgets::{Block, Paragraph};
 use unicode_width::UnicodeWidthChar;
 
-use crate::bitchx::app::App;
-use crate::bitchx::format::{format_line_hl, n, sanitize, sp, wrap};
+use crate::bitchx::app::{App, PICKER_ITEMS, PICKER_ROWS};
+use crate::bitchx::format::{format_line_hl, opt_fg, sanitize, sp, wrap};
 use crate::bitchx::model::Line;
-use crate::bitchx::status::status_bg;
+use crate::bitchx::palette::pal;
+use crate::bitchx::status::{st_bright, status_bg};
 
 /// `STATUS_FORMAT3`, the top bar shown with `/window split on` (capture 19).
 pub(crate) const TOP_BAR: &str = "iamBitchX (BitchX by panasync)";
@@ -31,13 +32,13 @@ pub(crate) fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<
         .zip(&win.times)
         .flat_map(|(l, ts)| {
             let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
-            // `%@`: the stamp leads the first row, in the default colours.
+            // `%@`: the stamp leads the first row, in the timestamp colour.
             let stamped =
                 !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_) | Line::LogoRuns(_));
             if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped)
                 && let Some(first) = out.first_mut()
             {
-                first.spans.insert(0, sp(stamp, n()));
+                first.spans.insert(0, sp(stamp, opt_fg(pal().timestamp)));
             }
             out
         })
@@ -58,13 +59,16 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
     if area.height < 4 || area.width < 10 {
         return;
     }
+    // A theme background under everything (the default keeps the terminal's).
+    if let Some(bg) = pal().background {
+        frame.render_widget(Block::new().style(Style::default().bg(bg)), area);
+    }
 
     // `/window split on`: row 0 is the `STATUS_FORMAT3` top bar (capture 19),
     // bold white on blue, and the output starts one row lower.
     let top = u16::from(app.split && area.height > 4);
     if top == 1 {
-        let bar =
-            TLine::from(sp(TOP_BAR, status_bg().fg(Color::White).add_modifier(Modifier::BOLD)));
+        let bar = TLine::from(sp(TOP_BAR, st_bright()));
         frame.render_widget(
             Paragraph::new(bar).style(status_bg()),
             Rect::new(area.x, area.y, area.width, 1),
@@ -77,7 +81,13 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
         let mut out = std::io::stdout();
         let _ = out.write_all(b"\x07").and_then(|()| out.flush());
     }
-    let rows = (area.height - 3 - top) as usize;
+    // `/theme`: the picker docks between the scrollback and the status lines.
+    let picker = if app.picker.is_some() && area.height >= 4 + top + PICKER_ROWS as u16 + 1 {
+        PICKER_ROWS as u16
+    } else {
+        0
+    };
+    let rows = (area.height - 3 - top - picker) as usize;
     app.page = rows.saturating_sub(1).max(1);
     app.cols = area.width as usize;
 
@@ -86,6 +96,14 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
         Paragraph::new(lines),
         Rect::new(area.x, area.y + top, area.width, rows as u16),
     );
+
+    if picker > 0 {
+        let y = area.y + top + rows as u16;
+        frame.render_widget(
+            Paragraph::new(picker_lines(app)).style(status_bg()),
+            Rect::new(area.x, y, area.width, picker),
+        );
+    }
 
     // Status lines: blue background across the full width.
     let st = app.status();
@@ -116,10 +134,35 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
     }
     let visible: String = chars[start..].iter().collect();
     let cx = pw + widths[start..cursor].iter().sum::<usize>();
-    let input = TLine::from(vec![sp(prompt, n()), Span::raw(sanitize(&visible))]);
+    let ist = opt_fg(pal().input);
+    let input = TLine::from(vec![sp(prompt, ist), Span::styled(sanitize(&visible), ist)]);
     let y3 = area.y + area.height - 1;
     frame.render_widget(Paragraph::new(input), Rect::new(area.x, y3, area.width, 1));
     frame.set_cursor_position(Position::new(area.x + (cx as u16).min(area.width - 1), y3));
+}
+
+/// The picker: a title row, then a window of theme names; the theme in use
+/// when it opened is marked `*`, the selection drawn reversed.
+fn picker_lines(app: &App) -> Vec<TLine<'static>> {
+    let Some(p) = &app.picker else {
+        return vec![];
+    };
+    let total = app.themes.list.len();
+    let mut out = vec![TLine::from(sp(
+        format!(" Theme {}/{total}: Up/Down preview, Enter keep, Esc cancel", p.sel + 1),
+        st_bright(),
+    ))];
+    for (i, t) in app.themes.list.iter().enumerate().skip(p.top).take(PICKER_ITEMS) {
+        let mark = if t.name == p.orig { '*' } else { ' ' };
+        let cur = if i == p.sel { '>' } else { ' ' };
+        let style = if i == p.sel {
+            status_bg().add_modifier(Modifier::REVERSED | Modifier::BOLD)
+        } else {
+            status_bg()
+        };
+        out.push(TLine::from(sp(format!(" {cur}{mark} {}", t.name), style)));
+    }
+    out
 }
 
 #[cfg(test)]

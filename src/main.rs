@@ -101,6 +101,8 @@ async fn run(settings: ApplicationSettings, smoke: bool) -> anyhow::Result<()> {
     let mut app = App::new(me);
     app.vars = Vars::from_config(&settings.bitchx);
     app.config_toml = settings.config_toml.clone();
+    crate::bitchx::palette::set_depth(crate::bitchx::palette::ColorDepth::from_env());
+    app.load_themes(Some(&settings.config_dir));
 
     if smoke {
         smoke::run(client, app).await
