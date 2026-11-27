@@ -253,6 +253,20 @@ impl Config {
     }
 }
 
+/// The config base dir: `-C`, else `$XDG_CONFIG_HOME`, else `fallback`
+/// (`dirs::config_dir`). Per the XDG spec an empty or relative
+/// `XDG_CONFIG_HOME` is invalid and ignored, so the config is never read
+/// relative to the current working directory (CONF-1).
+fn config_base(
+    cli_dir: Option<PathBuf>,
+    xdg_config_home: Option<std::ffi::OsString>,
+    fallback: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    cli_dir
+        .or_else(|| xdg_config_home.map(PathBuf::from).filter(|p| p.is_absolute()))
+        .or_else(fallback)
+}
+
 fn valid_profile_name(name: &str) -> bool {
     let mut chars = name.chars();
 
@@ -283,12 +297,12 @@ pub(crate) struct ApplicationSettings {
 
 impl ApplicationSettings {
     pub(crate) fn load(cli: &Cli) -> anyhow::Result<Self> {
-        let base = cli
-            .config_directory
-            .clone()
-            .or_else(|| env::var("XDG_CONFIG_HOME").ok().map(PathBuf::from))
-            .or_else(dirs::config_dir)
-            .ok_or_else(|| anyhow!("No configuration directory found; use -C"))?;
+        let base = config_base(
+            cli.config_directory.clone(),
+            env::var_os("XDG_CONFIG_HOME"),
+            dirs::config_dir,
+        )
+        .ok_or_else(|| anyhow!("No configuration directory found; use -C"))?;
         let config_dir = app_dir(&base);
         let (config, path) = Config::load(&config_dir)?;
 
@@ -443,6 +457,22 @@ mod tests {
         std::fs::create_dir(base.join(APP_DIR_NAME)).unwrap();
         assert_eq!(app_dir(&base), base.join("iambitchx"));
         std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_config_base_ignores_empty_or_relative_xdg() {
+        let home = || Some(PathBuf::from("/home/carla/.config"));
+        // CONF-1: empty / relative XDG_CONFIG_HOME must not resolve against the CWD.
+        assert_eq!(config_base(None, Some("".into()), home), home());
+        assert_eq!(config_base(None, Some("cfg".into()), home), home());
+        assert_eq!(config_base(None, Some("./cfg".into()), home), home());
+        // A valid absolute value and an explicit -C still win.
+        assert_eq!(config_base(None, Some("/xdg".into()), home), Some(PathBuf::from("/xdg")));
+        assert_eq!(
+            config_base(Some(PathBuf::from("/cli")), Some("/xdg".into()), home),
+            Some(PathBuf::from("/cli"))
+        );
+        assert_eq!(config_base(None, None, home), home());
     }
 
     #[test]
