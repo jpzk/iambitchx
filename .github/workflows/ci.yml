@@ -55,13 +55,11 @@ jobs:
       with:
         submodules: true
         persist-credentials: false
-    - name: Install Rust (1.96 w/ clippy)
+    - name: Install Rust (1.96 w/ clippy + rustfmt)
       shell: bash
       run: |
-        rustup toolchain install 1.96 --profile minimal --component clippy
+        rustup toolchain install 1.96 --profile minimal --component clippy --component rustfmt
         rustup default 1.96
-    - name: Install Rust (nightly w/ rustfmt)
-      run: rustup toolchain install nightly --profile minimal --component rustfmt
     - name: Cache cargo registry
       uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
@@ -70,7 +68,7 @@ jobs:
     - name: Run sccache-cache
       uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
     - name: Check formatting
-      run: cargo +nightly fmt --all -- --check
+      run: cargo fmt --all -- --check
     - name: Check imports formatting
       shell: bash
       run: find src -name '*.rs' | xargs ./.github/workflows/check-imports-format.sh

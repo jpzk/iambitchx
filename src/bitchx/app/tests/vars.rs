@@ -59,11 +59,15 @@ fn test_timestamp_action_and_status_window() {
     let ts = 1_750_000_000_000;
     app.handle_mx(MxEvent::Lines {
         room_id: owned_room_id!("!a:example.org"),
-        lines: vec![(None, Some(ts), Line::Action {
-            nick: "bob".into(),
-            own: false,
-            text: "waves".into(),
-        })],
+        lines: vec![(
+            None,
+            Some(ts),
+            Line::Action {
+                nick: "bob".into(),
+                own: false,
+                text: "waves".into(),
+            },
+        )],
         backfill: false,
     });
     let r = rows(&mut app);
@@ -86,49 +90,55 @@ fn test_set_list_show_errors() {
     let mut app = app();
     let n = app.cur().lines.len();
     typed(&mut app, "/set");
-    assert_eq!(&app.cur().lines[n..], &[
-        Line::SetVar { name: "AUTO_AWAY".into(), value: Some("ON".into()) },
-        Line::SetVar {
-            name: "AUTO_AWAY_MSG".into(),
-            value: Some("Auto-Away after %t mins".into())
-        },
-        Line::SetVar {
-            name: "AUTO_AWAY_TIME".into(),
-            value: Some("600".into())
-        },
-        Line::SetVar { name: "AUTO_REPLY".into(), value: None },
-        Line::SetVar {
-            name: "AWAY_MSG".into(),
-            value: Some("away".into())
-        },
-        Line::SetVar {
-            name: "AWAY_NICK".into(),
-            value: Some("%n^afk".into())
-        },
-        Line::SetVar { name: "BEEP".into(), value: Some("ON".into()) },
-        Line::SetVar { name: "DEBUG".into(), value: Some("OFF".into()) },
-        Line::SetVar {
-            name: "DEBUG_FILTER".into(),
-            value: Some("all".into())
-        },
-        Line::SetVar {
-            name: "DEBUG_RAW".into(),
-            value: Some("OFF".into())
-        },
-        Line::SetVar {
-            name: "TIMESTAMP".into(),
-            value: Some("OFF".into())
-        },
+    assert_eq!(
+        &app.cur().lines[n..],
+        &[
+            Line::SetVar { name: "AUTO_AWAY".into(), value: Some("ON".into()) },
+            Line::SetVar {
+                name: "AUTO_AWAY_MSG".into(),
+                value: Some("Auto-Away after %t mins".into())
+            },
+            Line::SetVar {
+                name: "AUTO_AWAY_TIME".into(),
+                value: Some("600".into())
+            },
+            Line::SetVar { name: "AUTO_REPLY".into(), value: None },
+            Line::SetVar {
+                name: "AWAY_MSG".into(),
+                value: Some("away".into())
+            },
+            Line::SetVar {
+                name: "AWAY_NICK".into(),
+                value: Some("%n^afk".into())
+            },
+            Line::SetVar { name: "BEEP".into(), value: Some("ON".into()) },
+            Line::SetVar { name: "DEBUG".into(), value: Some("OFF".into()) },
+            Line::SetVar {
+                name: "DEBUG_FILTER".into(),
+                value: Some("all".into())
+            },
+            Line::SetVar {
+                name: "DEBUG_RAW".into(),
+                value: Some("OFF".into())
+            },
+            Line::SetVar {
+                name: "TIMESTAMP".into(),
+                value: Some("OFF".into())
+            },
+            Line::SetVar {
+                name: "TIMESTAMP_STRING".into(),
+                value: Some("%I:%M%p ".into())
+            },
+        ]
+    );
+    typed(&mut app, "/set timestamp_s");
+    assert_eq!(
+        last(&app),
         Line::SetVar {
             name: "TIMESTAMP_STRING".into(),
             value: Some("%I:%M%p ".into())
-        },
-    ]);
-    typed(&mut app, "/set timestamp_s");
-    assert_eq!(last(&app), Line::SetVar {
-        name: "TIMESTAMP_STRING".into(),
-        value: Some("%I:%M%p ".into())
-    });
+        }
+    );
     typed(&mut app, "/set bogus 1");
     assert_eq!(last(&app), Line::Info("No such variable \"BOGUS\"".into()));
     typed(&mut app, "/set timestamp maybe");
@@ -179,12 +189,10 @@ fn dbg(room: Option<&str>, text: &str) -> MxEvent {
 fn dbg_texts(w: &Window) -> Vec<String> {
     w.lines
         .iter()
-        .filter_map(|l| {
-            match l {
-                Line::Debug { cat, text } if cat.is_empty() => Some(text.clone()),
-                Line::Debug { cat, text } => Some(format!("{cat} {text}")),
-                _ => None,
-            }
+        .filter_map(|l| match l {
+            Line::Debug { cat, text } if cat.is_empty() => Some(text.clone()),
+            Line::Debug { cat, text } => Some(format!("{cat} {text}")),
+            _ => None,
         })
         .collect()
 }

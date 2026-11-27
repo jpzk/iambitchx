@@ -317,16 +317,15 @@ pub fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> 
         },
         Line::Info(text) => text.split('\n').map(|t| g_line(vec![sp(t, n())])).collect(),
         // ` iamBitchX: text` ("iamBitchX" bold), as for client errors.
-        Line::Error(text) => {
-            text.split('\n')
-                .map(|t| {
-                    g_line(vec![
-                        sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
-                        sp(format!(": {t}"), n()),
-                    ])
-                })
-                .collect()
-        },
+        Line::Error(text) => text
+            .split('\n')
+            .map(|t| {
+                g_line(vec![
+                    sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
+                    sp(format!(": {t}"), n()),
+                ])
+            })
+            .collect(),
         Line::Debug { cat, text } => {
             let mut spans = vec![sp("DBG", fg(Color::Magenta).add_modifier(Modifier::BOLD))];
             if !cat.is_empty() {

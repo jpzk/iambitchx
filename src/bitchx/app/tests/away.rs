@@ -62,10 +62,15 @@ fn test_auto_back_on_input() {
     assert_eq!(app.handle_key(key(KeyCode::Char('y'))), vec![]);
     app.handle_mx(MxEvent::Away(None));
     let n = app.cur().lines.len();
-    assert_eq!(&app.cur().lines[n - 2..], &[
-        Line::Info("You were /away for 1 hours 2 minutes and 3 seconds. [BX-MsgLog Off]".into()),
-        Line::Info("You are no longer marked as being away".into()),
-    ]);
+    assert_eq!(
+        &app.cur().lines[n - 2..],
+        &[
+            Line::Info(
+                "You were /away for 1 hours 2 minutes and 3 seconds. [BX-MsgLog Off]".into()
+            ),
+            Line::Info("You are no longer marked as being away".into()),
+        ]
+    );
     assert!(app.away.is_none());
     // The idle clock restarted at the keypress.
     let back = T0 + 600_000 + 3_723_000;
@@ -125,11 +130,15 @@ fn test_away_msgcount_and_presence() {
     app.tick();
     let dm = owned_room_id!("!c:example.org");
     let msg = |id: &str| {
-        (Some(id.to_string()), Some(T0), Line::Public {
-            nick: "armin".into(),
-            own: false,
-            text: "yo".into(),
-        })
+        (
+            Some(id.to_string()),
+            Some(T0),
+            Line::Public {
+                nick: "armin".into(),
+                own: false,
+                text: "yo".into(),
+            },
+        )
     };
     app.handle_mx(MxEvent::Lines {
         room_id: dm.clone(),
@@ -162,8 +171,11 @@ fn test_away_msgcount_and_presence() {
 // ---- AWAY_NICK ------------------------------------------------------
 
 fn whois_lines(me: &str, name: &str) -> Vec<Line> {
-    let row = |row: u8, last: bool, key: &str, value: &str| {
-        Line::WhoisRow { row, last, key: key.into(), value: value.into() }
+    let row = |row: u8, last: bool, key: &str, value: &str| Line::WhoisRow {
+        row,
+        last,
+        key: key.into(),
+        value: value.into(),
     };
     vec![
         Line::WhoisRule,

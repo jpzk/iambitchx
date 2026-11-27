@@ -20,10 +20,7 @@ use matrix_sdk::ruma::events::room::member::MembershipChange;
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
 use matrix_sdk::ruma::events::{
-    AnySyncMessageLikeEvent,
-    AnySyncStateEvent,
-    AnySyncTimelineEvent,
-    SyncMessageLikeEvent,
+    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
     SyncStateEvent,
 };
 use matrix_sdk::ruma::presence::PresenceState;
@@ -31,13 +28,7 @@ use matrix_sdk::ruma::room::JoinRuleKind;
 use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{
-    Int,
-    OwnedRoomId,
-    OwnedRoomOrAliasId,
-    OwnedServerName,
-    OwnedUserId,
-    UserId,
-    uint,
+    Int, OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, UserId, uint,
 };
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
@@ -47,14 +38,7 @@ use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{
-    Effect,
-    Line,
-    Member,
-    MxEvent,
-    RoomSnapshot,
-    Stamped,
-    away_of,
-    nick_of,
+    Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, away_of, nick_of,
 };
 use crate::config::ApplicationSettings;
 use crate::login;
@@ -175,12 +159,14 @@ fn state_lines(ev: AnySyncStateEvent) -> Vec<Line> {
             let reason = m.content.reason.clone().filter(|r| !r.trim().is_empty());
 
             match m.membership_change() {
-                MembershipChange::Joined |
-                MembershipChange::InvitationAccepted |
-                MembershipChange::KnockAccepted => vec![Line::Join { nick: victim, mxid }],
-                MembershipChange::Left |
-                MembershipChange::InvitationRejected |
-                MembershipChange::KnockRetracted => vec![Line::Part { nick: victim, mxid, reason }],
+                MembershipChange::Joined
+                | MembershipChange::InvitationAccepted
+                | MembershipChange::KnockAccepted => vec![Line::Join { nick: victim, mxid }],
+                MembershipChange::Left
+                | MembershipChange::InvitationRejected
+                | MembershipChange::KnockRetracted => {
+                    vec![Line::Part { nick: victim, mxid, reason }]
+                },
                 MembershipChange::Kicked => vec![Line::Kick { victim, kicker: sender, reason }],
                 MembershipChange::KickedAndBanned => {
                     vec![
@@ -460,8 +446,8 @@ pub fn spawn_lag(client: Client, tx: Tx) {
     tokio::spawn(async move {
         loop {
             let start = Instant::now();
-            if client.whoami().await.is_ok() &&
-                tx.send(MxEvent::Lag(start.elapsed().as_secs())).is_err()
+            if client.whoami().await.is_ok()
+                && tx.send(MxEvent::Lag(start.elapsed().as_secs())).is_err()
             {
                 break;
             }
@@ -754,11 +740,9 @@ mod tests {
     /// (the [`Effect::Away`] executor drives [`SYNC_AWAY`]); `None` if no
     /// away change.
     fn sync_after(fx: &[Effect]) -> Option<PresenceState> {
-        fx.iter().rev().find_map(|e| {
-            match e {
-                Effect::Away(reason) => Some(sync_presence(reason.is_some())),
-                _ => None,
-            }
+        fx.iter().rev().find_map(|e| match e {
+            Effect::Away(reason) => Some(sync_presence(reason.is_some())),
+            _ => None,
         })
     }
 
@@ -857,11 +841,14 @@ mod tests {
         // Each line carries its event's origin_server_ts (millis).
         assert_eq!(lines[1].1, Some(2));
         assert_eq!(lines[2].1, Some(3));
-        assert_eq!(lines[1].2, Line::Public {
-            nick: "carla".into(),
-            own: true,
-            text: "hello".into()
-        });
+        assert_eq!(
+            lines[1].2,
+            Line::Public {
+                nick: "carla".into(),
+                own: true,
+                text: "hello".into()
+            }
+        );
         app.handle_mx(MxEvent::Lines { room_id, lines, backfill: false });
 
         let rows = crate::smoke::render_text(&mut app, 60, 12).unwrap();

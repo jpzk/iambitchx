@@ -367,33 +367,25 @@ fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
     let sub = sub.to_lowercase();
     let cmd = match sub.as_str() {
         "list" => VerifyCmd::List,
-        "accept" => {
-            VerifyCmd::Accept {
-                user: args.required_word("user")?,
-                flow: args.word(),
-            }
+        "accept" => VerifyCmd::Accept {
+            user: args.required_word("user")?,
+            flow: args.word(),
         },
         "start" => {
             let user = args.required_word("user")?;
             VerifyCmd::Start { user, device: args.word() }
         },
-        "confirm" | "yes" => {
-            VerifyCmd::Confirm {
-                user: args.required_word("user")?,
-                flow: args.word(),
-            }
+        "confirm" | "yes" => VerifyCmd::Confirm {
+            user: args.required_word("user")?,
+            flow: args.word(),
         },
-        "mismatch" | "no" => {
-            VerifyCmd::Mismatch {
-                user: args.required_word("user")?,
-                flow: args.word(),
-            }
+        "mismatch" | "no" => VerifyCmd::Mismatch {
+            user: args.required_word("user")?,
+            flow: args.word(),
         },
-        "cancel" => {
-            VerifyCmd::Cancel {
-                user: args.required_word("user")?,
-                flow: args.word(),
-            }
+        "cancel" => VerifyCmd::Cancel {
+            user: args.required_word("user")?,
+            flow: args.word(),
         },
         _ => return Err(BitchxError::InvalidArgument { command: "verify", argument: sub }),
     };
@@ -420,11 +412,9 @@ pub fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
         "j" => "join",
         "previous" => "prev",
         "rooms" => "channels",
-        other => {
-            match COMMAND_NAMES.iter().copied().find(|name| *name == other) {
-                Some(name) => name,
-                None => return Err(BitchxError::UnknownCommand(word.to_string())),
-            }
+        other => match COMMAND_NAMES.iter().copied().find(|name| *name == other) {
+            Some(name) => name,
+            None => return Err(BitchxError::UnknownCommand(word.to_string())),
         },
     };
 
@@ -659,10 +649,10 @@ mod tests {
 
     #[test]
     fn test_bitchx_msg() {
-        assert_eq!(ok("msg bob hello   there  world"), BitchxCommand::Msg {
-            target: s("bob"),
-            text: s("hello   there  world"),
-        });
+        assert_eq!(
+            ok("msg bob hello   there  world"),
+            BitchxCommand::Msg { target: s("bob"), text: s("hello   there  world") }
+        );
         assert_eq!(parse("msg"), Err(missing("msg", "target")));
         assert_eq!(parse("msg bob"), Err(missing("msg", "text")));
         assert_eq!(parse("msg bob    "), Err(missing("msg", "text")));
@@ -678,14 +668,14 @@ mod tests {
 
     #[test]
     fn test_bitchx_join() {
-        assert_eq!(ok("join #rust:matrix.org"), BitchxCommand::Join {
-            room: s("#rust:matrix.org"),
-            key: None,
-        });
-        assert_eq!(ok("join #a:b secret"), BitchxCommand::Join {
-            room: s("#a:b"),
-            key: Some(s("secret")),
-        });
+        assert_eq!(
+            ok("join #rust:matrix.org"),
+            BitchxCommand::Join { room: s("#rust:matrix.org"), key: None }
+        );
+        assert_eq!(
+            ok("join #a:b secret"),
+            BitchxCommand::Join { room: s("#a:b"), key: Some(s("secret")) }
+        );
         assert_eq!(ok("j #a:b"), BitchxCommand::Join { room: s("#a:b"), key: None });
         assert_eq!(parse("join"), Err(missing("join", "channel")));
         assert_eq!(parse("join #a:b key extra"), Err(invalid("join", "extra")));
@@ -695,14 +685,17 @@ mod tests {
     fn test_bitchx_part_leave() {
         assert_eq!(ok("part"), BitchxCommand::Part { room: None, reason: None });
         assert_eq!(ok("part #a:b"), BitchxCommand::Part { room: Some(s("#a:b")), reason: None });
-        assert_eq!(ok("part !id:b gone  fishing"), BitchxCommand::Part {
-            room: Some(s("!id:b")),
-            reason: Some(s("gone  fishing")),
-        });
-        assert_eq!(ok("part gone fishing"), BitchxCommand::Part {
-            room: None,
-            reason: Some(s("gone fishing")),
-        });
+        assert_eq!(
+            ok("part !id:b gone  fishing"),
+            BitchxCommand::Part {
+                room: Some(s("!id:b")),
+                reason: Some(s("gone  fishing")),
+            }
+        );
+        assert_eq!(
+            ok("part gone fishing"),
+            BitchxCommand::Part { room: None, reason: Some(s("gone fishing")) }
+        );
         assert_eq!(ok("leave"), BitchxCommand::Leave);
         assert_eq!(ok("LEAVE"), BitchxCommand::Leave);
         let slap = BitchxCommand::Me {
@@ -717,19 +710,20 @@ mod tests {
         assert_eq!(ok("mircslap armin"), trout);
         assert_eq!(ok("mircslaps armin"), trout);
         assert_eq!(ok("leave #a:b"), BitchxCommand::Part { room: Some(s("#a:b")), reason: None });
-        assert_eq!(ok("leave #a:b bye"), BitchxCommand::Part {
-            room: Some(s("#a:b")),
-            reason: Some(s("bye"))
-        });
+        assert_eq!(
+            ok("leave #a:b bye"),
+            BitchxCommand::Part { room: Some(s("#a:b")), reason: Some(s("bye")) }
+        );
     }
 
     #[test]
     fn test_bitchx_quit_exit() {
         assert_eq!(ok("quit"), BitchxCommand::Quit { reason: None });
         assert_eq!(ok("exit"), BitchxCommand::Quit { reason: None });
-        assert_eq!(ok("quit see you  later"), BitchxCommand::Quit {
-            reason: Some(s("see you  later")),
-        });
+        assert_eq!(
+            ok("quit see you  later"),
+            BitchxCommand::Quit { reason: Some(s("see you  later")) }
+        );
         assert_eq!(ok("EXIT bye"), BitchxCommand::Quit { reason: Some(s("bye")) });
     }
 
@@ -737,9 +731,10 @@ mod tests {
     fn test_bitchx_nick_topic() {
         assert_eq!(ok("nick Bob The Builder"), BitchxCommand::Nick { nick: s("Bob The Builder") });
         assert_eq!(parse("nick"), Err(missing("nick", "nick")));
-        assert_eq!(ok("topic Rust  talk | no spam"), BitchxCommand::Topic {
-            topic: s("Rust  talk | no spam"),
-        });
+        assert_eq!(
+            ok("topic Rust  talk | no spam"),
+            BitchxCommand::Topic { topic: s("Rust  talk | no spam") }
+        );
         assert_eq!(parse("topic"), Err(missing("topic", "topic")));
     }
 
@@ -810,16 +805,16 @@ mod tests {
     #[test]
     fn test_bitchx_mode_kick() {
         assert_eq!(ok("mode #a:b"), BitchxCommand::Mode { target: s("#a:b"), modes: None });
-        assert_eq!(ok("mode #a:b +o bob"), BitchxCommand::Mode {
-            target: s("#a:b"),
-            modes: Some(s("+o bob")),
-        });
+        assert_eq!(
+            ok("mode #a:b +o bob"),
+            BitchxCommand::Mode { target: s("#a:b"), modes: Some(s("+o bob")) }
+        );
         assert_eq!(parse("mode"), Err(missing("mode", "target")));
         assert_eq!(ok("kick @bob:x"), BitchxCommand::Kick { target: s("@bob:x"), reason: None });
-        assert_eq!(ok("kick @bob:x be  nice"), BitchxCommand::Kick {
-            target: s("@bob:x"),
-            reason: Some(s("be  nice")),
-        });
+        assert_eq!(
+            ok("kick @bob:x be  nice"),
+            BitchxCommand::Kick { target: s("@bob:x"), reason: Some(s("be  nice")) }
+        );
         assert_eq!(parse("kick"), Err(missing("kick", "target")));
     }
 
@@ -839,20 +834,20 @@ mod tests {
     #[test]
     fn test_bitchx_invite() {
         assert_eq!(ok("invite @bob:x"), BitchxCommand::Invite { target: s("@bob:x"), room: None });
-        assert_eq!(ok("invite @bob:x #a:b"), BitchxCommand::Invite {
-            target: s("@bob:x"),
-            room: Some(s("#a:b")),
-        });
+        assert_eq!(
+            ok("invite @bob:x #a:b"),
+            BitchxCommand::Invite { target: s("@bob:x"), room: Some(s("#a:b")) }
+        );
         assert_eq!(parse("invite"), Err(missing("invite", "target")));
         assert_eq!(parse("invite a b c"), Err(invalid("invite", "c")));
     }
 
     #[test]
     fn test_bitchx_ctcp() {
-        assert_eq!(ok("ctcp bob VERSION  please"), BitchxCommand::Ctcp {
-            target: s("bob"),
-            text: s("VERSION  please"),
-        });
+        assert_eq!(
+            ok("ctcp bob VERSION  please"),
+            BitchxCommand::Ctcp { target: s("bob"), text: s("VERSION  please") }
+        );
         assert_eq!(parse("ctcp"), Err(missing("ctcp", "target")));
         assert_eq!(parse("ctcp bob"), Err(missing("ctcp", "text")));
     }
@@ -895,19 +890,22 @@ mod tests {
     #[test]
     fn test_bitchx_set_parse() {
         assert_eq!(ok("set"), BitchxCommand::Set { name: None, value: None });
-        assert_eq!(ok("SET timestamp"), BitchxCommand::Set {
-            name: Some(s("timestamp")),
-            value: None
-        });
-        assert_eq!(ok("set timestamp on"), BitchxCommand::Set {
-            name: Some(s("timestamp")),
-            value: Some(s("on"))
-        });
+        assert_eq!(
+            ok("SET timestamp"),
+            BitchxCommand::Set { name: Some(s("timestamp")), value: None }
+        );
+        assert_eq!(
+            ok("set timestamp on"),
+            BitchxCommand::Set { name: Some(s("timestamp")), value: Some(s("on")) }
+        );
         // The value keeps inner and trailing spaces (`"%I:%M%p "`).
-        assert_eq!(ok("set timestamp_string [%H:%M] "), BitchxCommand::Set {
-            name: Some(s("timestamp_string")),
-            value: Some(s("[%H:%M] "))
-        });
+        assert_eq!(
+            ok("set timestamp_string [%H:%M] "),
+            BitchxCommand::Set {
+                name: Some(s("timestamp_string")),
+                value: Some(s("[%H:%M] "))
+            }
+        );
     }
 
     #[test]
@@ -1006,12 +1004,12 @@ mod tests {
 
     #[test]
     fn test_bitchx_unicode_bodies() {
-        assert_eq!(ok("me ünïcödé  🎉 ok"), BitchxCommand::Me {
-            text: s("ünïcödé  🎉 ok")
-        });
-        assert_eq!(ok("msg 日本 こんにちは 世界"), BitchxCommand::Msg {
-            target: s("日本"),
-            text: s("こんにちは 世界"),
-        });
+        assert_eq!(ok("me ünïcödé  🎉 ok"), BitchxCommand::Me { text: s("ünïcödé  🎉 ok") });
+        assert_eq!(
+            ok("msg 日本 こんにちは 世界"),
+            BitchxCommand::Msg {
+                target: s("日本"), text: s("こんにちは 世界")
+            }
+        );
     }
 }

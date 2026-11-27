@@ -130,11 +130,14 @@ mod tests {
         let mut snap = room("!b:example.org", "#other");
         snap.encrypted = true;
         app.handle_mx(MxEvent::Room(snap));
-        assert_eq!(encryption_report(&app), vec![
-            "2: #room -e not encrypted".to_string(),
-            "3: #other +e encrypted (megolm)".to_string(),
-            "4: armin -e not encrypted".to_string(),
-        ]);
+        assert_eq!(
+            encryption_report(&app),
+            vec![
+                "2: #room -e not encrypted".to_string(),
+                "3: #other +e encrypted (megolm)".to_string(),
+                "4: armin -e not encrypted".to_string(),
+            ]
+        );
         let empty = App::new(app.me.clone());
         assert_eq!(encryption_report(&empty), vec!["(no channels)".to_string()]);
     }

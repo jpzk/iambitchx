@@ -4,10 +4,7 @@ use anyhow::anyhow;
 use matrix_sdk::Client;
 use matrix_sdk::authentication::oauth::OAuthAuthorizationData;
 use matrix_sdk::authentication::oauth::registration::{
-    ApplicationType,
-    ClientMetadata,
-    Localized,
-    OAuthGrantType,
+    ApplicationType, ClientMetadata, Localized, OAuthGrantType,
 };
 use matrix_sdk::ruma;
 use matrix_sdk::ruma::UserId;

@@ -281,12 +281,10 @@ async fn password_login(
 async fn sso_login(client: &Client, settings: &ApplicationSettings) -> anyhow::Result<()> {
     let resp = client
         .matrix_auth()
-        .login_sso(|url| {
-            async move {
-                println!("Open this URL in your browser:\n    {url}");
-                tokio::task::spawn_blocking(move || open::that(url));
-                Ok(())
-            }
+        .login_sso(|url| async move {
+            println!("Open this URL in your browser:\n    {url}");
+            tokio::task::spawn_blocking(move || open::that(url));
+            Ok(())
         })
         .initial_device_display_name(&initial_devname())
         .send()
@@ -302,11 +300,9 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
 
     if let Some(file) = &settings.password_file {
         match std::fs::read_to_string(file) {
-            Ok(pw) => {
-                match password_login(client, settings, pw.trim_end_matches('\n')).await {
-                    Ok(()) => return Ok(()),
-                    Err(e) => println!("Password file login failed: {e}"),
-                }
+            Ok(pw) => match password_login(client, settings, pw.trim_end_matches('\n')).await {
+                Ok(()) => return Ok(()),
+                Err(e) => println!("Password file login failed: {e}"),
             },
             Err(e) => println!("Cannot read password file {file:?}: {e}"),
         }
@@ -326,11 +322,9 @@ pub async fn login(client: &Client, settings: &ApplicationSettings) -> anyhow::R
                 match oauth_login(client.clone(), &settings.user_id, settings.read_saved_device())
                     .await
                 {
-                    Ok(()) => {
-                        match client.oauth().full_session() {
-                            Some(s) => persist_login(settings, s).await,
-                            None => Err(anyhow::anyhow!("no OAuth session after login")),
-                        }
+                    Ok(()) => match client.oauth().full_session() {
+                        Some(s) => persist_login(settings, s).await,
+                        None => Err(anyhow::anyhow!("no OAuth session after login")),
                     },
                     Err(e) => Err(e),
                 }

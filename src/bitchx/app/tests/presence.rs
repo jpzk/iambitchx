@@ -51,11 +51,14 @@ fn test_names_show_presence_marks() {
         .iter()
         .map(|(_, n, m)| (n.clone(), m.as_ref().map(|m| m.text())))
         .collect();
-    assert_eq!(marks, vec![
-        ("carla".into(), None),
-        ("bob".into(), Some("off 2d".into())),
-        ("armin".into(), Some("zZzZ 4h".into())),
-    ]);
+    assert_eq!(
+        marks,
+        vec![
+            ("carla".into(), None),
+            ("bob".into(), Some("off 2d".into())),
+            ("armin".into(), Some("zZzZ 4h".into())),
+        ]
+    );
     // `armin (zZzZ 4h)` is the widest cell
     assert_eq!(width, 15);
     let text = crate::bitchx::format::plain(&crate::bitchx::format::format_line(
@@ -67,8 +70,11 @@ fn test_names_show_presence_marks() {
 }
 
 fn whois_of(app: &mut App, mxid: &str) {
-    let row = |row: u8, last: bool, key: &str, value: &str| {
-        Line::WhoisRow { row, last, key: key.into(), value: value.into() }
+    let row = |row: u8, last: bool, key: &str, value: &str| Line::WhoisRow {
+        row,
+        last,
+        key: key.into(),
+        value: value.into(),
     };
     let lines = vec![
         Line::WhoisRule,
@@ -95,18 +101,24 @@ fn test_whois_idle_line_and_mark() {
     whois_of(&mut app, "@armin:remote.tld");
     let lines = &app.cur().lines;
     let n = lines.len();
-    assert_eq!(lines[n - 2], Line::WhoisRow {
-        row: 3,
-        last: false,
-        key: "idle".into(),
-        value: "4 hours 15 mins 7 secs".into(),
-    });
-    assert_eq!(lines[n - 1], Line::WhoisRow {
-        row: 4,
-        last: true,
-        key: "devices".into(),
-        value: "2".into(),
-    });
+    assert_eq!(
+        lines[n - 2],
+        Line::WhoisRow {
+            row: 3,
+            last: false,
+            key: "idle".into(),
+            value: "4 hours 15 mins 7 secs".into(),
+        }
+    );
+    assert_eq!(
+        lines[n - 1],
+        Line::WhoisRow {
+            row: 4,
+            last: true,
+            key: "devices".into(),
+            value: "2".into(),
+        }
+    );
     let nick = lines.iter().rev().find(|l| matches!(l, Line::WhoisMark { .. })).unwrap();
     let text = crate::bitchx::format::plain(&crate::bitchx::format::format_line(nick, "")).concat();
     assert_eq!(text.trim_end(), "| armin (@armin:remote.tld) (unverified) (zZzZ 4h)");

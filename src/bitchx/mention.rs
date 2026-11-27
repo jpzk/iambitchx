@@ -57,10 +57,10 @@ impl Matcher {
     /// action whose text matches.
     pub fn is_mention(&self, line: &Line) -> bool {
         match line {
-            Line::Public { own: false, text, .. } |
-            Line::Action { own: false, text, .. } |
-            Line::Private { own: false, text, .. } |
-            Line::Notice { text, .. } => self.matches(text),
+            Line::Public { own: false, text, .. }
+            | Line::Action { own: false, text, .. }
+            | Line::Private { own: false, text, .. }
+            | Line::Notice { text, .. } => self.matches(text),
             _ => false,
         }
     }
@@ -140,22 +140,18 @@ mod tests {
         assert!(m.is_mention(&public("hi carla", false)));
         assert!(!m.is_mention(&public("hi carla", true)));
         assert!(!m.is_mention(&public("hi all", false)));
-        let act = |own| {
-            Line::Action {
-                nick: "bob".into(),
-                own,
-                text: "pokes carla".into(),
-            }
+        let act = |own| Line::Action {
+            nick: "bob".into(),
+            own,
+            text: "pokes carla".into(),
         };
         assert!(m.is_mention(&act(false)));
         assert!(!m.is_mention(&act(true)));
-        let q = |own| {
-            Line::Private {
-                nick: "bob".into(),
-                mxid: "@bob:x".into(),
-                own,
-                text: "carla?".into(),
-            }
+        let q = |own| Line::Private {
+            nick: "bob".into(),
+            mxid: "@bob:x".into(),
+            own,
+            text: "carla?".into(),
         };
         assert!(m.is_mention(&q(false)));
         assert!(!m.is_mention(&q(true)));

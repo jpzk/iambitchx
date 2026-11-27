@@ -7,10 +7,7 @@ use std::io::{Stdout, stdout};
 use crossterm::event::{Event, EventStream, KeyCode, KeyModifiers};
 use crossterm::execute;
 use crossterm::terminal::{
-    EnterAlternateScreen,
-    LeaveAlternateScreen,
-    disable_raw_mode,
-    enable_raw_mode,
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
 };
 use futures::StreamExt;
 use matrix_sdk::Client;

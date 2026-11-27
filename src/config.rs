@@ -99,12 +99,10 @@ impl From<Session> for AuthSession {
         };
 
         match session.client_id {
-            Some(client_id) => {
-                AuthSession::OAuth(Box::new(OAuthSession {
-                    client_id,
-                    user: UserSession { meta, tokens },
-                }))
-            },
+            Some(client_id) => AuthSession::OAuth(Box::new(OAuthSession {
+                client_id,
+                user: UserSession { meta, tokens },
+            })),
             None => AuthSession::Matrix(MatrixSession { meta, tokens }),
         }
     }
@@ -256,8 +254,8 @@ impl Config {
 fn valid_profile_name(name: &str) -> bool {
     let mut chars = name.chars();
 
-    chars.next().is_some_and(|c| c.is_ascii_alphanumeric()) &&
-        chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
+    chars.next().is_some_and(|c| c.is_ascii_alphanumeric())
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
 }
 
 /// Everything resolved for the active profile.
@@ -319,11 +317,9 @@ impl ApplicationSettings {
         }
 
         let (profile_name, profile) = match profile.or(default_profile) {
-            Some(name) => {
-                profiles
-                    .remove_entry(&name)
-                    .ok_or_else(|| anyhow!("No configured profile with the name {name:?}"))?
-            },
+            Some(name) => profiles
+                .remove_entry(&name)
+                .ok_or_else(|| anyhow!("No configured profile with the name {name:?}"))?,
             None if profiles.len() == 1 => profiles.into_iter().next().unwrap(),
             None if profiles.is_empty() => bail!("No profiles configured"),
             None => {

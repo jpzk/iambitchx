@@ -25,14 +25,17 @@ fn test_f28_localpart_collision_disambiguated() {
     nicks.sort();
     // Ours and the own-server user stay bare; remote twins are
     // qualified, and nobody else can be shown as `carla`.
-    assert_eq!(nicks, vec![
-        "carla",
-        "carla@evil.org",
-        "f28bob",
-        "f28bob@evil.org",
-        "f28eve@a.org",
-        "f28eve@b.org",
-    ]);
+    assert_eq!(
+        nicks,
+        vec![
+            "carla",
+            "carla@evil.org",
+            "f28bob",
+            "f28bob@evil.org",
+            "f28eve@a.org",
+            "f28eve@b.org",
+        ]
+    );
     // Lines from the remote twin carry the qualified nick too.
     assert_eq!(nick_of(&owned_user_id!("@carla:evil.org")), "carla@evil.org");
     assert_eq!(nick_of(&owned_user_id!("@f28bob:evil.org")), "f28bob@evil.org");
@@ -64,22 +67,30 @@ fn test_f28_ambiguous_privileged_commands_refused() {
     }
     // The qualified nick, the shown bare nick and the full mxid resolve
     // to exactly one user.
-    assert_eq!(typed(&mut app, "/op f28eve@b.org"), vec![Effect::Power {
-        room_id: f28.clone(),
-        user: owned_user_id!("@f28eve:b.org"),
-        level: 50,
-    }]);
-    assert_eq!(typed(&mut app, "/kick f28bob"), vec![Effect::Kick {
-        room_id: f28.clone(),
-        user: owned_user_id!("@f28bob:example.org"),
-        reason: None,
-    }]);
-    assert_eq!(typed(&mut app, "/whois f28bob@evil.org"), vec![Effect::Whois(owned_user_id!(
-        "@f28bob:evil.org"
-    ))]);
-    assert_eq!(typed(&mut app, "/whois @f28eve:a.org"), vec![Effect::Whois(owned_user_id!(
-        "@f28eve:a.org"
-    ))]);
+    assert_eq!(
+        typed(&mut app, "/op f28eve@b.org"),
+        vec![Effect::Power {
+            room_id: f28.clone(),
+            user: owned_user_id!("@f28eve:b.org"),
+            level: 50,
+        }]
+    );
+    assert_eq!(
+        typed(&mut app, "/kick f28bob"),
+        vec![Effect::Kick {
+            room_id: f28.clone(),
+            user: owned_user_id!("@f28bob:example.org"),
+            reason: None,
+        }]
+    );
+    assert_eq!(
+        typed(&mut app, "/whois f28bob@evil.org"),
+        vec![Effect::Whois(owned_user_id!("@f28bob:evil.org"))]
+    );
+    assert_eq!(
+        typed(&mut app, "/whois @f28eve:a.org"),
+        vec![Effect::Whois(owned_user_id!("@f28eve:a.org"))]
+    );
 }
 
 #[test]
@@ -92,11 +103,14 @@ fn test_f29_alias_lookalike_room_name() {
     // short, `#x`).
     app.handle_mx(MxEvent::Room(room("!fake2:evil.org", "#room:example.org")));
     let chans: Vec<_> = app.windows.iter().map(|w| w.channel().map(str::to_string)).collect();
-    assert_eq!(chans[4..], [
-        Some("!real:matrix.org".to_string()),
-        Some("!fake:evil.org".to_string()),
-        Some("!fake2:evil.org".to_string()),
-    ]);
+    assert_eq!(
+        chans[4..],
+        [
+            Some("!real:matrix.org".to_string()),
+            Some("!fake:evil.org".to_string()),
+            Some("!fake2:evil.org".to_string()),
+        ]
+    );
     // Neither the prompt nor the status bar show the clashing name.
     app.handle_key(alt('6'));
     assert_eq!(app.prompt(), "[!fake:evil.org] ");
@@ -109,18 +123,24 @@ fn test_f29_alias_lookalike_room_name() {
     assert!(e.contains("Ambiguous channel"), "{e}");
     assert!(e.contains("!real:matrix.org") && e.contains("!fake:evil.org"), "{e}");
     // By room ID it is exact.
-    assert_eq!(typed(&mut app, "/msg !real:matrix.org hi"), vec![Effect::Send {
-        room_id: owned_room_id!("!real:matrix.org"),
-        text: "hi".into(),
-        emote: false,
-    }]);
+    assert_eq!(
+        typed(&mut app, "/msg !real:matrix.org hi"),
+        vec![Effect::Send {
+            room_id: owned_room_id!("!real:matrix.org"),
+            text: "hi".into(),
+            emote: false,
+        }]
+    );
     // /join by alias always goes to the server (alias resolution), even
     // with a window of that name; a room ID we are in just switches.
-    assert_eq!(typed(&mut app, "/join #rust:matrix.org"), vec![Effect::Join(JoinTarget {
-        id: "#rust:matrix.org".into(),
-        implicit_server: false,
-        via: vec![],
-    })]);
+    assert_eq!(
+        typed(&mut app, "/join #rust:matrix.org"),
+        vec![Effect::Join(JoinTarget {
+            id: "#rust:matrix.org".into(),
+            implicit_server: false,
+            via: vec![],
+        })]
+    );
     assert!(
         typed(&mut app, "/join !real:matrix.org")
             .iter()

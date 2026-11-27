@@ -197,12 +197,12 @@ fn relevant(m: &Metadata<'_>) -> bool {
     let t = m.target();
     let lvl = *m.level();
     if m.is_span() {
-        (m.name() == "send" && t.starts_with(T_HTTP)) ||
-            (m.name() == "refresh_access_token" && t.starts_with(T_OAUTH))
+        (m.name() == "send" && t.starts_with(T_HTTP))
+            || (m.name() == "refresh_access_token" && t.starts_with(T_OAUTH))
     } else {
-        (t.starts_with(T_OAUTH) && lvl <= Level::WARN) ||
-            (T_APP_AUTH.iter().any(|p| t.starts_with(p)) && lvl <= Level::INFO) ||
-            (t.starts_with(T_CRYPTO) && lvl <= Level::INFO)
+        (t.starts_with(T_OAUTH) && lvl <= Level::WARN)
+            || (T_APP_AUTH.iter().any(|p| t.starts_with(p)) && lvl <= Level::INFO)
+            || (t.starts_with(T_CRYPTO) && lvl <= Level::INFO)
     }
 }
 
@@ -394,8 +394,8 @@ where
         let mut msg = Msg::default();
         ev.record(&mut msg);
         if t.starts_with(T_OAUTH) {
-            if let Some(span) = ctx.event_span(ev) &&
-                let Some(r) = span.extensions_mut().get_mut::<RefreshState>()
+            if let Some(span) = ctx.event_span(ev)
+                && let Some(r) = span.extensions_mut().get_mut::<RefreshState>()
             {
                 r.failed = true;
             }
@@ -403,8 +403,8 @@ where
         } else if T_APP_AUTH.iter().any(|p| t.starts_with(p)) {
             let text = msg.0.strip_prefix("token_refresh: ").unwrap_or(&msg.0);
             emit(Cat::Auth, None, truncate(text, 160));
-        } else if t.starts_with(T_CRYPTO) &&
-            let Some(l) = crypto_line(&msg.0)
+        } else if t.starts_with(T_CRYPTO)
+            && let Some(l) = crypto_line(&msg.0)
         {
             emit(Cat::Crypto, None, l);
         }
@@ -514,20 +514,18 @@ fn starts_with_ci(s: &str, p: &str) -> bool {
 /// scrubbed of token patterns.
 pub fn redact_json(v: &Value) -> Value {
     match v {
-        Value::Object(m) => {
-            Value::Object(
-                m.iter()
-                    .map(|(k, v)| {
-                        let v = if is_secret_key(k) {
-                            Value::String(MASK_STR.into())
-                        } else {
-                            redact_json(v)
-                        };
-                        (k.clone(), v)
-                    })
-                    .collect(),
-            )
-        },
+        Value::Object(m) => Value::Object(
+            m.iter()
+                .map(|(k, v)| {
+                    let v = if is_secret_key(k) {
+                        Value::String(MASK_STR.into())
+                    } else {
+                        redact_json(v)
+                    };
+                    (k.clone(), v)
+                })
+                .collect(),
+        ),
         Value::Array(a) => Value::Array(a.iter().map(redact_json).collect()),
         Value::String(s) => Value::String(redact_text(s)),
         other => other.clone(),
