@@ -365,3 +365,35 @@ fn test_e5_verify_start_refuses_to_guess_flow() {
     // An ambiguous prefix is refused.
     assert_eq!(typed(&mut app, "/verify start armin flow"), vec![]);
 }
+
+/// E2: an emoji (SAS) flow the peer started is offered, not accepted; the
+/// user's `/verify accept` on that flow is what accepts it.
+#[test]
+fn test_e2_peer_sas_offered_needs_accept() {
+    let mut app = app();
+    let armin = owned_user_id!("@armin:remote.tld");
+    app.handle_mx(MxEvent::Verify {
+        user: armin.clone(),
+        update: VerifyUpdate::Requested {
+            flow_id: "flowA".into(),
+            device: Some("DEVA".into()),
+            room_id: None,
+            we_started: false,
+        },
+    });
+    app.handle_mx(MxEvent::Verify {
+        user: armin.clone(),
+        update: VerifyUpdate::SasOffered,
+    });
+    assert_eq!(app.verifications[0].state, "emoji offered");
+    assert!(matches!(last(&app), Line::Info(t)
+        if t.contains("started emoji verification") && t.contains("/verify accept")));
+    assert_eq!(
+        typed(&mut app, "/verify accept armin"),
+        vec![Effect::Verify {
+            user: armin,
+            flow_id: Some("flowA".into()),
+            action: VerifyAction::Accept,
+        }]
+    );
+}

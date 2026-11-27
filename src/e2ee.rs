@@ -129,16 +129,11 @@ pub(crate) fn track_request(req: VerificationRequest, device: Option<String>, tx
     });
 }
 
-/// Follow a SAS verification; accepts it if the other side started it.
+/// Follow a SAS verification. E2: one the other side started is never
+/// accepted here -- it is offered to the user, who runs `/verify accept`.
 pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
     tokio::spawn(async move {
         let user = sas.other_user_id().to_owned();
-        if !sas.we_started()
-            && let Err(e) = sas.accept().await
-        {
-            update(&tx, &user, VerifyUpdate::Cancelled(e.to_string()));
-            return;
-        }
         let mut changes = sas.changes();
         let mut state = Some(sas.state());
         loop {
@@ -150,6 +145,9 @@ pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
                 },
             };
             match st {
+                SasState::Started { .. } if sas_awaits_consent(sas.we_started(), true) => {
+                    update(&tx, &user, VerifyUpdate::SasOffered);
+                },
                 SasState::KeysExchanged { emojis, decimals } => {
                     let pairs = if let Some(e) = emojis {
                         e.emojis
@@ -179,6 +177,12 @@ pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
             }
         }
     });
+}
+
+/// E2: a SAS the peer started (state `Started`) waits for an explicit
+/// `/verify accept`; ours, or one already accepted, never does.
+fn sas_awaits_consent(we_started: bool, started: bool) -> bool {
+    !we_started && started
 }
 
 /// E6: `start_sas` answers `Ok(None)` (not an error) when the request is not
@@ -230,6 +234,22 @@ pub(crate) async fn verify(
 
     match action {
         VerifyAction::Accept => {
+            // E2: the emoji flow the peer started is accepted only here.
+            if let Some(f) = &flow_id
+                && let Ok(sas) = sas_of(client, &user, f).await
+                && sas_awaits_consent(
+                    sas.we_started(),
+                    matches!(sas.state(), SasState::Started { .. }),
+                )
+            {
+                sas.accept().await?;
+                info(
+                    tx,
+                    sas.room_id().map(ToOwned::to_owned),
+                    format!("Accepted emoji verification from {user}, compare the emoji"),
+                );
+                return Ok(());
+            }
             let req = req.ok_or_else(|| anyhow::anyhow!("request from {user} expired"))?;
             req.accept_with_methods(vec![VerificationMethod::SasV1]).await?;
             info(
@@ -397,6 +417,15 @@ pub(crate) async fn enable_encryption(room: &Room, tx: &Tx) -> anyhow::Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_e2_peer_sas_needs_explicit_accept() {
+        // the peer started it and it is waiting: only /verify accept moves it
+        assert!(sas_awaits_consent(false, true));
+        // ours, or past `Started` (accepted / keys exchanged): nothing to accept
+        assert!(!sas_awaits_consent(true, true));
+        assert!(!sas_awaits_consent(false, false));
+    }
 
     #[test]
     fn test_e6_sas_not_started_is_an_error() {
