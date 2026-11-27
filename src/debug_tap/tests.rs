@@ -152,8 +152,9 @@ fn test_redact_text_token_strings() {
     assert!(r.contains("mar_<redacted>"));
     assert!(r.contains("syt_<redacted>"));
     assert!(r.contains("Bearer <redacted>"));
-    // ordinary words are untouched
-    assert_eq!(redact_text("format_x primary_key MAT_"), "format_x primary_key MAT_<redacted>");
+    // F-04: a token prefix is masked wherever it occurs (fail closed, so a
+    // word that merely contains `mat_` is masked too); ordinary words stay
+    assert_eq!(redact_text("format_x primary_key MAT_"), "format_<redacted> primary_key MAT_<redacted>");
     assert_eq!(redact_text("DBG http GET /sync 200"), "DBG http GET /sync 200");
 }
 
@@ -301,4 +302,68 @@ fn test_sync_lines() {
     );
     assert_eq!(room_key_line(&rk, Enc::Plain), None);
     assert!(!compact_json(&rk, RAW_MAX).contains("SECRETKEY"));
+}
+
+// Fake, real-shaped credentials (not real tokens).
+const FAKE_JWT: &str = "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJmYWtlIn0.ZmFrZXNpZ25hdHVyZTEyMzQ";
+const FAKE_ABC: &str = "AbCdEfGh12.IjKlMnOp34.QrStUvWx56";
+const FAKE_B64: &str = "c3l0X0VYQU1QTEU=";
+const FAKE_B64_STD: &str = "q83v/k+Zx0aB1c2d3e4f5g==";
+const FAKE_B64URL: &str = "Zm9vYmFyX2Zha2VfdG9rZW4tMDAx";
+const FAKE_HEX: &str = "deadbeefcafebabe0123456789abcdef0123456789abcdef0123456789abcdef";
+const FAKE_CUSTOM: &str = "acme_9fK2LmQ8xR4tZ7wB";
+
+#[test]
+fn test_redact_text_masks_token_shapes() {
+    // F-03: shapes other than mat_/mar_/syt_ and `Bearer` were printed verbatim
+    for secret in [
+        FAKE_JWT,
+        FAKE_ABC,
+        FAKE_B64,
+        FAKE_B64_STD,
+        FAKE_B64URL,
+        FAKE_HEX,
+        FAKE_CUSTOM,
+    ] {
+        for wrap in [
+            format!("error refreshing an OAuth 2.0 token: id_token={secret}"),
+            format!("\"{secret}\""),
+            format!("x{secret} trailing"),
+            format!("-{secret}"),
+        ] {
+            let r = redact_text(&wrap);
+            assert!(!r.contains(secret), "leaked {secret:?} in {r:?}");
+            assert!(r.contains("<redacted>"), "{r:?}");
+            assert_eq!(redact_text(&r), r, "idempotent");
+        }
+    }
+    // ordinary tap text is kept
+    for keep in [
+        "http GET /_matrix/client/v3/sync 200 1.2s 4.3kB",
+        "crypto POST /_matrix/client/v3/keys/query 200",
+        "m.room.message $abcdefgh.. from @x:hs (m.megolm.v1.aes-sha2 -> decrypted)",
+        "next_batch=s1234567.. joined=3 events=5 presence=2 ephemeral=1 to_device=0",
+        "auth next proactive refresh in 240s (ttl 300s, margin 60s)",
+        "error: M_UNKNOWN_TOKEN authentication_required",
+    ] {
+        assert_eq!(redact_text(keep), keep);
+    }
+}
+
+#[test]
+fn test_redact_text_prefix_anywhere() {
+    // F-04: the mask only fired at a word start
+    let mct = "mct_FakeCompatToken0123abcd";
+    for (pre, tok) in [("-", SYT), (".", SYT), ("_", AT), ("~", RT), ("x", mct), ("hdr-", AT)] {
+        let r = redact_text(&format!("value {pre}{tok} end"));
+        no_secrets(&r);
+        assert!(!r.contains(tok), "leaked {tok:?} in {r:?}");
+        assert!(r.ends_with(" end"), "{r:?}");
+    }
+    // percent-encoded underscore
+    let r = redact_text("q=syt%5Fabc0def1 x");
+    assert!(!r.contains("abc0def1"), "{r:?}");
+    // short tails after a prefix are masked too
+    assert_eq!(redact_text("a.syt_ab"), "a.syt_<redacted>");
+    assert_eq!(redact_text("a.syt_<redacted>"), "a.syt_<redacted>");
 }
