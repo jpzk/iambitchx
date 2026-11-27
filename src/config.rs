@@ -298,6 +298,8 @@ pub(crate) struct ApplicationSettings {
     pub bitchx: BitchxConfig,
     /// Where `/set` persists: the `config.toml`, or `None` if the config is JSON.
     pub config_toml: Option<PathBuf>,
+    /// The configuration directory (`/theme` also looks in its `themes/`).
+    pub config_dir: PathBuf,
     pub session_json: PathBuf,
     pub session_json_old: PathBuf,
     pub device_json: PathBuf,
@@ -399,6 +401,7 @@ impl ApplicationSettings {
             request_timeout: settings.request_timeout.unwrap_or(DEFAULT_REQ_TIMEOUT),
             bitchx: settings.bitchx.unwrap_or_default(),
             config_toml: None,
+            config_dir: config_dir.to_path_buf(),
             session_json: profile_data.join("session.json"),
             session_json_old: config_dir.join("profiles").join(&profile_name).join("session.json"),
             device_json: profile_data.join("device.json"),

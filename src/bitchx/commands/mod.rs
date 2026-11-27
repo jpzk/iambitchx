@@ -120,6 +120,10 @@ pub(crate) enum BitchxCommand {
         name: Option<String>,
         value: Option<String>,
     },
+    /// `/theme`: open the theme picker; `/theme name`: switch to a theme.
+    Theme {
+        name: Option<String>,
+    },
 }
 
 /// `/verify` subcommands.
@@ -215,6 +219,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "set",
     "slap",
     "slaps",
+    "theme",
     "topic",
     "trust",
     "unignore",
@@ -483,6 +488,11 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             // The value keeps its spaces (`TIMESTAMP_STRING` has a trailing one).
             let value = args.rest();
             BitchxCommand::Set { name, value }
+        },
+        "theme" => {
+            let name = args.word();
+            args.finish()?;
+            BitchxCommand::Theme { name }
         },
         "ctcp" => {
             let target = args.required_word("target")?;

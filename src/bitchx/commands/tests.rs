@@ -395,3 +395,11 @@ fn test_bitchx_unicode_bodies() {
         }
     );
 }
+
+#[test]
+fn test_bitchx_theme_parse() {
+    assert_eq!(ok("theme"), BitchxCommand::Theme { name: None });
+    assert_eq!(ok("THEME gruvbox-dark"), BitchxCommand::Theme { name: Some(s("gruvbox-dark")) });
+    assert_eq!(parse("theme a b"), Err(invalid("theme", "b")));
+    assert!(COMMAND_NAMES.contains(&"theme"));
+}
