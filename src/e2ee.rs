@@ -94,10 +94,12 @@ pub(crate) fn track_request(req: VerificationRequest, device: Option<String>, tx
                 | VerificationRequestState::Requested { .. } => {},
                 VerificationRequestState::Ready { .. } => {
                     update(&tx, &user, VerifyUpdate::Ready);
+                    // E6: `Ok(None)` means no SAS is running -- report it, never as success.
                     if req.we_started()
-                        && let Err(e) = req.start_sas().await
+                        && let Err(e) = start_sas(&req).await
                     {
                         update(&tx, &user, VerifyUpdate::Cancelled(e.to_string()));
+                        let _ = req.cancel().await;
                         break;
                     }
                 },
@@ -179,6 +181,20 @@ pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
     });
 }
 
+/// E6: `start_sas` answers `Ok(None)` (not an error) when the request is not
+/// ready or the other device does not support SAS; that is a failure.
+fn sas_started<T>(started: Option<T>) -> anyhow::Result<T> {
+    started.ok_or_else(|| {
+        anyhow::anyhow!(
+            "emoji verification did not start: the request is not ready or the other device does not support emoji (SAS)"
+        )
+    })
+}
+
+async fn start_sas(req: &VerificationRequest) -> anyhow::Result<SasVerification> {
+    sas_started(req.start_sas().await?)
+}
+
 async fn sas_of(client: &Client, user: &UserId, flow_id: &str) -> anyhow::Result<SasVerification> {
     match client.encryption().get_verification(user, flow_id).await {
         Some(Verification::SasV1(sas)) => Ok(sas),
@@ -215,7 +231,7 @@ pub(crate) async fn verify(
                 req.filter(matrix_sdk::encryption::verification::VerificationRequest::is_ready)
             {
                 // The tracker picks up the SAS when the request transitions.
-                req.start_sas().await?;
+                start_sas(&req).await?;
                 return Ok(());
             }
             let req = match device {
@@ -364,4 +380,16 @@ pub(crate) async fn enable_encryption(room: &Room, tx: &Tx) -> anyhow::Result<()
     room.enable_encryption().await?;
     info(tx, Some(room.room_id().to_owned()), "End-to-end encryption enabled (megolm), +e".into());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_e6_sas_not_started_is_an_error() {
+        let err = sas_started::<()>(None).unwrap_err().to_string();
+        assert!(err.contains("did not start"), "{err}");
+        assert_eq!(sas_started(Some(7)).unwrap(), 7);
+    }
 }
