@@ -31,7 +31,8 @@ pub(crate) struct Window {
     pub backfill_requested: bool,
     /// F29: the room name cannot be trusted as a channel name (it clashes
     /// with another window, or poses as an alias on our own server, which
-    /// real aliases never show): the room ID is shown instead.
+    /// real aliases never show), or (M-03) is a room name, not an alias, so
+    /// it reads like one of our own aliases: the room ID is shown instead.
     pub spoof: bool,
 }
 

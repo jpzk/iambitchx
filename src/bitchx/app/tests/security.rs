@@ -233,3 +233,22 @@ fn test_f04_list_entries_are_sanitised() {
     assert_eq!(rows.len(), n + 3, "{rows:#?}");
     assert!(rows.iter().all(|r| !r.trim_start().starts_with("-:- bob")), "{rows:#?}");
 }
+
+#[test]
+fn test_m03_room_name_is_not_shown_as_own_alias() {
+    let mut app = app();
+    // A remote room merely *named* `rust`, no canonical alias: its `#rust`
+    // would be byte-identical to our own alias `#rust`.
+    let mut snap = room("!m03:evil.org", "#rust");
+    snap.from_room_name = true;
+    app.handle_mx(MxEvent::Room(snap));
+    let idx = app.windows.len() - 1;
+    assert_eq!(app.windows[idx].channel(), Some("!m03:evil.org"));
+    assert_eq!(idx, 4);
+    app.handle_key(alt('5'));
+    assert_eq!(app.prompt(), "[!m03:evil.org] ");
+    assert_eq!(app.status().channel.as_deref(), Some("!m03:evil.org"));
+    // A real alias keeps its short `#rust` look.
+    app.handle_mx(MxEvent::Room(room("!real:example.org", "#rust2")));
+    assert_eq!(app.windows.last().unwrap().channel(), Some("#rust2"));
+}
