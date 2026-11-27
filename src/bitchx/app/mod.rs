@@ -10,19 +10,18 @@ use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 use crate::bitchx::app::logo::header_line;
-use crate::bitchx::channels::{list_lines, normalize_join};
+use crate::bitchx::channels::normalize_join;
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, parse};
 use crate::bitchx::format::names_cell_width;
 use crate::bitchx::input::Input;
 use crate::bitchx::mention::Matcher;
 use crate::bitchx::model::{
-    Effect, Line, Member, MxEvent, Presence, RoomSnapshot, VerifyUpdate, nick_of, register_me,
-    same_localpart, whois_idle,
+    Effect, Line, Member, Presence, register_me, same_localpart, whois_idle,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
-use crate::bitchx::text::{clean_line, clean_snapshot, one_line};
 use crate::bitchx::vars::{Vars, expand_auto_away_msg, expand_away_nick, lookup, strip_away_nick};
 
+mod events;
 mod logo;
 mod state;
 mod verify;
@@ -32,46 +31,12 @@ pub use logo::{BANNER_BLOCKS, BANNER_SHADOW};
 pub use logo::{Logo, startup_lines_for, utf8_terminal};
 pub use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
 
-/// F30/F31: everything from the Matrix side is remote text. Strip format
-/// characters everywhere and keep one-line fields on one line before any of
-/// it is stored or shown.
-fn clean_event(ev: MxEvent) -> MxEvent {
-    match ev {
-        MxEvent::Room(snap) => MxEvent::Room(clean_snapshot(snap)),
-        MxEvent::Lines { room_id, lines, backfill } => {
-            let lines = lines.into_iter().map(|(id, ts, l)| (id, ts, clean_line(l))).collect();
-            MxEvent::Lines { room_id, lines, backfill }
-        },
-        MxEvent::Info { room_id, line } => MxEvent::Info { room_id, line: clean_line(line) },
-        MxEvent::OwnDisplayName(n) => MxEvent::OwnDisplayName(one_line(&n)),
-        MxEvent::Away(a) => MxEvent::Away(a.map(|a| one_line(&a))),
-        MxEvent::Presence { user, mut presence } => {
-            presence.status_msg = presence.status_msg.map(|m| one_line(&m));
-            MxEvent::Presence { user, presence }
-        },
-        MxEvent::Verify { user, update: VerifyUpdate::Cancelled(r) } => MxEvent::Verify {
-            user,
-            update: VerifyUpdate::Cancelled(one_line(&r)),
-        },
-        MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) } => {
-            let e = e.into_iter().map(|(a, b)| (one_line(&a), one_line(&b))).collect();
-            MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) }
-        },
-        ev => ev,
-    }
-}
-
 /// The status window's name, shown where a channel window shows its
 /// channel: prompt `[status]`, status bar `[status]`.
 pub const STATUS_NAME: &str = "status";
 
 /// Refnum of the status window.
 pub const STATUS_REFNUM: usize = 1;
-
-/// F37: the line `spawn_sync` sends when the sync loop breaks for good.
-fn is_sync_death(line: &Line) -> bool {
-    matches!(line, Line::Error(t) if t.starts_with("sync: "))
-}
 
 /// The flood guard's ` DBG (suppressed N)`.
 fn suppressed_line(n: u32) -> Line {
@@ -403,171 +368,6 @@ impl App {
             Some(c) => format!("[{c}] "),
             None => format!("[{STATUS_NAME}] "),
         }
-    }
-
-    // ---- Matrix events ------------------------------------------------
-
-    pub fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
-        let ev = clean_event(ev);
-        self.apply_debug();
-        match ev {
-            MxEvent::Debug(line) => self.debug_line(line),
-            MxEvent::Room(snap) => return self.upsert_room(snap),
-            MxEvent::Lines { room_id, lines, backfill } => {
-                let Some(idx) = self.window_of(&room_id) else {
-                    return vec![];
-                };
-                // our own profile change seen in a room (e.g. from another client)
-                let own_name = lines.iter().rev().find_map(|(_, _, l)| match l {
-                    Line::DisplayName { nick, name: Some(n) } if *nick == self.nick => {
-                        Some(n.clone())
-                    },
-                    _ => None,
-                });
-                if let Some(name) = own_name.filter(|_| !backfill) {
-                    self.own_name(name);
-                }
-                let matcher = self.matcher();
-                let win = &mut self.windows[idx];
-                let now = now_ms();
-                let lines = lines
-                    .into_iter()
-                    .map(|(id, ts, l)| (id, ts.unwrap_or(now), win.query_line(l)))
-                    .collect();
-                if backfill {
-                    win.prepend(lines);
-                } else {
-                    let mut added = false;
-                    let mut msgs = 0;
-                    let mut mentioned = false;
-                    for (id, ts, line) in lines {
-                        let incoming = matches!(line, Line::Private { own: false, .. });
-                        let mention = matcher.is_mention(&line);
-                        if win.push_at(id, ts, line) {
-                            added = true;
-                            msgs += usize::from(incoming);
-                            mentioned |= mention;
-                        }
-                    }
-                    if self.away.is_some() {
-                        self.away_msgs += msgs;
-                    }
-                    if added && idx != self.current {
-                        win.unread = true;
-                    }
-                    // BitchX `do_beep` after an AR line (`source/parse.c:596`).
-                    if mentioned {
-                        win.hilite |= idx != self.current;
-                        self.bell |= self.vars.beep;
-                    }
-                }
-            },
-            MxEvent::Left(room_id) => {
-                if let Some(idx) = self.window_of(&room_id) {
-                    let name = self.windows[idx].room.name.clone();
-                    self.windows.remove(idx);
-                    self.mark_spoofs();
-                    if self.current >= idx && self.current > 0 {
-                        self.current -= 1;
-                    }
-                    self.status_info(format!("You have left {name} (window {})", idx + 1));
-                }
-            },
-            MxEvent::Focus(room_id) => {
-                if let Some(idx) = self.window_of(&room_id) {
-                    return self.switch(idx);
-                }
-            },
-            MxEvent::Synched { room_id, millis } => {
-                if let Some(idx) = self.window_of(&room_id) {
-                    self.names_in(idx);
-                    let chan = self.windows[idx].room.name.clone();
-                    let secs = millis as f64 / 1000.0;
-                    let line =
-                        Line::Error(format!("Join to {chan} was synched in {secs:.3} secs!!"));
-                    self.windows[idx].push(None, line);
-                    return self.switch(idx);
-                }
-            },
-            MxEvent::Info { room_id, line } => {
-                if self.probe_line(&line) {
-                    return vec![];
-                }
-                if room_id.is_none() && is_sync_death(&line) {
-                    self.sync_died(line);
-                    return vec![];
-                }
-                let idx = room_id.and_then(|r| self.window_of(&r)).unwrap_or(self.current);
-                for line in self.whois_splice(line) {
-                    self.windows[idx].push(None, line);
-                }
-            },
-            MxEvent::OwnDisplayName(name) => {
-                self.own_name(name.clone());
-                // The nick is the localpart and never changes; /nick only
-                // sets the Matrix display name.
-                let line = Line::DisplayName { nick: self.nick.clone(), name: Some(name) };
-                self.windows[0].push(None, line);
-            },
-            MxEvent::Away(away) => self.away_changed(away),
-            MxEvent::Presence { user, presence } => {
-                self.presence.insert(user, presence);
-            },
-            MxEvent::Lag(lag) => {
-                self.lag = Some(lag);
-                if self.probe == Probe::Start {
-                    self.probe = Probe::Pending { rule: false };
-                    return vec![Effect::Whois(self.me.clone())];
-                }
-            },
-            MxEvent::Verify { user, update } => self.verify_update(user, update),
-            MxEvent::List { server, search, entries } => {
-                // Text width after the line glyph.
-                let width = self.cols.saturating_sub(2).max(20);
-                for l in list_lines(&server, search.as_deref(), &entries, width) {
-                    self.info(l);
-                }
-            },
-        }
-        vec![]
-    }
-
-    fn upsert_room(&mut self, mut snap: RoomSnapshot) -> Vec<Effect> {
-        let Some(room_id) = snap.room_id.clone() else {
-            return vec![];
-        };
-        // F28: nicks are qualified only once every member is known.
-        for m in &snap.members {
-            nick_of(&m.user_id);
-        }
-        for m in &mut snap.members {
-            m.nick = nick_of(&m.user_id);
-        }
-
-        if let Some(idx) = self.window_of(&room_id) {
-            self.windows[idx].room = snap;
-            self.mark_spoofs();
-            return vec![];
-        }
-
-        let refnum = self.windows.len() + 1;
-        let what = match &snap.dm_peer {
-            Some(peer) => format!("query with {peer}"),
-            None => format!("{} users, {room_id}", snap.members.len()),
-        };
-        self.status_info(format!("{refnum:>6}) {} [{what}]", snap.name));
-
-        let mut win = Window { room: snap, ..Default::default() };
-        if win.room.dm_peer.is_some() {
-            let peer = win.room.name.clone();
-            win.push(None, Line::Info(format!("Starting conversation with {peer}")));
-        }
-        if let Some(topic) = win.room.topic.clone() {
-            win.push(None, Line::Topic { nick: None, topic });
-        }
-        self.windows.push(win);
-        self.mark_spoofs();
-        vec![]
     }
 
     // ---- keys ---------------------------------------------------------
@@ -1333,25 +1133,6 @@ impl App {
     }
 
     // ---- end-to-end encryption -----------------------------------------
-
-    /// F37: the Matrix sync loop broke (`sync: <err>`, it is not restarted).
-    /// Status bar turns `[SYNC LOST]` for good and the status window plus the
-    /// current one get a -:- line, so a frozen client never looks live.
-    fn sync_died(&mut self, line: Line) {
-        self.windows[0].push(None, line);
-        if self.sync_lost {
-            return;
-        }
-        self.sync_lost = true;
-        let warn = Line::Info(
-            "Sync with the homeserver stopped: no new messages arrive until iamBitchX is restarted"
-                .into(),
-        );
-        if self.current != 0 {
-            self.windows[self.current].push(None, warn.clone());
-        }
-        self.windows[0].push(None, warn);
-    }
 
     fn power(&mut self, target: &str, level: i64) -> Vec<Effect> {
         let Some(room_id) = self.current_room() else {
