@@ -6,7 +6,7 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 use crate::bitchx::app::{App, Confirm, PendingVerify};
 use crate::bitchx::commands::VerifyCmd;
 use crate::bitchx::e2ee::{encrypt_prompt, sas_lines};
-use crate::bitchx::model::{Effect, Line, VerifyAction, VerifyUpdate};
+use crate::bitchx::model::{Effect, Line, ReqDevice, VerifyAction, VerifyUpdate};
 
 impl App {
     /// `/encrypt`: ask first; enabling encryption can never be undone.
@@ -232,7 +232,19 @@ impl App {
         };
         let lines = match update {
             VerifyUpdate::Requested { flow_id, device, room_id, we_started } => {
-                let dev = device.as_deref().map(|d| format!(" [{d}]")).unwrap_or_default();
+                // E3: the SDK keeps the first request of a reused flow id;
+                // a later one must not replace the device shown for it.
+                if self.verifications.iter().any(|v| v.flow_id == flow_id) {
+                    let line = Line::Error(format!(
+                        "Ignored a repeated verification request from {user} for flow {flow_id}"
+                    ));
+                    return self.verify_lines(room_id, vec![line]);
+                }
+                let dev = device.as_ref().map(req_device_label).unwrap_or_default();
+                let device = match device {
+                    Some(ReqDevice::Known { id, .. }) => Some(id),
+                    _ => None,
+                };
                 let mut lines = vec![Line::Info(if we_started {
                     format!("Verification request sent to {user}{dev}, waiting for them to accept")
                 } else {
@@ -240,7 +252,6 @@ impl App {
                         "Verification request from {user}{dev} -- /verify accept {user} or /verify cancel {user}"
                     )
                 })];
-                self.verifications.retain(|v| v.flow_id != flow_id);
                 if !self.flows_of(user).is_empty() {
                     lines.push(Line::Error(format!(
                         "{user} has another verification pending -- commands now need the flow id ({flow_id}), see /verify"
@@ -328,5 +339,34 @@ impl App {
             },
         };
         self.verify_lines(room_id, lines);
+    }
+}
+
+/// E3: label a request's device by where it came from. A known device shows
+/// the id and ed25519 key from the SDK's device list (key in groups of 4);
+/// an unknown one is the sender's unverified claim.
+fn req_device_label(d: &ReqDevice) -> String {
+    let s = crate::bitchx::format::sanitize;
+    match d {
+        ReqDevice::Known { id, ed25519 } => {
+            let key = ed25519.as_deref().map_or_else(
+                || "no ed25519 key".to_owned(),
+                |k| {
+                    let k = s(k);
+                    let groups: Vec<String> = k
+                        .chars()
+                        .collect::<Vec<_>>()
+                        .chunks(4)
+                        .map(|c| c.iter().collect())
+                        .collect();
+                    format!("ed25519 {}", groups.join(" "))
+                },
+            );
+            format!(" [device {} ({key}), from their device list]", s(id))
+        },
+        ReqDevice::Unknown(claimed) => format!(
+            " [UNKNOWN device \"{}\" -- not in their device list, sender's claim only]",
+            s(claimed)
+        ),
     }
 }

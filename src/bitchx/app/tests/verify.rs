@@ -2,7 +2,7 @@
 
 use super::*;
 
-use crate::bitchx::model::VerifyAction;
+use crate::bitchx::model::{ReqDevice, VerifyAction};
 
 #[test]
 fn test_encrypt_confirm_flow() {
@@ -107,7 +107,7 @@ fn test_f44_verification_keyed_by_flow() {
         user: me2.clone(),
         update: VerifyUpdate::Requested {
             flow_id: flow.into(),
-            device: Some(dev.into()),
+            device: Some(ReqDevice::Known { id: dev.into(), ed25519: None }),
             room_id: None,
             we_started: false,
         },
@@ -221,13 +221,13 @@ fn test_verify_dispatch() {
         user: armin.clone(),
         update: VerifyUpdate::Requested {
             flow_id: "f1".into(),
-            device: Some("DEV1".into()),
+            device: Some(ReqDevice::Known { id: "DEV1".into(), ed25519: None }),
             room_id: None,
             we_started: false,
         },
     });
     assert!(matches!(app.windows[0].lines.last(), Some(Line::Info(t))
-        if t.contains("Verification request from @armin:remote.tld [DEV1]")
+        if t.contains("Verification request from @armin:remote.tld [device DEV1 (no ed25519 key), from their device list]")
             && t.contains("/verify accept")));
     typed(&mut app, "/verify");
     assert!(
@@ -332,7 +332,7 @@ fn test_e5_verify_start_refuses_to_guess_flow() {
         user: armin.clone(),
         update: VerifyUpdate::Requested {
             flow_id: flow.into(),
-            device: Some(dev.into()),
+            device: Some(ReqDevice::Known { id: dev.into(), ed25519: None }),
             room_id: None,
             we_started: true,
         },
@@ -376,7 +376,7 @@ fn test_e2_peer_sas_offered_needs_accept() {
         user: armin.clone(),
         update: VerifyUpdate::Requested {
             flow_id: "flowA".into(),
-            device: Some("DEVA".into()),
+            device: Some(ReqDevice::Known { id: "DEVA".into(), ed25519: None }),
             room_id: None,
             we_started: false,
         },
@@ -396,4 +396,45 @@ fn test_e2_peer_sas_offered_needs_accept() {
             action: VerifyAction::Accept,
         }]
     );
+}
+
+/// E3: the device shown with a request is the SDK-resolved one (id + key,
+/// labelled as from the device list); a sender-chosen id the SDK does not
+/// know is flagged and never matched; a repeated flow id cannot replace it.
+#[test]
+fn test_e3_request_shows_sdk_device_not_claim() {
+    let mut app = app();
+    let armin = owned_user_id!("@armin:remote.tld");
+    let req = |flow: &str, device: ReqDevice| MxEvent::Verify {
+        user: armin.clone(),
+        update: VerifyUpdate::Requested {
+            flow_id: flow.into(),
+            device: Some(device),
+            room_id: None,
+            we_started: false,
+        },
+    };
+    app.handle_mx(req(
+        "flowA",
+        ReqDevice::Known {
+            id: "DEVA".into(),
+            ed25519: Some("AbCdEfGh".into()),
+        },
+    ));
+    assert!(matches!(last(&app), Line::Info(t)
+        if t.contains("[device DEVA (ed25519 AbCd EfGh), from their device list]")));
+    assert_eq!(app.verifications[0].device.as_deref(), Some("DEVA"));
+    // Same flow id, other device: the first (the one the SDK keeps) stays.
+    app.handle_mx(req("flowA", ReqDevice::Unknown("EVIL".into())));
+    assert!(matches!(last(&app), Line::Error(t) if t.contains("Ignored a repeated")));
+    assert_eq!(app.verifications.len(), 1);
+    assert_eq!(app.verifications[0].device.as_deref(), Some("DEVA"));
+    // A device the SDK does not know: flagged, not recorded as the device.
+    app.handle_mx(req("flowB", ReqDevice::Unknown("EVIL\u{1b}[2J".into())));
+    let shown = app.windows[0].lines.iter().any(|l| {
+        matches!(l, Line::Info(t) if t.contains("UNKNOWN device") && t.contains("sender's claim only")
+            && !t.contains('\u{1b}'))
+    });
+    assert!(shown);
+    assert_eq!(app.verifications[1].device, None);
 }
