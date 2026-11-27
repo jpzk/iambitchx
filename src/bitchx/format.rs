@@ -315,17 +315,15 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 None => vec![sp(format!("    {name} has no value"), k())],
             })]
         },
-        Line::Info(text) => text.split('\n').map(|t| g_line(vec![sp(t, n())])).collect(),
+        // One entry, one row (F-FMT-1): an embedded LF is never a row break,
+        // `sp()` turns it into a space, so text that skipped the ingest
+        // cleaner still cannot forge a client-looking row.
+        Line::Info(text) => vec![g_line(vec![sp(text.clone(), n())])],
         // ` iamBitchX: text` ("iamBitchX" bold), as for client errors.
-        Line::Error(text) => text
-            .split('\n')
-            .map(|t| {
-                g_line(vec![
-                    sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
-                    sp(format!(": {t}"), n()),
-                ])
-            })
-            .collect(),
+        Line::Error(text) => vec![g_line(vec![
+            sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
+            sp(format!(": {text}"), n()),
+        ])],
         Line::Debug { cat, text } => {
             let mut spans = vec![sp("DBG", fg(Color::Magenta).add_modifier(Modifier::BOLD))];
             if !cat.is_empty() {
@@ -829,5 +827,21 @@ mod tests {
         );
         assert_eq!(r[0].spans[1].content, "i");
         assert_eq!(r[0].spans[1].style, w());
+    }
+
+    /// F-FMT-1: an embedded LF in an Info/Error line is not a row break,
+    /// even when the text never passed the ingest cleaner.
+    #[test]
+    fn test_ffmt1_info_error_embedded_lf_is_one_row() {
+        for p in crate::bitchx::text::HOSTILE {
+            for line in [
+                Line::Info(format!("note {p}")),
+                Line::Error(format!("sync: {p}")),
+            ] {
+                let rows = plain(&format_line(&line, "#room"));
+                assert_eq!(rows.len(), 1, "{rows:?}");
+                crate::bitchx::text::assert_inert(&rows[0]);
+            }
+        }
     }
 }
