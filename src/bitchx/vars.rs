@@ -665,6 +665,21 @@ mod tests {
     }
 
     #[test]
+    fn test_debug_persistence() {
+        let dir = std::env::temp_dir().join(format!("bx-dbgfilter-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let mut v = Vars::default();
+        v.set("DEBUG_FILTER", "http,presence").unwrap();
+        v.persist(&path).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        let cfg = crate::config::Config::parse_toml(&text).unwrap();
+        let back = Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap());
+        assert_eq!(back, v);
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
     fn test_debug_switches_never_persisted() {
         // F-07: DEBUG / DEBUG_RAW were written to config.toml and re-armed
         // the tap on every start; the filter is harmless and still persists
