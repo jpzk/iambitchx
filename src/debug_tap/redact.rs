@@ -1,6 +1,7 @@
 //! Redaction helpers: everything the tap emits passes through these
 //! (query strings dropped, secret-ish JSON fields replaced, bare
-//! `mat_`/`mar_`/`syt_` tokens masked) plus small text-shaping utilities.
+//! tokens and token-shaped runs masked, fail closed) plus small text-shaping
+//! utilities.
 
 use serde_json::Value;
 
@@ -40,35 +41,57 @@ pub(super) fn is_secret_key(key: &str) -> bool {
     NEEDLES.iter().any(|n| k.contains(n)) || k == "code" || k == "device_keys"
 }
 
-/// Mask bare Matrix token strings (`mat_…`, `mar_…`, `syt_…`) and
-/// `Bearer …` values anywhere in free text.
+/// Fail-closed free-text redaction. Masks, wherever they occur (no
+/// word-start requirement, F-04): Matrix token prefixes (`mat_`, `mar_`,
+/// `syt_`, `mct_`, also with a percent-encoded `%5F` underscore) and
+/// `Bearer …` values; then any token-shaped run (F-03): JWTs (`eyJ…` or
+/// three long dot-separated base64url segments), long base64 / base64url
+/// / hex blobs.
 pub(crate) fn redact_text(s: &str) -> String {
+    mask_shapes(&mask_prefixes(s))
+}
+
+const TOKEN_PREFIXES: &[&str] = &["mat", "mar", "syt", "mct"];
+
+/// Length of a `mat_` / `syt%5F` style prefix at the start of `rest`.
+fn token_prefix_len(rest: &str) -> Option<usize> {
+    let p = TOKEN_PREFIXES.iter().find(|p| starts_with_ci(rest, p))?;
+    let tail = &rest[p.len()..];
+    if tail.starts_with('_') {
+        Some(p.len() + 1)
+    } else if starts_with_ci(tail, "%5f") {
+        Some(p.len() + 3)
+    } else {
+        None
+    }
+}
+
+fn mask_prefixes(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let b = s.as_bytes();
     let mut i = 0;
     while i < b.len() {
-        let at_word_start = i == 0 || !is_tok_byte(b[i - 1]);
-        if at_word_start {
-            let rest = &s[i..];
-            let prefix = ["mat_", "mar_", "syt_"].iter().find(|p| starts_with_ci(rest, p));
-            if let Some(p) = prefix {
-                out.push_str(&rest[..p.len()]);
+        let rest = &s[i..];
+        if let Some(n) = token_prefix_len(rest) {
+            out.push_str(&rest[..n]);
+            i += n;
+            // already masked: keep idempotent
+            if !s[i..].starts_with(MASK_STR) {
                 out.push_str(MASK_STR);
-                i += p.len();
-                while i < b.len() && is_tok_byte(b[i]) {
-                    i += 1;
-                }
-                continue;
             }
-            if starts_with_ci(rest, "bearer ") {
-                out.push_str("Bearer ");
-                out.push_str(MASK_STR);
-                i += 7;
-                while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'"' {
-                    i += 1;
-                }
-                continue;
+            while i < b.len() && (is_tok_byte(b[i]) || b[i] == b'%') {
+                i += 1;
             }
+            continue;
+        }
+        if starts_with_ci(rest, "bearer ") {
+            out.push_str("Bearer ");
+            out.push_str(MASK_STR);
+            i += 7;
+            while i < b.len() && !b[i].is_ascii_whitespace() && b[i] != b'"' {
+                i += 1;
+            }
+            continue;
         }
         // i < s.len() (loop guard) and i only advances by whole ASCII tokens or
         // ch.len_utf8(), so it is on a char boundary and next() is always Some.
@@ -77,6 +100,98 @@ pub(crate) fn redact_text(s: &str) -> String {
         i += ch.len_utf8();
     }
     out
+}
+
+/// Bytes of a base64 / base64url / hex / JWT-ish run.
+fn is_run_byte(c: u8) -> bool {
+    is_tok_byte(c) || matches!(c, b'+' | b'/' | b'=' | b'%')
+}
+
+/// Replace every token-shaped run with [`MASK_STR`].
+fn mask_shapes(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let b = s.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if is_run_byte(b[i]) {
+            let start = i;
+            while i < b.len() && is_run_byte(b[i]) {
+                i += 1;
+            }
+            // run bytes are ASCII, so start..i is on char boundaries
+            let run = &s[start..i];
+            out.push_str(if token_shaped(run) { MASK_STR } else { run });
+            continue;
+        }
+        let ch = s[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+/// Does this run look like a credential? Errs on the side of masking.
+fn token_shaped(run: &str) -> bool {
+    let is_b64url = |seg: &str| {
+        seg.bytes()
+            .all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-' || c == b'=')
+    };
+    let dot_segs: Vec<&str> = run.split('.').collect();
+    // JWT: base64url header `{"…` = `eyJ…`, or a.b.c with long segments
+    if dot_segs.iter().any(|g| g.starts_with("eyJ") && g.len() >= 10) {
+        return true;
+    }
+    if dot_segs
+        .windows(3)
+        .any(|w| w.iter().all(|g| g.len() >= 8 && is_b64url(g)))
+    {
+        return true;
+    }
+    // long hex (any case, incl. all-digit)
+    if run.len() >= 32 && run.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return true;
+    }
+    // a long high-entropy piece (paths, dotted names and `k=v` split apart)
+    if run
+        .split(['.', '/', '~'])
+        .flat_map(assign_parts)
+        .any(|p| p.len() >= 16 && char_classes(p) >= 2)
+    {
+        return true;
+    }
+    // standard base64 whose `/` or `+` splits it into short pieces
+    !run.starts_with('/')
+        && run.len() >= 20
+        && run.contains(['/', '+'])
+        && char_classes(run) >= 2
+}
+
+/// Split `k=v` at an `=` that is not base64 padding (followed by more data).
+fn assign_parts(p: &str) -> Vec<&str> {
+    let b = p.as_bytes();
+    let mut parts = vec![];
+    let mut start = 0;
+    for i in 0..b.len() {
+        if b[i] == b'=' && b.get(i + 1).is_some_and(|c| *c != b'=') {
+            parts.push(&p[start..i]);
+            start = i + 1;
+        }
+    }
+    parts.push(&p[start..]);
+    parts
+}
+
+/// How many of {lower, upper, digit} occur in `s`.
+fn char_classes(s: &str) -> usize {
+    let b = s.as_bytes();
+    [
+        b.iter().any(u8::is_ascii_lowercase),
+        b.iter().any(u8::is_ascii_uppercase),
+        b.iter().any(u8::is_ascii_digit),
+    ]
+    .iter()
+    .filter(|x| **x)
+    .count()
 }
 
 fn is_tok_byte(c: u8) -> bool {
