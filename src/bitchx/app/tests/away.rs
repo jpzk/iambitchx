@@ -1,3 +1,5 @@
+//! Tests for AUTO_AWAY timing, AWAY_NICK and the self-whois probe.
+
 use super::*;
 
 // ---- AUTO_AWAY (fake clock) -----------------------------------------

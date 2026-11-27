@@ -1,3 +1,5 @@
+//! Tests for /SET variables, timestamps and protocol debug (DBG) mode.
+
 use super::*;
 
 fn local(ts: i64, fmt: &str) -> String {

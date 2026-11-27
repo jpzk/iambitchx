@@ -1,3 +1,5 @@
+//! Tests for windows: numbering, switching, activity, hilites and backfill order.
+
 use super::*;
 
 #[test]

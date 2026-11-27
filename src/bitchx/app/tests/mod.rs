@@ -1,3 +1,5 @@
+//! Unit tests for the BitchX `App`, split by topic; shared fixtures live here.
+
 use super::logo::*;
 use super::*;
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

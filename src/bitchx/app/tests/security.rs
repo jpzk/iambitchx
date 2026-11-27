@@ -1,3 +1,5 @@
+//! Tests for spoofing defences: localpart collisions, lookalike room names, forged status lines.
+
 use super::*;
 
 /// A room with `@f28bob:example.org` (our server), `@f28bob:evil.org`

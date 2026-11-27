@@ -1,3 +1,5 @@
+//! Tests for the splash logos and startup banner.
+
 use super::*;
 
 fn line1(app: &App) -> String {

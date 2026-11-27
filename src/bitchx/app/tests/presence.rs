@@ -1,3 +1,5 @@
+//! Tests for presence: query polling, NAMES marks and WHOIS idle.
+
 use super::*;
 
 #[test]
