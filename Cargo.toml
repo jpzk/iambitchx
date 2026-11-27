@@ -65,6 +65,8 @@ features = ["io-std", "macros", "net", "rt-multi-thread", "sync", "time"]
 inherits = "release"
 incremental = false
 lto = true
+codegen-units = 1
+strip = "symbols"
 
 [profile.release-light]
 inherits = "release-lto"

@@ -92,6 +92,21 @@ jobs:
         if readelf -lW "$bin" | grep -q INTERP; then echo "has PT_INTERP" >&2; exit 1; fi
         if readelf -dW "$bin" | grep -q NEEDED; then echo "has DT_NEEDED" >&2; exit 1; fi
         echo "static: OK"
+    - name: 'Verify: linux binary is stripped (no symbol table, no debuginfo)'
+      # [profile.release-lto] strip = "symbols"; fail if symbols ever come back
+      if: matrix.platform == 'ubuntu-latest'
+      run: |
+        bin="target/$TARGET/release-lto/iambitchx"
+        # capture first: with pipefail, grep -q can SIGPIPE the producer and
+        # turn a hit into a silent pass
+        f=$(file "$bin"); echo "$f"
+        case "$f" in *"not stripped"*) echo "binary not stripped" >&2; exit 1 ;; esac
+        case "$f" in *", stripped"*) ;; *) echo "file does not report stripped" >&2; exit 1 ;; esac
+        secs=$(readelf -SW "$bin")
+        if grep -E '\.symtab|\.debug_' <<< "$secs" >&2; then
+          echo "binary has a symbol table / debug sections" >&2; exit 1
+        fi
+        echo "stripped: OK"
     - name: 'Package: raw binary'
       # bare executable as its own release asset (attested on its own digest)
       run: |
@@ -106,8 +121,16 @@ jobs:
       if: matrix.platform == 'ubuntu-latest'
       run: |
         cargo +stable install cargo-deb --version 3.8.0 --locked
-        cargo +stable deb --profile=release-lto --no-strip --target "$TARGET"
+        cargo +stable deb --profile=release-lto --target "$TARGET"
         cp ./target/"$TARGET"/debian/iambitchx*.deb dist/
+        # the packaged binary must be the stripped one too
+        x=$(mktemp -d); dpkg-deb -x ./target/"$TARGET"/debian/iambitchx*.deb "$x"
+        file "$x/usr/bin/iambitchx"
+        secs=$(readelf -SW "$x/usr/bin/iambitchx")
+        if grep -E '\.symtab|\.debug_' <<< "$secs" >&2; then
+          echo "deb binary has a symbol table / debug sections" >&2; exit 1
+        fi
+        rm -rf "$x"
     - name: 'Package: rpm'
       if: matrix.platform == 'ubuntu-latest'
       run: |
