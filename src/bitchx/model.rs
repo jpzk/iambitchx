@@ -497,13 +497,23 @@ pub(crate) enum VerifyAction {
     Cancel,
 }
 
+/// E3: the device named in an incoming request, as resolved by the SDK.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum ReqDevice {
+    /// In the SDK's device list for the user: its id and ed25519 key.
+    Known { id: String, ed25519: Option<String> },
+    /// The sender-chosen id is not in the user's device list: display only,
+    /// never trusted or matched.
+    Unknown(String),
+}
+
 /// Progress of a key verification, as reported by the Matrix side.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum VerifyUpdate {
     /// A request exists (theirs or ours). In-room requests carry the room.
     Requested {
         flow_id: String,
-        device: Option<String>,
+        device: Option<ReqDevice>,
         room_id: Option<OwnedRoomId>,
         we_started: bool,
     },

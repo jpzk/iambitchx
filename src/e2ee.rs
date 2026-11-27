@@ -11,10 +11,10 @@ use matrix_sdk::encryption::verification::{
 use matrix_sdk::ruma::events::key::verification::VerificationMethod;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
 use matrix_sdk::ruma::events::room::message::{MessageType, OriginalSyncRoomMessageEvent};
-use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
+use matrix_sdk::ruma::{DeviceId, OwnedRoomId, OwnedUserId, UserId};
 use matrix_sdk::{Client, Room};
 
-use crate::bitchx::model::{Line, MxEvent, Secret, VerifyAction, VerifyUpdate};
+use crate::bitchx::model::{Line, MxEvent, ReqDevice, Secret, VerifyAction, VerifyUpdate};
 use crate::matrix::Tx;
 
 fn update(tx: &Tx, user: &UserId, update: VerifyUpdate) {
@@ -38,7 +38,8 @@ pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
             if let Some(req) =
                 client.encryption().get_verification_request(&ev.sender, &flow_id).await
             {
-                track_request(req, Some(ev.content.from_device.to_string()), tx);
+                let dev = request_device(&client, &ev.sender, &ev.content.from_device).await;
+                track_request(req, Some(dev), tx);
             }
         }
     });
@@ -58,14 +59,32 @@ pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
                 .get_verification_request(&ev.sender, &ev.event_id)
                 .await
             {
-                track_request(req, Some(content.from_device.to_string()), tx);
+                let dev = request_device(&client, &ev.sender, &content.from_device).await;
+                track_request(req, Some(dev), tx);
             }
         }
     });
 }
 
+/// E3: `from_device` is chosen by the sender; show it only as resolved by
+/// the SDK's device list for that user (id + ed25519 key), else as unknown.
+async fn request_device(client: &Client, user: &UserId, from_device: &DeviceId) -> ReqDevice {
+    let dev = client.encryption().get_device(user, from_device).await.ok().flatten();
+    req_device(
+        from_device.as_str(),
+        dev.map(|d| (d.device_id().to_string(), d.ed25519_key().map(|k| k.to_base64()))),
+    )
+}
+
+fn req_device(claimed: &str, sdk: Option<(String, Option<String>)>) -> ReqDevice {
+    match sdk {
+        Some((id, ed25519)) => ReqDevice::Known { id, ed25519 },
+        None => ReqDevice::Unknown(claimed.to_owned()),
+    }
+}
+
 /// Report a request and follow it: ready -> SAS -> emoji -> done/cancelled.
-pub(crate) fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
+pub(crate) fn track_request(req: VerificationRequest, device: Option<ReqDevice>, tx: Tx) {
     let user = req.other_user_id().to_owned();
     update(
         &tx,
@@ -442,5 +461,16 @@ mod tests {
         assert!(start_on_request(u, true, true).unwrap());
         assert!(!start_on_request(u, false, true).unwrap());
         assert!(!start_on_request(u, false, false).unwrap());
+    }
+
+    #[test]
+    fn test_e3_request_device_comes_from_sdk() {
+        // the SDK knows the device: its id and key are shown
+        assert_eq!(
+            req_device("DEV", Some(("DEV".into(), Some("k3y".into())))),
+            ReqDevice::Known { id: "DEV".into(), ed25519: Some("k3y".into()) }
+        );
+        // a sender-chosen id the SDK does not know is never shown as a device
+        assert_eq!(req_device("EVIL", None), ReqDevice::Unknown("EVIL".into()));
     }
 }
