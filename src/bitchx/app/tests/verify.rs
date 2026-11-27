@@ -5,6 +5,25 @@ use super::*;
 use crate::bitchx::model::{ReqDevice, VerifyAction};
 
 #[test]
+fn test_b1_encrypt_prompt_names_room_id_not_spoofable_name() {
+    let mut app = app();
+    // The real #rust:matrix.org and a room merely *named* like it (F29).
+    app.handle_mx(MxEvent::Room(room("!real:matrix.org", "#rust:matrix.org")));
+    app.handle_mx(MxEvent::Room(room("!fake:evil.org", "#rust:matrix.org")));
+    app.handle_key(alt('6'));
+    assert_eq!(app.current_room(), Some(owned_room_id!("!fake:evil.org")));
+    assert_eq!(typed(&mut app, "/encrypt"), vec![]);
+    let Line::Info(q) = last(&app) else {
+        panic!("{:?}", last(&app))
+    };
+    // The question names the room actually being encrypted, by ID, and
+    // never presents the lookalike name as the channel.
+    assert!(q.contains("[room id !fake:evil.org]"), "{q}");
+    assert!(!q.contains("#rust:matrix.org"), "{q}");
+    assert_eq!(app.confirm, Some(Confirm::Encrypt(owned_room_id!("!fake:evil.org"))));
+}
+
+#[test]
 fn test_encrypt_confirm_flow() {
     let mut app = app();
     app.handle_key(alt('2'));
