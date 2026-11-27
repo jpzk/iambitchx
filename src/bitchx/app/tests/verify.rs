@@ -1,5 +1,7 @@
 use super::*;
 
+use crate::bitchx::model::VerifyAction;
+
 #[test]
 fn test_encrypt_confirm_flow() {
     let mut app = app();
