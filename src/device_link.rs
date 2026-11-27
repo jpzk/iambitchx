@@ -126,8 +126,10 @@ pub enum PollOutcome {
     Failed(String),
 }
 
-/// Classify a token endpoint response. Never includes the response body in
-/// the error, since a body could carry tokens.
+/// Classify a token endpoint response. Never includes the raw response body
+/// in the error, since a body could carry tokens; the server-chosen
+/// `error_description` is passed through the remote-text sanitiser (controls
+/// neutralised, token-shaped strings masked) before it is quoted (AUTH-17).
 pub fn classify_poll(status: u16, body: &[u8]) -> PollOutcome {
     if (200..300).contains(&status) {
         return match serde_json::from_slice::<DeviceTokens>(body) {
@@ -143,8 +145,14 @@ pub fn classify_poll(status: u16, body: &[u8]) -> PollOutcome {
             "expired_token" => PollOutcome::Expired,
             "access_denied" => PollOutcome::Denied,
             other => {
-                let desc = err.error_description.map(|d| format!(": {d}")).unwrap_or_default();
-                PollOutcome::Failed(format!("token endpoint error {other}{desc}"))
+                let desc = err
+                    .error_description
+                    .map(|d| format!(": {}", crate::bitchx::text::terminal_text(&d)))
+                    .unwrap_or_default();
+                PollOutcome::Failed(format!(
+                    "token endpoint error {}{desc}",
+                    crate::bitchx::text::terminal_text(other)
+                ))
             },
         },
         Err(_) => PollOutcome::Failed(format!("token endpoint returned HTTP {status}")),
@@ -308,8 +316,14 @@ async fn post_form(
 fn endpoint_error(what: &str, status: u16, body: &[u8]) -> String {
     match serde_json::from_slice::<OAuthErrorResponse>(body) {
         Ok(err) => {
-            let desc = err.error_description.map(|d| format!(": {d}")).unwrap_or_default();
-            format!("{what} failed (HTTP {status}): {}{desc}", err.error)
+            let desc = err
+                .error_description
+                .map(|d| format!(": {}", crate::bitchx::text::terminal_text(&d)))
+                .unwrap_or_default();
+            format!(
+                "{what} failed (HTTP {status}): {}{desc}",
+                crate::bitchx::text::terminal_text(&err.error)
+            )
         },
         Err(_) => format!("{what} failed (HTTP {status})"),
     }
@@ -390,32 +404,48 @@ async fn logout_raw(http: &reqwest::Client, homeserver: &Url, access_token: &Sec
 }
 
 fn print_instructions(auth: &DeviceAuthorizationResponse, uri: &Url, complete: Option<&Url>) {
+    print!("{}", instructions(auth, uri, complete));
+}
+
+/// The device-link instructions. The URIs and the user code are chosen by
+/// the homeserver, so they go through the remote-text sanitiser: no control
+/// sequence can clear, overwrite or displace the anti-phishing warning that
+/// follows the code (AUTH-16).
+fn instructions(auth: &DeviceAuthorizationResponse, uri: &Url, complete: Option<&Url>) -> String {
+    let t = crate::bitchx::text::terminal_text;
     let minutes = auth.expires_in.unwrap_or(DEFAULT_EXPIRES_IN_SECS) / 60;
 
-    println!();
-    println!("==================== DEVICE LINK LOGIN ====================");
-    println!();
-    println!("  On any device with a browser, open:");
-    println!();
-    println!("      {uri}");
+    let mut out = vec![
+        String::new(),
+        "==================== DEVICE LINK LOGIN ====================".into(),
+        String::new(),
+        "  On any device with a browser, open:".into(),
+        String::new(),
+        format!("      {}", t(uri.as_str())),
+    ];
     if let Some(complete) = complete {
-        println!();
-        println!("  or open this link, which already contains the code:");
-        println!();
-        println!("      {complete}");
+        out.push(String::new());
+        out.push("  or open this link, which already contains the code:".into());
+        out.push(String::new());
+        out.push(format!("      {}", t(complete.as_str())));
     }
-    println!();
-    println!("  and enter the code:");
-    println!();
-    println!("      >>>   {}   <<<", auth.user_code);
-    println!();
-    println!("  WARNING: only approve a code that THIS terminal shows you.");
-    println!("  Never enter a code that someone sent you: approving it");
-    println!("  hands them access to your account.");
-    println!();
-    println!("  The code expires in about {minutes} minute(s). Waiting for approval...");
-    println!("============================================================");
-    println!();
+    out.extend([
+        String::new(),
+        "  and enter the code:".into(),
+        String::new(),
+        format!("      >>>   {}   <<<", t(&auth.user_code)),
+        String::new(),
+        "  WARNING: only approve a code that THIS terminal shows you.".into(),
+        "  Never enter a code that someone sent you: approving it".into(),
+        "  hands them access to your account.".into(),
+        String::new(),
+        format!("  The code expires in about {minutes} minute(s). Waiting for approval..."),
+        "============================================================".into(),
+        String::new(),
+    ]);
+    let mut s = out.join("\n");
+    s.push('\n');
+    s
 }
 
 /// Log in with the OAuth 2.0 device authorization grant.
@@ -749,5 +779,55 @@ mod tests {
             form_body(&[("client_id", "a b"), ("scope", "x:* y&z")]),
             "client_id=a+b&scope=x%3A*+y%26z"
         );
+    }
+
+    /// AUTH-17: the server-chosen `error` and `error_description` are
+    /// sanitised before they are quoted in the error text.
+    #[test]
+    fn test_auth17_error_description_is_sanitised() {
+        use crate::bitchx::text::{HOSTILE, assert_inert};
+        for p in HOSTILE {
+            let body = serde_json::json!({"error": format!("bad{p}"), "error_description": p})
+                .to_string()
+                .into_bytes();
+            let PollOutcome::Failed(msg) = classify_poll(400, &body) else {
+                panic!("expected failure");
+            };
+            assert_inert(&msg);
+            assert_inert(&endpoint_error("Device authorization", 400, &body));
+        }
+        let body = br#"{"error":"invalid_grant","error_description":"mat_S3CRETtoken"}"#;
+        let PollOutcome::Failed(msg) = classify_poll(400, body) else {
+            panic!()
+        };
+        assert!(!msg.contains("S3CRET"), "{msg}");
+    }
+
+    /// AUTH-16: a hostile user code or URI cannot inject control sequences or
+    /// extra rows, and the anti-phishing warning still follows the code.
+    #[test]
+    fn test_auth16_instructions_are_sanitised() {
+        use crate::bitchx::text::{HOSTILE, assert_inert};
+        let uri = Url::parse("https://account.example.org/link").unwrap();
+        let complete = Url::parse("https://account.example.org/link?code=X").unwrap();
+        let auth = |code: &str| DeviceAuthorizationResponse {
+            device_code: Secret("dc".into()),
+            user_code: code.into(),
+            verification_uri: uri.to_string(),
+            verification_uri_complete: Some(complete.to_string()),
+            expires_in: Some(600),
+            interval: None,
+        };
+        let benign = instructions(&auth("ABCD-EFGH"), &uri, Some(&complete));
+        for p in HOSTILE {
+            let text = instructions(&auth(p), &uri, Some(&complete));
+            let rows: Vec<&str> = text.lines().collect();
+            assert_eq!(rows.len(), benign.lines().count(), "{text}");
+            for r in &rows {
+                assert_inert(r);
+            }
+            let code = rows.iter().position(|r| r.contains(">>>")).unwrap();
+            assert!(rows[code + 2].starts_with("  WARNING: only approve"), "{text}");
+        }
     }
 }
