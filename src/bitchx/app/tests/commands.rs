@@ -197,6 +197,10 @@ fn test_local_commands() {
     );
     typed(&mut app, "/help");
     assert!(matches!(last(&app), Line::Info(_)));
+    let help =
+        |s: &str| app.cur().lines.iter().any(|l| matches!(l, Line::Info(t) if t.contains(s)));
+    assert!(help(" /theme "), "/help lists /theme");
+    assert!(help("/theme terminal: use your terminal's own colours"));
     typed(&mut app, "/clear");
     assert!(app.cur().lines.is_empty());
 }

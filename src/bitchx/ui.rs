@@ -82,7 +82,7 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
         let _ = out.write_all(b"\x07").and_then(|()| out.flush());
     }
     // `/theme`: the picker docks between the scrollback and the status lines.
-    let picker = if app.picker.is_some() && area.height >= 4 + top + PICKER_ROWS as u16 + 1 {
+    let picker = if app.picker.is_some() && area.height > 4 + top + PICKER_ROWS as u16 {
         PICKER_ROWS as u16
     } else {
         0
