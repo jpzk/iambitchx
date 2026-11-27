@@ -319,7 +319,7 @@ const FAKE_CUSTOM: &str = "acme_9fK2LmQ8xR4tZ7wB";
 #[test]
 fn test_redact_text_masks_token_shapes() {
     // F-03: shapes other than mat_/mar_/syt_ and `Bearer` were printed verbatim
-    for secret in [
+    for (i, sample) in [
         FAKE_JWT,
         FAKE_ABC,
         FAKE_B64,
@@ -327,15 +327,19 @@ fn test_redact_text_masks_token_shapes() {
         FAKE_B64URL,
         FAKE_HEX,
         FAKE_CUSTOM,
-    ] {
+    ]
+    .into_iter()
+    .enumerate()
+    {
         for wrap in [
-            format!("error refreshing an OAuth 2.0 token: id_token={secret}"),
-            format!("\"{secret}\""),
-            format!("x{secret} trailing"),
-            format!("-{secret}"),
+            format!("error refreshing an OAuth 2.0 token: id_token={sample}"),
+            format!("\"{sample}\""),
+            format!("x{sample} trailing"),
+            format!("-{sample}"),
         ] {
             let r = redact_text(&wrap);
-            assert!(!r.contains(secret), "leaked {secret:?} in {r:?}");
+            // never echo the sample itself in the failure message
+            assert!(!r.contains(sample), "sample #{i} leaked");
             assert!(r.contains("<redacted>"), "{r:?}");
             assert_eq!(redact_text(&r), r, "idempotent");
         }
@@ -367,7 +371,7 @@ fn test_redact_text_prefix_anywhere() {
     ] {
         let r = redact_text(&format!("value {pre}{tok} end"));
         no_secrets(&r);
-        assert!(!r.contains(tok), "leaked {tok:?} in {r:?}");
+        assert!(!r.contains(tok), "token leaked after {pre:?}");
         assert!(r.ends_with(" end"), "{r:?}");
     }
     // percent-encoded underscore
