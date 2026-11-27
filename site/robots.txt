@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://jpzk.github.io/iambitchx/sitemap.xml

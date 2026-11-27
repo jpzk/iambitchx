@@ -9,6 +9,50 @@ a{color:#fff}
 pre{font-size:16px;font-family:ui-monospace,Menlo,Consolas,monospace}
 </style>
 <title>iamBitchX - a BitchX-style Matrix client</title>
+<meta name="description" content="iamBitchX: a BitchX-style Matrix client for the terminal. IRC vocabulary, end-to-end encryption, SAS verification, password, SSO, OAuth 2.0 and device-link login, /slap, /away and AUTO_AWAY.">
+<link rel="canonical" href="https://jpzk.github.io/iambitchx/">
+<link rel="alternate" type="text/plain" href="https://jpzk.github.io/iambitchx/llms.txt" title="llms.txt">
+<meta property="og:type" content="website">
+<meta property="og:title" content="iamBitchX - a BitchX-style Matrix client">
+<meta property="og:description" content="A BitchX-style Matrix client for the terminal: IRC vocabulary, Matrix underneath, end-to-end encrypted.">
+<meta property="og:url" content="https://jpzk.github.io/iambitchx/">
+<meta property="og:site_name" content="iamBitchX">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="iamBitchX - a BitchX-style Matrix client">
+<meta name="twitter:description" content="A BitchX-style Matrix client for the terminal: IRC vocabulary, Matrix underneath, end-to-end encrypted.">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "iamBitchX",
+  "alternateName": "iambitchx",
+  "description": "A BitchX-style Matrix client for the terminal, a fork of iamb.",
+  "applicationCategory": "CommunicationApplication",
+  "operatingSystem": "Linux, macOS, Windows",
+  "license": "https://www.apache.org/licenses/LICENSE-2.0",
+  "softwareVersion": "0.1.0",
+  "url": "https://jpzk.github.io/iambitchx/",
+  "codeRepository": "https://github.com/jpzk/iambitchx",
+  "downloadUrl": "https://github.com/jpzk/iambitchx/releases",
+  "isBasedOn": "https://github.com/ulyssa/iamb",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "featureList": [
+    "End-to-end encryption (Olm/Megolm via matrix-rust-sdk)",
+    "SAS emoji verification",
+    "Cross-signing and key backup, /recover from secure backup",
+    "Rooms as channels, DMs via /msg and /query",
+    "Public room directory via /list",
+    "Presence and /away",
+    "Password login",
+    "SSO login",
+    "OAuth 2.0 (next-gen auth, MSC3861) login",
+    "Device link login with a code (OAuth 2.0 device authorization grant, RFC 8628)",
+    "BitchX /slap and mIRC trout /mircslap, sent as /me",
+    "/away with AWAY_NICK and AUTO_AWAY idle auto-away",
+    "62 themes with live preview"
+  ]
+}
+</script>
 <pre>
 
   ██╗ █████╗ ███╗   ███╗ ██████╗ ██╗████████╗ ██████╗██╗  ██╗██╗  ██╗
@@ -24,12 +68,22 @@ pre{font-size:16px;font-family:ui-monospace,Menlo,Consolas,monospace}
 ║  end-to-end encrypted.                                             ║
 ╚════════════════════════════════════════════════════════════════════╝
 
-  source    <a href="https://github.com/jpzk/iambitchx">https://github.com/jpzk/iambitchx</a>
-  releases  <a href="https://github.com/jpzk/iambitchx/releases">https://github.com/jpzk/iambitchx/releases</a>
-  docs      <a href="https://github.com/jpzk/iambitchx/blob/main/docs/">https://github.com/jpzk/iambitchx/blob/main/docs/</a>
+  source    <a
+href="https://github.com/jpzk/iambitchx"
+>https://github.com/jpzk/iambitchx</a>
+  releases  <a
+href="https://github.com/jpzk/iambitchx/releases"
+>https://github.com/jpzk/iambitchx/releases</a>
+  docs      <a
+href="https://github.com/jpzk/iambitchx/blob/main/docs/"
+>https://github.com/jpzk/iambitchx/blob/main/docs/</a>
             bitchx-frontend.md
-  notes     <a href="https://github.com/jpzk/iambitchx/blob/main/docs/project.md">https://github.com/jpzk/iambitchx/blob/main/docs/project.md</a>
-  licence   <a href="https://github.com/jpzk/iambitchx/blob/main/NOTICE">https://github.com/jpzk/iambitchx/blob/main/NOTICE</a>
+  notes     <a
+href="https://github.com/jpzk/iambitchx/blob/main/docs/project.md"
+>https://github.com/jpzk/iambitchx/blob/main/docs/project.md</a>
+  licence   <a
+href="https://github.com/jpzk/iambitchx/blob/main/NOTICE"
+>https://github.com/jpzk/iambitchx/blob/main/NOTICE</a>
 
   (no links on this page -- copy the URLs.)
 
@@ -78,15 +132,64 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     timestamps, status bar and prompt. no mouse required.
 
 
+──[ features ]──────────────────────────────────────────────────────
+
+  ▌ Matrix
+  * end-to-end encryption (Olm/Megolm via matrix-rust-sdk);
+    /encrypt turns it on for a channel
+  * SAS emoji verification: /verify start, accept, yes/no, cancel;
+    incoming requests are offered, never auto-accepted
+  * cross-signing and key backup enabled at login; /trust shows
+    the status, /recover KEY imports secrets from secure backup
+  * /devices [USER] lists devices and their keys
+  * rooms as #channels, DMs as /msg and /query windows
+  * /list searches the public room directory; spaces are tagged
+  * /join by alias or room id, /part, /topic, /invite, /kick
+  * /op and /deop set power levels; /names, /who, /whois
+  * presence: away/online sent and shown, /whois shows away
+  * /nick sets your display name
+  * history backfill when a channel window opens
+  * not (yet): threads, reactions, edits, read receipts,
+    typing notifications, media upload/download
+
+  ▌ login
+  * password (prompted, or password_file in the config)
+  * SSO (single sign-on, opens the browser)
+  * OAuth 2.0 / next-gen auth (MSC3861): browser login with a
+    local loopback redirect
+  * device link: OAuth 2.0 device authorization grant (RFC 8628)
+    -- the terminal shows a URL and a code, approve the login in
+    any browser. works over ssh and on headless boxes
+  * tokens refresh before they expire; two processes on one
+    profile share session.json behind a lock
+
+  ▌ IRC / BitchX
+  * /slap NICK -- the BitchX "Brown Cow" slap, sent as /me
+  * /mircslap NICK -- the classic large trout, sent as /me
+  * /away [msg] and /back; AWAY_NICK swaps your nick (%n^afk)
+  * AUTO_AWAY: auto-afk after AUTO_AWAY_TIME secs idle (600),
+    with AUTO_AWAY_MSG
+  * /me (/action), /msg, /query, /channels, /window next|prev,
+    /clear, /close, /quit, /version, /help
+  * /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY highlight
+    words, BEEP on highlight
+  * /theme with live preview: 62 iamb themes plus 'terminal'
+  * alt-0..9 switches windows, tab completes nicks
+  * /ctcp, /mode, /ignore parse but say "Not supported on Matrix"
+
 ──[ install ]───────────────────────────────────────────────────────
 
   every release ships for x86_64 linux (static musl), aarch64 linux,
   x86_64 macOS and x86_64 windows. current: v0.1.0 -- check the
   releases page for newer tags and swap the version below.
 
-  releases: <a href="https://github.com/jpzk/iambitchx/releases">https://github.com/jpzk/iambitchx/releases</a>
+  releases: <a
+href="https://github.com/jpzk/iambitchx/releases"
+>https://github.com/jpzk/iambitchx/releases</a>
 
-  R=<a href="https://github.com/jpzk/iambitchx/releases/download/v0.1.0">https://github.com/jpzk/iambitchx/releases/download/v0.1.0</a>
+  R=<a
+href="https://github.com/jpzk/iambitchx/releases/download/v0.1.0"
+>https://github.com/jpzk/iambitchx/releases/download/v0.1.0</a>
 
   ▌ deb  (debian, ubuntu; amd64 or arm64)
     curl -LO $R/iambitchx_0.1.0-1_amd64.deb
@@ -149,14 +252,20 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
   ▌ SBOM attestation (CycloneDX, x86_64 linux binary and tgz):
     gh attestation verify iambitchx-0.1.0-x86_64-unknown-linux-musl \
       --repo jpzk/iambitchx \
-      --predicate-type <a href="https://cyclonedx.org/bom">https://cyclonedx.org/bom</a>
+      --predicate-type <a
+href="https://cyclonedx.org/bom"
+>https://cyclonedx.org/bom</a>
 
   every release file has a build provenance attestation; without
   gh, the raw bundles are at
-  <a href="https://api.github.com/repos/jpzk/iambitchx/attestations/">https://api.github.com/repos/jpzk/iambitchx/attestations/</a>
+  <a
+href="https://api.github.com/repos/jpzk/iambitchx/attestations/"
+>https://api.github.com/repos/jpzk/iambitchx/attestations/</a>
   sha256:DIGEST
 
-  full notes: <a href="https://github.com/jpzk/iambitchx/blob/main/docs/">https://github.com/jpzk/iambitchx/blob/main/docs/</a>
+  full notes: <a
+href="https://github.com/jpzk/iambitchx/blob/main/docs/"
+>https://github.com/jpzk/iambitchx/blob/main/docs/</a>
               release.md
 
 
@@ -167,7 +276,9 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     do_ansi_logo() -- in two variants: the 3D block logo and the
     "acidjazz" ASCII logo above. the block logo is too wide for
     this page; the client draws it. original source:
-    <a href="https://github.com/prime001/BitchX">https://github.com/prime001/BitchX</a>
+    <a
+href="https://github.com/prime001/BitchX"
+>https://github.com/prime001/BitchX</a>
     the artwork is signed PhonyEye and Awe/Cia, and those credits
     stay in the artwork. BitchX was created by panasync (Colten
     Edwards) in 1995. we ship the art decoded from CP437 to
@@ -208,14 +319,20 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
 
   ▌ the base code
     iamBitchX is a fork of iamb by Ulyssa -- project home
-    <a href="https://iamb.chat">https://iamb.chat</a>, source <a href="https://github.com/ulyssa/iamb">https://github.com/ulyssa/iamb</a> --
+    <a
+href="https://iamb.chat"
+>https://iamb.chat</a>, source <a
+href="https://github.com/ulyssa/iamb"
+>https://github.com/ulyssa/iamb</a> --
     under the Apache License 2.0. iamb's Matrix engine, sync loop,
     E2EE stack and store are what make this client possible; the
     frontend is new. support the project.
 
   ▌ everything else
     matrix-rust-sdk -- Apache-2.0 -- the Matrix SDK underneath.
-    <a href="https://github.com/matrix-org/matrix-rust-sdk">https://github.com/matrix-org/matrix-rust-sdk</a>
+    <a
+href="https://github.com/matrix-org/matrix-rust-sdk"
+>https://github.com/matrix-org/matrix-rust-sdk</a>
 
   ▌ licence
     iamBitchX: Apache License 2.0 (LICENSE, NOTICE in the repo).

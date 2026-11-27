@@ -1,0 +1,47 @@
+# iamBitchX
+
+> iamBitchX is a BitchX-style Matrix client for the terminal: IRC
+> vocabulary (channels, /join, /msg, /slap, /away), Matrix underneath,
+> end-to-end encrypted. A fork of iamb (https://iamb.chat) by Ulyssa,
+> built on matrix-rust-sdk. Apache-2.0. Written in Rust; releases for
+> x86_64/aarch64 Linux, x86_64 macOS and x86_64 Windows.
+
+## Features
+
+### Matrix
+- End-to-end encryption (Olm/Megolm via matrix-rust-sdk); /encrypt enables it in a channel
+- SAS emoji verification (/verify list|start|accept|yes|no|cancel); incoming requests are offered, never auto-accepted
+- Cross-signing and key backup enabled at login; /trust shows status; /recover KEY imports secrets from secure backup
+- /devices [USER] lists devices and keys
+- Rooms as #channels; DMs via /msg and /query
+- /list searches the public room directory; spaces are tagged
+- /join (alias or room id), /part, /topic, /invite, /kick, /op, /deop (power levels), /names, /who, /whois
+- Presence: away/online sent and shown
+- History backfill when a window opens
+- Not supported (yet): threads, reactions, edits, read receipts, typing notifications, media upload/download
+
+### Login
+- Password (prompted, or password_file in the config)
+- SSO (single sign-on via browser)
+- OAuth 2.0 / next-gen Matrix auth (MSC3861) with a local loopback redirect
+- Device link: OAuth 2.0 device authorization grant (RFC 8628) - the terminal shows a URL and a code; approve in any browser (works over ssh / headless)
+- Proactive token refresh; session.json shared safely between processes via a lock file
+
+### IRC / BitchX
+- /slap NICK: the BitchX "Brown Cow" slap, sent as /me
+- /mircslap NICK: the classic "large trout" slap, sent as /me
+- /away [msg] and /back; AWAY_NICK swaps the display name (default %n^afk)
+- AUTO_AWAY: auto-away after AUTO_AWAY_TIME seconds idle (default 600) with AUTO_AWAY_MSG
+- /me (/action), /channels, /window next|prev, /clear, /close, /quit, /version, /help
+- /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY, BEEP
+- /theme with live preview: 62 iamb themes plus 'terminal'
+- /ctcp, /mode, /ignore are recognised but report "Not supported on Matrix"
+
+## Links
+- [Source repository](https://github.com/jpzk/iambitchx)
+- [Releases](https://github.com/jpzk/iambitchx/releases)
+- [Security policy](https://github.com/jpzk/iambitchx/blob/main/SECURITY.md)
+- [README](https://github.com/jpzk/iambitchx/blob/main/README.md)
+- [Frontend docs](https://github.com/jpzk/iambitchx/blob/main/docs/bitchx-frontend.md)
+- [Release and verification notes](https://github.com/jpzk/iambitchx/blob/main/docs/release.md)
+- [Website](https://jpzk.github.io/iambitchx/)
