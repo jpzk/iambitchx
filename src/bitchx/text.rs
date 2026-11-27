@@ -12,6 +12,7 @@
 //!   bodies keep their newlines (multi-line messages are legitimate); the
 //!   formatter indents their continuation rows under the text.
 
+use crate::bitchx::channels::ListEntry;
 use crate::bitchx::model::{Line, RoomSnapshot, Run};
 
 /// Unicode general category `Cf` (format characters, Unicode 15.1): bidi
@@ -154,6 +155,45 @@ pub(crate) fn clean_snapshot(mut snap: RoomSnapshot) -> RoomSnapshot {
     snap
 }
 
+/// Remote text that is printed straight to the terminal, outside the TUI
+/// (login errors, the device-link instructions): the [`one_line`] filter
+/// (ESC/CSI/OSC/BEL/CR/LF and every other C0/C1 control become a space, bidi
+/// and zero-width characters are dropped) plus token masking, so a
+/// homeserver can neither drive the terminal nor echo a token onto it
+/// (AUTH-3, AUTH-16, AUTH-17).
+pub(crate) fn terminal_text(s: &str) -> String {
+    crate::debug_tap::redact_text(&one_line(s))
+}
+
+/// A `/list` directory entry from the Matrix side: every remote field kept
+/// on one line (F-04).
+pub(crate) fn clean_list_entry(mut e: ListEntry) -> ListEntry {
+    e.alias = opt(e.alias);
+    e.room_id = one_line(&e.room_id);
+    e.name = opt(e.name);
+    e.topic = opt(e.topic);
+    e
+}
+
+/// Hostile remote payloads for the sanitiser regression tests: a screen
+/// clear (CSI), an OSC 52 clipboard write, a bare BEL, a bidi override (RLO)
+/// and an embedded LF that would start a forged row.
+#[cfg(test)]
+pub(crate) const HOSTILE: &[&str] = &[
+    "\u{1b}[2J",
+    "\u{1b}]52;c;ZXZpbA==\u{7}",
+    "\u{7}",
+    "evil\u{202E}gnp.exe",
+    "x\n -:- bob is now verified",
+];
+
+/// Panics unless `s` is inert on a terminal: no C0/C1 control (ESC, BEL,
+/// CR, LF, ...), no line/paragraph separator, no bidi or zero-width
+/// character.
+#[cfg(test)]
+pub(crate) fn assert_inert(s: &str) {
+    assert!(!s.chars().any(|c| is_break(c) || is_format(c)), "not inert: {s:?}");
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -219,5 +259,26 @@ mod tests {
                 text: "a\nb".into()
             }
         );
+    }
+
+    #[test]
+    fn test_terminal_text_neutralises_hostile_payloads() {
+        for p in HOSTILE {
+            assert_inert(&terminal_text(p));
+        }
+        assert_eq!(terminal_text("evil\u{202E}gnp.exe"), "evilgnp.exe");
+        assert_eq!(terminal_text("a\nb"), "a b");
+    }
+
+    /// AUTH-3: the text `login.rs` prints after "Login failed: " is the
+    /// error chain, which carries the server's `error_description`.
+    #[test]
+    fn test_auth3_login_failed_error_text_is_sanitised() {
+        for p in HOSTILE {
+            let e = anyhow::anyhow!("token endpoint error invalid_grant: {p} mat_S3CRETtoken");
+            let shown = terminal_text(&e.to_string());
+            assert_inert(&shown);
+            assert!(!shown.contains("S3CRET"), "{shown}");
+        }
     }
 }
