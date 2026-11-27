@@ -118,7 +118,10 @@ pub async fn restore(
         return Ok(false);
     };
 
-    let session: AuthSession = settings.read_session(path)?.into();
+    // CONF-2: read_session refuses a session saved for another homeserver.
+    let saved = settings.read_session(path)?;
+    let legacy = saved.is_legacy();
+    let session: AuthSession = saved.into();
     if mode.may_write() {
         install_session_callbacks(client, settings, &session).await?;
     }
@@ -127,7 +130,19 @@ pub async fn restore(
     let mut attempts = 0;
     loop {
         match client.whoami().await {
-            Ok(_) => return Ok(true),
+            Ok(_) => {
+                // CONF-2: an older session.json has no homeserver; record the
+                // one it was just verified against.
+                if legacy && mode.may_write() {
+                    let _lock = SessionLock::acquire_async(
+                        settings.session_json.clone(),
+                        Duration::from_secs(30),
+                    )
+                    .await?;
+                    settings.backfill_homeserver(path)?;
+                }
+                return Ok(true);
+            },
             Err(e) if is_unknown_token_http(&e) => {
                 if !mode.may_write() {
                     anyhow::bail!(session_guard::smoke_rejected_msg(&settings.session_json));

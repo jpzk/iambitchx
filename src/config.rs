@@ -75,6 +75,10 @@ pub struct Session {
     device_id: OwnedDeviceId,
     #[serde(skip_serializing_if = "Option::is_none")]
     client_id: Option<ClientId>,
+    /// The homeserver the tokens were issued for (CONF-2). Absent in sessions
+    /// saved by older versions; recorded on the first successful restore.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    homeserver: Option<Url>,
 }
 
 impl Session {
@@ -84,6 +88,11 @@ impl Session {
             access_token: self.access_token.clone(),
             refresh_token: self.refresh_token.clone(),
         }
+    }
+
+    /// Whether this session was saved without its homeserver (older format).
+    pub fn is_legacy(&self) -> bool {
+        self.homeserver.is_none()
     }
 }
 
@@ -116,6 +125,7 @@ impl From<MatrixSession> for Session {
             user_id: session.meta.user_id,
             device_id: session.meta.device_id,
             client_id: None,
+            homeserver: None,
         }
     }
 }
@@ -128,6 +138,7 @@ impl From<OAuthSession> for Session {
             user_id: session.user.meta.user_id,
             device_id: session.user.meta.device_id,
             client_id: Some(session.client_id),
+            homeserver: None,
         }
     }
 }
@@ -405,23 +416,64 @@ impl ApplicationSettings {
         Ok(())
     }
 
-    #[allow(
-        clippy::unused_self,
-        reason = "method form is called by the backend login.rs under a no-edit policy"
-    )]
+    /// The homeserver this profile is configured for: `url`, or the user's
+    /// server name (the same fallback [`crate::login::create_client`] uses).
+    pub(crate) fn configured_homeserver(&self) -> anyhow::Result<Url> {
+        match &self.url {
+            Some(url) => Ok(url.clone()),
+            None => Ok(Url::parse(&format!("https://{}/", self.user_id.server_name()))?),
+        }
+    }
+
+    /// Read a saved session. Refuses (before any token is used) a session
+    /// that was saved for a different homeserver than the configured one
+    /// (CONF-2).
     pub(crate) fn read_session(&self, path: &Path) -> anyhow::Result<Session> {
         let reader = BufReader::new(File::open(path)?);
-        Ok(serde_json::from_reader(reader)?)
+        let session: Session = serde_json::from_reader(reader)?;
+        if let Some(saved) = &session.homeserver {
+            let configured = self.configured_homeserver()?;
+            if *saved != configured {
+                anyhow::bail!(
+                    "{} was saved for homeserver {saved}, but the profile is configured for \
+                     {configured}; refusing to send the saved token there. Fix `url` in the \
+                     config, or log in again after removing the session file.",
+                    path.display()
+                );
+            }
+        }
+        Ok(session)
+    }
+
+    /// Record the configured homeserver in a session saved by an older
+    /// version, after it was verified against that server. Callers hold the
+    /// [`crate::session_guard::SessionLock`].
+    ///
+    /// Reads `session.json` (or `old`, the legacy location, if there is no
+    /// `session.json` yet) and writes `session.json`.
+    pub(crate) fn backfill_homeserver(&self, old: &Path) -> anyhow::Result<()> {
+        let path = if self.session_json.is_file() {
+            &self.session_json
+        } else {
+            old
+        };
+        let session = self.read_session(path)?;
+        if session.is_legacy() {
+            self.write_session(session)?;
+        }
+        Ok(())
     }
 
     /// Write `session.json` atomically (temp file + rename), so a concurrent
     /// reader never sees a half-written file. Callers hold the
     /// [`crate::session_guard::SessionLock`].
     pub(crate) fn write_session(&self, session: impl Into<Session>) -> anyhow::Result<()> {
+        let mut session: Session = session.into();
+        session.homeserver = Some(self.configured_homeserver()?);
         let tmp = self.session_json.with_extension("json.tmp");
         {
             let mut writer = BufWriter::new(File::create(&tmp)?);
-            serde_json::to_writer(&mut writer, &session.into())?;
+            serde_json::to_writer(&mut writer, &session)?;
             writer.flush()?;
             writer.get_ref().sync_all()?;
         }
@@ -511,6 +563,96 @@ mod tests {
         assert_eq!(s.user_id.as_str(), "@carla:home-srv.test");
         assert_eq!(s.session_json, base.join("iamb/profiles/carla/session.json"));
         assert_eq!(s.sqlite_dir, base.join("iamb/profiles/carla/sqlite"));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    const LEGACY_SESSION: &str = r#"{"access_token":"tok","refresh_token":null,"user_id":"@carla:home-srv.test","device_id":"DEV"}"#;
+
+    fn settings_with_url(base: &Path, url: Option<&str>) -> ApplicationSettings {
+        let url = url.map(|u| format!("url = \"{u}\"\n")).unwrap_or_default();
+        let cfg = Config::parse_toml(&format!(
+            "default_profile = \"carla\"\n\
+             [profiles.carla]\n\
+             user_id = \"@carla:home-srv.test\"\n\
+             {url}\
+             [settings]\n\
+             [settings.tunables]\n\
+             frontend = \"bitchx\"\n\
+             [settings.image_preview]\n",
+        ))
+        .unwrap();
+        let s = ApplicationSettings::resolve(
+            cfg,
+            &base.join("cfg"),
+            None,
+            Some(base.to_path_buf()),
+            Some(base.join("cache")),
+        )
+        .unwrap();
+        std::fs::create_dir_all(s.session_json.parent().unwrap()).unwrap();
+        s
+    }
+
+    #[test]
+    fn test_session_without_homeserver_still_parses() {
+        // CONF-2: the new field is optional; old session.json files still load.
+        let s: Session = serde_json::from_str(LEGACY_SESSION).unwrap();
+        assert!(s.is_legacy());
+        assert!(!serde_json::to_string(&s).unwrap().contains("homeserver"));
+    }
+
+    #[test]
+    fn test_write_session_records_homeserver() {
+        let base = scratch_dir("hs-write");
+        let s = settings_with_url(&base, Some("https://matrix.home-srv.test/"));
+        let legacy: Session = serde_json::from_str(LEGACY_SESSION).unwrap();
+        s.write_session(legacy).unwrap();
+        let saved = s.read_session(&s.session_json).unwrap();
+        assert_eq!(
+            saved.homeserver.as_ref().map(Url::as_str),
+            Some("https://matrix.home-srv.test/")
+        );
+
+        // Without `url`, the user's server name is recorded.
+        let s = settings_with_url(&base, None);
+        let legacy: Session = serde_json::from_str(LEGACY_SESSION).unwrap();
+        s.write_session(legacy).unwrap();
+        let saved = s.read_session(&s.session_json).unwrap();
+        assert_eq!(saved.homeserver.as_ref().map(Url::as_str), Some("https://home-srv.test/"));
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_read_session_refuses_other_homeserver() {
+        // CONF-2: a config pointing `url` elsewhere must not receive the token.
+        let base = scratch_dir("hs-refuse");
+        let good = settings_with_url(&base, Some("https://matrix.home-srv.test/"));
+        let legacy: Session = serde_json::from_str(LEGACY_SESSION).unwrap();
+        good.write_session(legacy).unwrap();
+
+        let evil = settings_with_url(&base, Some("http://evil.test/"));
+        let err = evil.read_session(&evil.session_json).unwrap_err().to_string();
+        assert!(err.contains("refusing"), "{err}");
+        assert!(settings_with_url(&base, None).read_session(&good.session_json).is_err());
+        assert!(good.read_session(&good.session_json).is_ok());
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn test_backfill_homeserver_pins_legacy_session() {
+        let base = scratch_dir("hs-backfill");
+        let s = settings_with_url(&base, Some("https://matrix.home-srv.test/"));
+        std::fs::write(&s.session_json, LEGACY_SESSION).unwrap();
+        // A legacy session has nothing to compare against yet.
+        let evil = settings_with_url(&base, Some("http://evil.test/"));
+        assert!(evil.read_session(&evil.session_json).unwrap().is_legacy());
+
+        s.backfill_homeserver(&s.session_json_old).unwrap();
+        let saved = s.read_session(&s.session_json).unwrap();
+        assert!(!saved.is_legacy());
+        assert_eq!(saved.tokens().access_token, "tok");
+        // Once pinned, a different homeserver is refused.
+        assert!(evil.read_session(&evil.session_json).is_err());
         std::fs::remove_dir_all(&base).unwrap();
     }
 
