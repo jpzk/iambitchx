@@ -7,6 +7,7 @@ use ratatui::text::{Line as TLine, Span};
 use unicode_width::UnicodeWidthChar;
 
 use crate::bitchx::model::{Ink, Line, PresenceMark};
+use crate::bitchx::palette::pal;
 
 pub(crate) fn fg(c: Color) -> Style {
     Style::default().fg(c)
@@ -16,24 +17,29 @@ pub(crate) fn bold(c: Color) -> Style {
     fg(c).add_modifier(Modifier::BOLD)
 }
 
-/// `%n`: the terminal's default colours.
+/// A foreground colour, or the terminal default for `None`.
+pub(crate) fn opt_fg(c: Option<Color>) -> Style {
+    c.map_or_else(Style::default, fg)
+}
+
+/// `%n`: plain text, the terminal's default colours unless the palette sets one.
 pub(crate) fn n() -> Style {
-    Style::default()
+    opt_fg(pal().text)
 }
 
 /// `%K`: dark gray (bold black).
 pub(crate) fn k() -> Style {
-    bold(Color::DarkGray)
+    bold(pal().punct)
 }
 
 /// `%W`: bold bright white.
 pub(crate) fn w() -> Style {
-    bold(Color::White)
+    bold(pal().bright)
 }
 
 /// `%c`: cyan.
 pub(crate) fn c() -> Style {
-    fg(Color::Cyan)
+    fg(pal().accent)
 }
 
 /// Replace control characters (escape sequences, newlines) with spaces and
@@ -50,12 +56,12 @@ pub(crate) fn sp(text: impl Into<String>, style: Style) -> Span<'static> {
 pub(crate) fn ink_color(ink: Ink) -> Option<Color> {
     Some(match ink {
         Ink::Default => return None,
-        Ink::Black => Color::Black,
-        Ink::Red => Color::Red,
-        Ink::Blue => Color::Blue,
-        Ink::Magenta => Color::Magenta,
-        Ink::Cyan => Color::Cyan,
-        Ink::White => Color::White,
+        Ink::Black => pal().logo_ink[0],
+        Ink::Red => pal().logo_ink[1],
+        Ink::Blue => pal().logo_ink[2],
+        Ink::Magenta => pal().logo_ink[3],
+        Ink::Cyan => pal().logo_ink[4],
+        Ink::White => pal().logo_ink[5],
     })
 }
 
@@ -107,13 +113,13 @@ pub(crate) fn hl_text() -> Style {
 /// stands out in a busy channel. Lines without an AR form get the text
 /// highlight only.
 fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
-    let y = bold(Color::Yellow);
+    let y = bold(pal().highlight);
     Some(match line {
         Line::Public { nick, own: false, text } => {
             let prefix = vec![
-                sp("<", fg(Color::Blue)),
+                sp("<", fg(pal().nick)),
                 sp(nick.clone(), y),
-                sp(">", fg(Color::Blue)),
+                sp(">", fg(pal().nick)),
                 sp(" ", n()),
             ];
             body_lines(&prefix, text, hl_text())
@@ -137,7 +143,7 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
                 sp("-", k()),
                 sp(nick.clone(), y),
                 sp("(", k()),
-                sp(mxid.clone(), fg(Color::Magenta)),
+                sp(mxid.clone(), fg(pal().query_in)),
                 sp(")-", k()),
                 sp(" ", n()),
             ];
@@ -158,9 +164,9 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         // our own lines and bold blue for everyone else.
         Line::Public { nick, own, text } => {
             let bracket = if *own {
-                bold(Color::Magenta)
+                bold(pal().own_nick)
             } else {
-                bold(Color::Blue)
+                bold(pal().nick)
             };
             let prefix = vec![
                 sp("<", bracket),
@@ -176,7 +182,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             let who = if *own {
                 sp(format!("{nick} "), w())
             } else {
-                sp(format!("{nick}/{chan} "), bold(Color::Yellow))
+                sp(format!("{nick}/{chan} "), bold(pal().highlight))
             };
             body_lines(&[sp(" ", k()), who], text, n())
         },
@@ -187,18 +193,18 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             let prefix = if *own {
                 vec![
                     sp("[", k()),
-                    sp("msg", fg(Color::Red)),
+                    sp("msg", fg(pal().query_out)),
                     sp("(", k()),
-                    sp(nick.clone(), bold(Color::Red)),
+                    sp(nick.clone(), bold(pal().query_out)),
                     sp(")]", k()),
                     sp(" ", n()),
                 ]
             } else {
                 vec![
                     sp("[", k()),
-                    sp(nick.clone(), bold(Color::Magenta)),
+                    sp(nick.clone(), bold(pal().query_in)),
                     sp("(", k()),
-                    sp(mxid.clone(), fg(Color::Magenta)),
+                    sp(mxid.clone(), fg(pal().query_in)),
                     sp(")]", k()),
                     sp(" ", n()),
                 ]
@@ -209,9 +215,9 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         Line::Notice { nick, mxid, text } => {
             let prefix = vec![
                 sp("-", k()),
-                sp(nick.clone(), fg(Color::Magenta)),
+                sp(nick.clone(), fg(pal().query_in)),
                 sp("(", k()),
-                sp(mxid.clone(), fg(Color::Magenta)),
+                sp(mxid.clone(), fg(pal().query_in)),
                 sp(")-", k()),
                 sp(" ", n()),
             ];
@@ -220,7 +226,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         // ` nick [mxid] has joined #chan`: nick bold cyan, host cyan.
         Line::Join { nick, mxid } => {
             vec![g_line(vec![
-                sp(format!("{nick} "), bold(Color::Cyan)),
+                sp(format!("{nick} "), bold(pal().join)),
                 sp("[", k()),
                 sp(mxid.clone(), c()),
                 sp("]", k()),
@@ -309,7 +315,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 Some(v) => {
                     vec![
                         sp(format!("    {name:<27} "), k()),
-                        sp(v.clone(), fg(Color::Gray)),
+                        sp(v.clone(), fg(pal().value)),
                     ]
                 },
                 None => vec![sp(format!("    {name} has no value"), k())],
@@ -325,17 +331,17 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             sp(format!(": {text}"), n()),
         ])],
         Line::Debug { cat, text } => {
-            let mut spans = vec![sp("DBG", fg(Color::Magenta).add_modifier(Modifier::BOLD))];
+            let mut spans = vec![sp("DBG", fg(pal().debug).add_modifier(Modifier::BOLD))];
             if !cat.is_empty() {
-                spans.push(sp(format!(" {cat}"), fg(Color::Magenta)));
+                spans.push(sp(format!(" {cat}"), fg(pal().debug)));
             }
-            spans.push(sp(format!(" {text}"), fg(Color::DarkGray)));
+            spans.push(sp(format!(" {text}"), fg(pal().debug_text)));
             vec![g_line(spans)]
         },
         Line::Undecryptable { nick, reason } => {
             vec![g_line(vec![
                 sp("[", k()),
-                sp(format!("unable to decrypt: {reason}"), fg(Color::LightRed)),
+                sp(format!("unable to decrypt: {reason}"), fg(pal().error)),
                 sp("]", k()),
                 sp(" from ", n()),
                 sp(nick.clone(), c()),
@@ -352,14 +358,14 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         Line::Logo(text) => {
             vec![TLine::from(sp(
                 text.clone(),
-                bold(Color::Blue).add_modifier(Modifier::ITALIC),
+                bold(pal().logo).add_modifier(Modifier::ITALIC),
             ))]
         },
         // The logo's shadow/fade rows: blue, dimmed, no italic.
         Line::LogoDim(text) => {
             vec![TLine::from(sp(
                 text.clone(),
-                fg(Color::Blue).add_modifier(Modifier::DIM),
+                fg(pal().logo).add_modifier(Modifier::DIM),
             ))]
         },
         // The splash art in the original's own colours: one span per run.
@@ -384,10 +390,10 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         },
         // ` [Users(#chan:n/m)]` (capture 25).
         Line::Users { chan, shown, total } => {
-            let gr = fg(Color::Green);
+            let gr = fg(pal().good);
             vec![g_line(vec![
                 sp("[", k()),
-                sp("Users", bold(Color::Green)),
+                sp("Users", bold(pal().good)),
                 sp("(", k()),
                 sp(chan.clone(), gr),
                 sp(":", k()),
@@ -406,9 +412,9 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                     spans.push(sp(" ", n()));
                 }
                 let (fs, ns) = match flag {
-                    '@' => (bold(Color::Cyan), w()),
-                    '+' => (bold(Color::Green), bold(Color::Blue)),
-                    _ => (k(), bold(Color::Blue)),
+                    '@' => (bold(pal().op), w()),
+                    '+' => (bold(pal().good), bold(pal().nick)),
+                    _ => (k(), bold(pal().nick)),
                 };
                 spans.push(sp("[", k()));
                 spans.push(sp(flag.to_string(), fs));
@@ -430,14 +436,14 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         // The fading green/grey ruler that opens a WHOIS (capture 26).
         Line::WhoisRule => {
             vec![TLine::from(vec![
-                sp("------", bold(Color::Green)),
-                sp("------", fg(Color::Green)),
+                sp("------", bold(pal().good)),
+                sp("------", fg(pal().good)),
                 sp("--- --  -", k()),
             ])]
         },
         Line::WhoisNick { nick, mxid, info } => {
             vec![TLine::from(vec![
-                sp("| ", bold(Color::Green)),
+                sp("| ", bold(pal().good)),
                 sp(nick.clone(), w()),
                 sp(" (", k()),
                 sp(mxid.clone(), n()),
@@ -468,8 +474,8 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 _ => "| ",
             };
             let ls = match row {
-                0 | 1 => bold(Color::Green),
-                2 => fg(Color::Green),
+                0 | 1 => bold(pal().good),
+                2 => fg(pal().good),
                 _ => k(),
             };
             let mut chars = key.chars();
@@ -488,7 +494,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
 /// A presence marker `zZzZ 4h` / `off 2d`: green zZzZ like `STATUS_AWAY`,
 /// grey `off`, the age in the default colour.
 pub(crate) fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
-    let word = if mark.offline { k() } else { fg(Color::Green) };
+    let word = if mark.offline { k() } else { fg(pal().good) };
     let mut out = vec![sp(mark.word(), word)];
     if let Some(age) = &mark.age {
         out.push(sp(format!(" {age}"), n()));

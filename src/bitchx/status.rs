@@ -4,46 +4,47 @@
 //! (`DOUBLE_STATUS_LINE`), built from the "default bx" `STATUS_FORMAT1` and
 //! `STATUS_FORMAT2` in BitchX1.3 `include/color.h`, with the expandos of
 //! `source/status.c`.
-use ratatui::style::{Color, Modifier as StyleModifier, Style};
+use ratatui::style::{Modifier as StyleModifier, Style};
 use ratatui::text::{Line, Span};
 
 use crate::bitchx::format::sp;
 use crate::bitchx::model::PresenceMark;
+use crate::bitchx::palette::pal;
 
-/// The status bar background (`ESC[44m`).
+/// The status bar background (`ESC[44m`), with the plain status text colour.
 pub(crate) fn status_bg() -> Style {
-    Style::default().bg(Color::Blue).fg(Color::Gray)
+    Style::default().bg(pal().status_bg).fg(pal().status_fg)
 }
 
 /// `ESC[0;44;36m`: cyan brackets on blue.
 fn st_punct() -> Style {
-    status_bg().fg(Color::Cyan)
+    status_bg().fg(pal().status_punct)
 }
 
 /// `ESC[1;37m`: bold bright white on blue.
-fn st_bright() -> Style {
-    status_bg().fg(Color::White).add_modifier(StyleModifier::BOLD)
+pub(crate) fn st_bright() -> Style {
+    status_bg().fg(pal().status_bright).add_modifier(StyleModifier::BOLD)
 }
 
 /// `ESC[0;44;37m`: white on blue.
 fn st_text() -> Style {
-    status_bg().fg(Color::Gray)
+    status_bg().fg(pal().status_fg)
 }
 
 /// `ESC[1;32m`: bold green on blue (the `zZzZ` of `STATUS_AWAY`).
 fn st_away() -> Style {
-    status_bg().fg(Color::Green).add_modifier(StyleModifier::BOLD)
+    status_bg().fg(pal().status_away).add_modifier(StyleModifier::BOLD)
 }
 
 /// A window with an unread mention in `Act:`: bold yellow on blue, as the
 /// `%Y` nick of the AR formats.
 pub(crate) fn st_hilite() -> Style {
-    status_bg().fg(Color::Yellow).add_modifier(StyleModifier::BOLD)
+    status_bg().fg(pal().status_hilite).add_modifier(StyleModifier::BOLD)
 }
 
 /// `[SYNC LOST]`: bold red on blue.
 fn st_alert() -> Style {
-    status_bg().fg(Color::LightRed).add_modifier(StyleModifier::BOLD)
+    status_bg().fg(pal().status_alert).add_modifier(StyleModifier::BOLD)
 }
 
 /// `%C` is cut to this many columns (`#bxrecon-0122` shows as `#bxrecon-0`).
