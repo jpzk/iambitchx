@@ -53,7 +53,12 @@ Type `/help` inside the client.
 `/join` `/part` `/list` `/names` `/who` `/whois` `/msg` `/query` `/me`
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/encrypt` `/verify`
-`/trust` `/devices` `/recover` `/version` `/quit`
+`/trust` `/devices` `/recover` `/theme` `/version` `/quit`
+
+Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
+and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),
+`terminal` (your terminal's own colours) and 62 bundled iamb themes; drop more
+`*.toml` into `~/.config/iambitchx/themes/`. See `docs/iambitchx.5` (THEMES).
 
 More: [docs/bitchx-frontend.md](docs/bitchx-frontend.md),
 [docs/bitchx-formats.md](docs/bitchx-formats.md).

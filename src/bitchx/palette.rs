@@ -293,10 +293,10 @@ impl ColorDepth {
     /// to the nearest one available; the named ANSI colours always fit.
     pub(crate) fn fit(self, c: Color) -> Color {
         match (self, c) {
-            (ColorDepth::TrueColor, c) => c,
             (ColorDepth::Indexed256, Color::Rgb(r, g, b)) => Color::Indexed(nearest256((r, g, b))),
             (ColorDepth::Ansi16, Color::Rgb(r, g, b)) => nearest16((r, g, b)),
             (ColorDepth::Ansi16, Color::Indexed(i)) => nearest16(index_rgb(i)),
+            // Truecolor shows everything; named colours fit everywhere.
             (_, c) => c,
         }
     }

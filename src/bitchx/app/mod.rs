@@ -776,6 +776,7 @@ impl App {
             BitchxCommand::Help => {
                 self.info(format!("iamBitchX commands: /{}", COMMAND_NAMES.join(" /")));
                 self.info("/theme [name]: colour themes, Up/Down preview, Enter keep, Esc cancel");
+                self.info("/theme terminal: use your terminal's own colours");
                 self.info(
                     "Keys: Alt-1..9 window, Ctrl-N/Ctrl-P next/prev, PgUp/PgDn scroll, Tab nick",
                 );
