@@ -16,7 +16,7 @@ use crate::bitchx::model::Line;
 
 /// The words that highlight a line, lowercased.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Matcher {
+pub(crate) struct Matcher {
     words: Vec<String>,
 }
 
@@ -27,7 +27,7 @@ fn wordy(c: char) -> bool {
 
 /// The `AUTO_REPLY` value split into words: comma separated, trimmed,
 /// empty entries dropped.
-pub fn split_words(list: &str) -> Vec<String> {
+pub(crate) fn split_words(list: &str) -> Vec<String> {
     list.split(',')
         .map(str::trim)
         .filter(|w| !w.is_empty())
@@ -36,7 +36,7 @@ pub fn split_words(list: &str) -> Vec<String> {
 }
 
 impl Matcher {
-    pub fn new(me: &UserId, display_name: Option<&str>, auto_reply: &str) -> Self {
+    pub(crate) fn new(me: &UserId, display_name: Option<&str>, auto_reply: &str) -> Self {
         let mut words: Vec<String> = vec![me.localpart().to_string(), me.to_string()];
         words.extend(display_name.map(str::trim).filter(|d| !d.is_empty()).map(str::to_string));
         words.extend(split_words(auto_reply));
@@ -48,14 +48,14 @@ impl Matcher {
 
     /// `text` contains one of the words on word boundaries. A leading `@`
     /// is a boundary, so `@carla` matches `carla`.
-    pub fn matches(&self, text: &str) -> bool {
+    pub(crate) fn matches(&self, text: &str) -> bool {
         let hay = text.to_lowercase();
         self.words.iter().any(|w| contains_word(&hay, w))
     }
 
     /// Whether `line` mentions us: someone else's message, notice or
     /// action whose text matches.
-    pub fn is_mention(&self, line: &Line) -> bool {
+    pub(crate) fn is_mention(&self, line: &Line) -> bool {
         match line {
             Line::Public { own: false, text, .. }
             | Line::Action { own: false, text, .. }

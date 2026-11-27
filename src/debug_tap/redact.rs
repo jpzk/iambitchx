@@ -7,7 +7,7 @@ use serde_json::Value;
 const MASK_STR: &str = "<redacted>";
 
 /// URL or path -> path only (scheme/host/query/fragment dropped).
-pub fn redact_path(url: &str) -> String {
+pub(super) fn redact_path(url: &str) -> String {
     let s = url.split(['?', '#']).next().unwrap_or("");
     let path = match s.find("://") {
         Some(i) => {
@@ -20,7 +20,7 @@ pub fn redact_path(url: &str) -> String {
 }
 
 /// Field names whose values must never be shown.
-pub fn is_secret_key(key: &str) -> bool {
+pub(super) fn is_secret_key(key: &str) -> bool {
     let k = key.to_ascii_lowercase();
     const NEEDLES: &[&str] = &[
         "token",
@@ -42,7 +42,7 @@ pub fn is_secret_key(key: &str) -> bool {
 
 /// Mask bare Matrix token strings (`mat_…`, `mar_…`, `syt_…`) and
 /// `Bearer …` values anywhere in free text.
-pub fn redact_text(s: &str) -> String {
+pub(super) fn redact_text(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     let b = s.as_bytes();
     let mut i = 0;
@@ -87,7 +87,7 @@ fn starts_with_ci(s: &str, p: &str) -> bool {
 
 /// Recursively redact a JSON value: secret-ish keys replaced, strings
 /// scrubbed of token patterns.
-pub fn redact_json(v: &Value) -> Value {
+pub(super) fn redact_json(v: &Value) -> Value {
     match v {
         Value::Object(m) => Value::Object(
             m.iter()
@@ -108,13 +108,13 @@ pub fn redact_json(v: &Value) -> Value {
 }
 
 /// Compact redacted JSON, truncated to `max` chars (with `…`).
-pub fn compact_json(v: &Value, max: usize) -> String {
+pub(super) fn compact_json(v: &Value, max: usize) -> String {
     let s = serde_json::to_string(&redact_json(v)).unwrap_or_default();
     truncate(&s, max)
 }
 
 /// Truncate to `max` chars, appending `…` when cut.
-pub fn truncate(s: &str, max: usize) -> String {
+pub(super) fn truncate(s: &str, max: usize) -> String {
     if s.chars().count() <= max {
         return s.to_string();
     }
@@ -124,7 +124,7 @@ pub fn truncate(s: &str, max: usize) -> String {
 }
 
 /// Shorten an opaque id like `s123_456_…` or `$abcdef…` to `head..`.
-pub fn short_id(s: &str, n: usize) -> String {
+pub(super) fn short_id(s: &str, n: usize) -> String {
     if s.chars().count() <= n {
         s.to_string()
     } else {

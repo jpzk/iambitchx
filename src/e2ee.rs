@@ -29,7 +29,7 @@ fn info(tx: &Tx, room_id: Option<OwnedRoomId>, text: String) {
 /// `m.key.verification.request` as a to-device event (device verification)
 /// and as an in-room `m.room.message` (user verification, e.g. Element's
 /// "Verify user" in a DM).
-pub fn register_verification_handlers(client: &Client, tx: Tx) {
+pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
     let to_device_tx = tx.clone();
     client.add_event_handler(move |ev: ToDeviceKeyVerificationRequestEvent, client: Client| {
         let tx = to_device_tx.clone();
@@ -65,7 +65,7 @@ pub fn register_verification_handlers(client: &Client, tx: Tx) {
 }
 
 /// Report a request and follow it: ready -> SAS -> emoji -> done/cancelled.
-pub fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
+pub(crate) fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
     let user = req.other_user_id().to_owned();
     update(
         &tx,
@@ -128,7 +128,7 @@ pub fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
 }
 
 /// Follow a SAS verification; accepts it if the other side started it.
-pub fn track_sas(sas: SasVerification, tx: Tx) {
+pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
     tokio::spawn(async move {
         let user = sas.other_user_id().to_owned();
         if !sas.we_started()
@@ -189,7 +189,7 @@ async fn sas_of(client: &Client, user: &UserId, flow_id: &str) -> anyhow::Result
 }
 
 /// `/verify accept|start|confirm|mismatch|cancel`.
-pub async fn verify(
+pub(crate) async fn verify(
     client: &Client,
     user: OwnedUserId,
     flow_id: Option<String>,
@@ -268,7 +268,7 @@ pub async fn verify(
 }
 
 /// `/devices <user>`: one `-:-` line per device with its verified flag.
-pub async fn devices(client: &Client, user: OwnedUserId, tx: &Tx) -> anyhow::Result<()> {
+pub(crate) async fn devices(client: &Client, user: OwnedUserId, tx: &Tx) -> anyhow::Result<()> {
     let enc = client.encryption();
     let own_device = client.device_id().map(ToOwned::to_owned);
     let devices = enc.get_user_devices(&user).await?;
@@ -300,7 +300,7 @@ pub async fn devices(client: &Client, user: OwnedUserId, tx: &Tx) -> anyhow::Res
 }
 
 /// `/trust`: our own cross-signing / recovery status.
-pub async fn trust(client: &Client, tx: &Tx) -> anyhow::Result<()> {
+pub(crate) async fn trust(client: &Client, tx: &Tx) -> anyhow::Result<()> {
     let enc = client.encryption();
     let yn = |b: bool| if b { "yes" } else { "NO" };
     match enc.cross_signing_status().await {
@@ -343,7 +343,7 @@ pub async fn trust(client: &Client, tx: &Tx) -> anyhow::Result<()> {
 
 /// `/recover <key>`: import secrets from secure backup, then bootstrap
 /// cross-signing if it is still missing. The key is never printed.
-pub async fn recover(client: &Client, key: Secret, tx: &Tx) -> anyhow::Result<()> {
+pub(crate) async fn recover(client: &Client, key: Secret, tx: &Tx) -> anyhow::Result<()> {
     let enc = client.encryption();
     enc.recovery()
         .recover(key.expose())
@@ -360,7 +360,7 @@ pub async fn recover(client: &Client, key: Secret, tx: &Tx) -> anyhow::Result<()
 }
 
 /// `/encrypt` (after y): enable megolm in the room. Irreversible.
-pub async fn enable_encryption(room: &Room, tx: &Tx) -> anyhow::Result<()> {
+pub(crate) async fn enable_encryption(room: &Room, tx: &Tx) -> anyhow::Result<()> {
     room.enable_encryption().await?;
     info(tx, Some(room.room_id().to_owned()), "End-to-end encryption enabled (megolm), +e".into());
     Ok(())

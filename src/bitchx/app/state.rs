@@ -10,13 +10,13 @@ use crate::bitchx::model::{Line, RoomSnapshot};
 pub(super) const MAX_LINES: usize = 2000;
 
 /// Now, in unix millis.
-pub fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
 /// One numbered window: the status window (no room) or a room.
 #[derive(Clone, Debug, Default)]
-pub struct Window {
+pub(crate) struct Window {
     pub room: RoomSnapshot,
     pub lines: Vec<Line>,
     /// When each of `lines` happened (unix millis): the event's
@@ -36,12 +36,12 @@ pub struct Window {
 }
 
 impl Window {
-    pub fn room_id(&self) -> Option<&OwnedRoomId> {
+    pub(crate) fn room_id(&self) -> Option<&OwnedRoomId> {
         self.room.room_id.as_ref()
     }
 
     /// The `#channel` shown in the prompt and status line.
-    pub fn channel(&self) -> Option<&str> {
+    pub(crate) fn channel(&self) -> Option<&str> {
         self.room.room_id.as_ref().map(|id| {
             if self.spoof {
                 id.as_str()
@@ -136,14 +136,14 @@ impl Window {
 
 /// A y/n question waiting for the next input line.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub enum Confirm {
+pub(crate) enum Confirm {
     /// `/encrypt` in this room.
     Encrypt(OwnedRoomId),
 }
 
 /// A key verification in progress with another user (or own device).
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PendingVerify {
+pub(crate) struct PendingVerify {
     pub user: OwnedUserId,
     pub flow_id: String,
     pub device: Option<String>,
@@ -157,12 +157,12 @@ pub struct PendingVerify {
 }
 
 /// DBG flood guard: at most this many DBG lines per second per window.
-pub const DBG_PER_SEC: u32 = 20;
+pub(crate) const DBG_PER_SEC: u32 = 20;
 
 /// The connect-time self-whois: its lines are swallowed, the `ircname` row
 /// becomes [`App::display_name`].
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub enum Probe {
+pub(crate) enum Probe {
     /// Not sent yet (sent on the first lag measurement, i.e. once online).
     #[default]
     Start,

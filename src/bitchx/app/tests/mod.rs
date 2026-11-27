@@ -8,19 +8,19 @@ use matrix_sdk::ruma::{owned_room_id, owned_user_id};
 use crate::bitchx::channels::{JoinTarget, ListArgs};
 use crate::bitchx::model::{Ink, MxEvent, RoomSnapshot, Run, VerifyUpdate, nick_of};
 
-pub fn key(code: KeyCode) -> KeyEvent {
+pub(crate) fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
 }
 
-pub fn ctrl(c: char) -> KeyEvent {
+pub(crate) fn ctrl(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::CONTROL)
 }
 
-pub fn alt(c: char) -> KeyEvent {
+pub(crate) fn alt(c: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(c), KeyModifiers::ALT)
 }
 
-pub fn member(id: &str, nick: &str, power: i64) -> Member {
+pub(crate) fn member(id: &str, nick: &str, power: i64) -> Member {
     Member {
         user_id: UserId::parse(id).unwrap(),
         nick: nick.into(),
@@ -28,7 +28,7 @@ pub fn member(id: &str, nick: &str, power: i64) -> Member {
     }
 }
 
-pub fn room(id: &str, name: &str) -> RoomSnapshot {
+pub(crate) fn room(id: &str, name: &str) -> RoomSnapshot {
     RoomSnapshot {
         room_id: Some(OwnedRoomId::try_from(id).unwrap()),
         name: name.into(),
@@ -42,7 +42,7 @@ pub fn room(id: &str, name: &str) -> RoomSnapshot {
 }
 
 /// An app with the status window and three rooms.
-pub fn app() -> App {
+pub(crate) fn app() -> App {
     let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::Compact);
     app.clock = Some("09:24pm".into());
     app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
@@ -53,7 +53,7 @@ pub fn app() -> App {
     app
 }
 
-pub fn typed(app: &mut App, s: &str) -> Vec<Effect> {
+pub(crate) fn typed(app: &mut App, s: &str) -> Vec<Effect> {
     for c in s.chars() {
         app.handle_key(key(KeyCode::Char(c)));
     }
@@ -66,7 +66,7 @@ fn last(app: &App) -> Line {
 
 /// A presence event for `user`, last active `ago` seconds before the
 /// app's fake monotonic clock.
-pub fn presence_ev(user: &OwnedUserId, state: &str, ago: Option<u64>) -> MxEvent {
+pub(crate) fn presence_ev(user: &OwnedUserId, state: &str, ago: Option<u64>) -> MxEvent {
     presence_at(user, state, ago, None, T_MONO.with(|t| *t))
 }
 

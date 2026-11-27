@@ -5,13 +5,13 @@
 //! argument parsing and the BitchX-style `/list` lines.
 
 /// How many public channels `/list` fetches at most.
-pub const LIST_MAX: usize = 100;
+pub(crate) const LIST_MAX: usize = 100;
 /// Widest channel column in `/list` output.
 const LIST_CHAN_MAX: usize = 24;
 
 /// A normalised `/join` target.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct JoinTarget {
+pub(crate) struct JoinTarget {
     /// `#alias:server` or `!roomid[:server]`.
     pub id: String,
     /// The server was filled in from our own homeserver (`/join #x`).
@@ -51,7 +51,7 @@ fn percent_decode(s: &str) -> String {
 /// - `#x` (or bare `x`) -> `#x:<own_server>`, flagged `implicit_server`
 /// - `#x:server`, `!id`, `!id:server` -> as is
 /// - `https://matrix.to/#/#x:server?via=a` (or `matrix.to/#/...`) -> `#x:server`, via `a`
-pub fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, String> {
+pub(crate) fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, String> {
     let t = target.trim();
     let mut via = vec![];
     let t: String = match t.split_once("matrix.to/#/") {
@@ -104,7 +104,7 @@ pub fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, Stri
 /// The window name a channel alias gets: `#x` on our own homeserver,
 /// `#x:server` elsewhere (matches `matrix::channel_name`).
 #[cfg(test)]
-pub fn short_name(alias: &str, own_server: &str) -> String {
+pub(crate) fn short_name(alias: &str, own_server: &str) -> String {
     match alias.strip_suffix(own_server).and_then(|a| a.strip_suffix(':')) {
         Some(short) if short.starts_with('#') => short.to_string(),
         _ => alias.to_string(),
@@ -112,20 +112,20 @@ pub fn short_name(alias: &str, own_server: &str) -> String {
 }
 
 /// The hint printed when `/join #x` (no server) found nothing on our server.
-pub fn not_found_hint(id: &str) -> String {
+pub(crate) fn not_found_hint(id: &str) -> String {
     let name = id.split(':').next().unwrap_or(id);
     format!("Cannot join channel {id} (no such channel) -- try /join {name}:server")
 }
 
 /// `/list [server] [-s text]`.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ListArgs {
+pub(crate) struct ListArgs {
     pub server: Option<String>,
     pub search: Option<String>,
 }
 
 /// Parse the words after `/list`.
-pub fn parse_list_args(rest: &str) -> Result<ListArgs, String> {
+pub(crate) fn parse_list_args(rest: &str) -> Result<ListArgs, String> {
     let mut args = ListArgs::default();
     let mut rest = rest.trim();
     while !rest.is_empty() {
@@ -155,7 +155,7 @@ pub fn parse_list_args(rest: &str) -> Result<ListArgs, String> {
 
 /// One public channel from the directory.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ListEntry {
+pub(crate) struct ListEntry {
     /// Canonical alias, if any.
     pub alias: Option<String>,
     pub room_id: String,
@@ -188,7 +188,7 @@ fn truncate(s: &str, width: usize) -> String {
 /// The BitchX `/list` output for `entries`, sorted by member count,
 /// biggest first, fitted to `width` columns (the `-:-`-style glyph prefix
 /// is not counted; `width` is the text width). Spaces are tagged `[space]`.
-pub fn list_lines(
+pub(crate) fn list_lines(
     server: &str,
     search: Option<&str>,
     entries: &[ListEntry],

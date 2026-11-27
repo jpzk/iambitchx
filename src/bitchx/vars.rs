@@ -33,10 +33,10 @@ use chrono::{DateTime, Local, TimeZone};
 use serde::Deserialize;
 
 /// `DEFAULT_TIMESTAMP_STR`, trailing space included.
-pub const DEFAULT_TIMESTAMP_STR: &str = "%I:%M%p ";
+pub(crate) const DEFAULT_TIMESTAMP_STR: &str = "%I:%M%p ";
 
 /// Every variable name, in `/set` listing order.
-pub const NAMES: &[&str] = &[
+pub(crate) const NAMES: &[&str] = &[
     "AUTO_AWAY",
     "AUTO_AWAY_MSG",
     "AUTO_AWAY_TIME",
@@ -52,29 +52,29 @@ pub const NAMES: &[&str] = &[
 ];
 
 /// `DEFAULT_AUTO_AWAY_TIME` (`include/config.h:407`), seconds.
-pub const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
+pub(crate) const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
 
 /// `AWAY_NICK` default: `%n` is the display name before going away.
-pub const DEFAULT_AWAY_NICK: &str = "%n^afk";
+pub(crate) const DEFAULT_AWAY_NICK: &str = "%n^afk";
 /// `AWAY_MSG` default, for `/away` without text.
-pub const DEFAULT_AWAY_MSG: &str = "away";
+pub(crate) const DEFAULT_AWAY_MSG: &str = "away";
 /// `AUTO_AWAY_MSG` default: `%t` is AUTO_AWAY_TIME in minutes.
-pub const DEFAULT_AUTO_AWAY_MSG: &str = "Auto-Away after %t mins";
+pub(crate) const DEFAULT_AUTO_AWAY_MSG: &str = "Auto-Away after %t mins";
 
 /// `AWAY_NICK` with `%n` replaced by `name`; `None` when empty (off).
-pub fn expand_away_nick(pattern: &str, name: &str) -> Option<String> {
+pub(crate) fn expand_away_nick(pattern: &str, name: &str) -> Option<String> {
     (!pattern.is_empty()).then(|| pattern.replace("%n", name))
 }
 
 /// `AUTO_AWAY_MSG` with `%t` replaced by `mins`.
-pub fn expand_auto_away_msg(pattern: &str, mins: u32) -> String {
+pub(crate) fn expand_auto_away_msg(pattern: &str, mins: u32) -> String {
     pattern.replace("%t", &mins.to_string())
 }
 
 /// The display name `name` came from if it already is an away nick made by
 /// `pattern` (a single `%n` with fixed text around it), e.g. `carla` for
 /// `carla afk` and `%n afk`. Used so suffixes never stack.
-pub fn strip_away_nick(pattern: &str, name: &str) -> Option<String> {
+pub(crate) fn strip_away_nick(pattern: &str, name: &str) -> Option<String> {
     let (pre, post) = pattern.split_once("%n")?;
     if post.contains("%n") || (pre.is_empty() && post.is_empty()) {
         return None;
@@ -85,7 +85,7 @@ pub fn strip_away_nick(pattern: &str, name: &str) -> Option<String> {
 
 /// `set_away_time` (`source/vars.c:1407-1418`): 0 disables, values under a
 /// minute are minutes, anything else under ten minutes becomes ten minutes.
-pub fn clamp_away_time(value: u32) -> u32 {
+pub(crate) fn clamp_away_time(value: u32) -> u32 {
     if value == 0 {
         0
     } else if value / 60 == 0 {
@@ -99,7 +99,7 @@ pub fn clamp_away_time(value: u32) -> u32 {
 
 /// `[settings.bitchx]` as found in the config file.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq)]
-pub struct BitchxConfig {
+pub(crate) struct BitchxConfig {
     pub auto_away: Option<bool>,
     pub auto_away_time: Option<u32>,
     pub auto_away_msg: Option<String>,
@@ -116,7 +116,7 @@ pub struct BitchxConfig {
 }
 
 impl BitchxConfig {
-    pub fn merge(self, other: Self) -> Self {
+    pub(crate) fn merge(self, other: Self) -> Self {
         BitchxConfig {
             auto_away: self.auto_away.or(other.auto_away),
             auto_away_time: self.auto_away_time.or(other.auto_away_time),
@@ -137,7 +137,7 @@ impl BitchxConfig {
 
 /// The live values.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct Vars {
+pub(crate) struct Vars {
     pub auto_away: bool,
     /// Seconds; 0 disables.
     pub auto_away_time: u32,
@@ -184,7 +184,7 @@ impl Default for Vars {
 
 /// `DEBUG_FILTER` categories, in display order (`ephemeral` = receipts and
 /// typing, `todevice` = to-device events).
-pub const DEBUG_CATEGORIES: &[&str] = &[
+pub(crate) const DEBUG_CATEGORIES: &[&str] = &[
     "http",
     "sync",
     "event",
@@ -195,13 +195,13 @@ pub const DEBUG_CATEGORIES: &[&str] = &[
     "todevice",
 ];
 /// `DEBUG_FILTER` value meaning every category.
-pub const DEBUG_ALL: &str = "all";
+pub(crate) const DEBUG_ALL: &str = "all";
 
 /// Normalize a `DEBUG_FILTER` value: a comma (or space) separated list of
 /// [`DEBUG_CATEGORIES`], any case, deduplicated and in canonical order.
 /// Empty, `all` or `*` mean every category and normalize to `all`, as does a
 /// list naming all of them.
-pub fn parse_debug_filter(value: &str) -> Result<String, String> {
+pub(crate) fn parse_debug_filter(value: &str) -> Result<String, String> {
     let mut on = [false; 8];
     let mut any = false;
     for w in value.split([',', ' ']).map(str::trim).filter(|w| !w.is_empty()) {
@@ -241,7 +241,7 @@ fn boolean(value: &str, cur: bool) -> Option<bool> {
 }
 
 /// `strftime` with chrono; `None` if the format is invalid.
-pub fn strftime<Tz: TimeZone>(fmt: &str, dt: &DateTime<Tz>) -> Option<String>
+pub(crate) fn strftime<Tz: TimeZone>(fmt: &str, dt: &DateTime<Tz>) -> Option<String>
 where
     Tz::Offset: std::fmt::Display,
 {
@@ -252,7 +252,7 @@ where
 
 /// Resolve a (case-insensitive, possibly abbreviated) name like BitchX:
 /// an exact match wins, else a unique prefix.
-pub fn lookup(name: &str) -> Result<&'static str, String> {
+pub(crate) fn lookup(name: &str) -> Result<&'static str, String> {
     let up = name.to_uppercase();
     if let Some(n) = NAMES.iter().find(|n| **n == up) {
         return Ok(n);
@@ -266,7 +266,7 @@ pub fn lookup(name: &str) -> Result<&'static str, String> {
 }
 
 impl Vars {
-    pub fn from_config(c: &BitchxConfig) -> Self {
+    pub(crate) fn from_config(c: &BitchxConfig) -> Self {
         let d = Vars::default();
         Vars {
             auto_away: c.auto_away.unwrap_or(d.auto_away),
@@ -290,7 +290,7 @@ impl Vars {
     }
 
     /// The value as `/set` shows it; `None` for an empty string ("has no value").
-    pub fn get(&self, name: &str) -> Option<String> {
+    pub(crate) fn get(&self, name: &str) -> Option<String> {
         match name {
             "AUTO_AWAY" => Some(if self.auto_away { "ON" } else { "OFF" }.to_string()),
             "AUTO_AWAY_TIME" => Some(self.auto_away_time.to_string()),
@@ -309,7 +309,7 @@ impl Vars {
     }
 
     /// Set a canonical `name` (see [`lookup`]).
-    pub fn set(&mut self, name: &str, value: &str) -> Result<(), String> {
+    pub(crate) fn set(&mut self, name: &str, value: &str) -> Result<(), String> {
         match name {
             "AUTO_AWAY" => {
                 self.auto_away = boolean(value, self.auto_away)
@@ -367,7 +367,7 @@ impl Vars {
 
     /// The `%@` stamp for an event at `ts_ms` (unix millis), in local time;
     /// `None` when `TIMESTAMP` is off.
-    pub fn stamp(&self, ts_ms: i64) -> Option<String> {
+    pub(crate) fn stamp(&self, ts_ms: i64) -> Option<String> {
         if !self.timestamp {
             return None;
         }
@@ -378,7 +378,7 @@ impl Vars {
     /// Write the values into `[settings.bitchx]` of the TOML file at `path`,
     /// creating file and tables when missing and keeping every other key.
     /// (Comments are not preserved: the file is re-serialized.)
-    pub fn persist(&self, path: &Path) -> anyhow::Result<()> {
+    pub(crate) fn persist(&self, path: &Path) -> anyhow::Result<()> {
         use toml::{Table, Value};
 
         let mut doc: Table = match std::fs::read_to_string(path) {

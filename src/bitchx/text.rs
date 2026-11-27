@@ -43,7 +43,7 @@ const CF: &[(u32, u32)] = &[
 
 /// A `Cf` (format) character: invisible, but it changes how text around it
 /// is shown (bidi) or compared (zero-width).
-pub fn is_format(c: char) -> bool {
+pub(crate) fn is_format(c: char) -> bool {
     let c = c as u32;
     CF.iter().any(|&(lo, hi)| (lo..=hi).contains(&c))
 }
@@ -56,7 +56,7 @@ fn is_break(c: char) -> bool {
 
 /// A remote one-line field (nick, display name, topic, room name, reason):
 /// format characters dropped, controls and line breaks become spaces.
-pub fn one_line(s: &str) -> String {
+pub(crate) fn one_line(s: &str) -> String {
     s.chars()
         .filter(|c| !is_format(*c))
         .map(|c| if is_break(c) { ' ' } else { c })
@@ -65,7 +65,7 @@ pub fn one_line(s: &str) -> String {
 
 /// A remote message body: format characters dropped, `\n` kept (U+2028 /
 /// U+2029 / `\r\n` normalised to it), every other control a space.
-pub fn body(s: &str) -> String {
+pub(crate) fn body(s: &str) -> String {
     s.replace("\r\n", "\n")
         .chars()
         .filter(|c| !is_format(*c))
@@ -85,7 +85,7 @@ fn opt(s: Option<String>) -> Option<String> {
 /// A line that came from the Matrix side: every remote field cleaned.
 /// Bodies keep newlines; `Info`/`Error` lines are one line each (a remote
 /// room name or server error must not add lines of its own).
-pub fn clean_line(line: Line) -> Line {
+pub(crate) fn clean_line(line: Line) -> Line {
     let o = |s: String| one_line(&s);
     match line {
         Line::Public { nick, own, text } => Line::Public { nick: o(nick), own, text: body(&text) },
@@ -146,7 +146,7 @@ pub fn clean_line(line: Line) -> Line {
 
 /// A room snapshot from the Matrix side: name, topic and member nicks
 /// cleaned.
-pub fn clean_snapshot(mut snap: RoomSnapshot) -> RoomSnapshot {
+pub(crate) fn clean_snapshot(mut snap: RoomSnapshot) -> RoomSnapshot {
     snap.name = one_line(&snap.name);
     snap.topic = opt(snap.topic);
     for m in &mut snap.members {

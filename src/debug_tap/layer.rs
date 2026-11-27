@@ -43,7 +43,7 @@ fn relevant(m: &Metadata<'_>) -> bool {
 
 /// The layer to stack on the registry in `setup_logging`. Carries its own
 /// per-layer filter, so it never changes what the file logger records.
-pub fn layer<S>() -> impl Layer<S>
+pub(crate) fn layer<S>() -> impl Layer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -156,7 +156,7 @@ impl Visit for Msg {
 }
 
 /// Which category an HTTP request belongs to (by path).
-pub fn http_cat(path: &str) -> Cat {
+pub(super) fn http_cat(path: &str) -> Cat {
     const CRYPTO: [&str; 4] = [
         "/keys/",
         "/sendToDevice/",
@@ -175,7 +175,7 @@ pub fn http_cat(path: &str) -> Cat {
 
 /// `Debug` of a `Duration` (`1.203456s`, `152.3ms`, `850µs`) -> `1.2s`,
 /// `152ms`, `<1ms`.
-pub fn short_duration(s: &str) -> String {
+pub(super) fn short_duration(s: &str) -> String {
     let i = s.find(|c: char| !(c.is_ascii_digit() || c == '.')).unwrap_or(s.len());
     let (n, unit) = s.split_at(i);
     let Ok(v) = n.parse::<f64>() else {

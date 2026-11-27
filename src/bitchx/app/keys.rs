@@ -7,7 +7,7 @@ use crate::bitchx::app::App;
 use crate::bitchx::model::Effect;
 
 impl App {
-    pub fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
+    pub(crate) fn handle_key(&mut self, key: KeyEvent) -> Vec<Effect> {
         if key.kind == KeyEventKind::Release {
             return vec![];
         }

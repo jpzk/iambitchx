@@ -7,7 +7,7 @@ use matrix_sdk::deserialized_responses::UnableToDecryptReason;
 use crate::bitchx::model::Line;
 
 /// The `/encrypt` question. Encryption can never be turned off again.
-pub fn encrypt_prompt(room: &str) -> String {
+pub(crate) fn encrypt_prompt(room: &str) -> String {
     format!(
         "Enable end-to-end encryption in {room}? This is IRREVERSIBLE: \
          encryption can never be turned off again. [y/n]"
@@ -15,7 +15,7 @@ pub fn encrypt_prompt(room: &str) -> String {
 }
 
 /// The SAS block: a header, the 7 emoji with their names, and the hint.
-pub fn sas_lines(peer: &str, emojis: &[(String, String)]) -> Vec<Line> {
+pub(crate) fn sas_lines(peer: &str, emojis: &[(String, String)]) -> Vec<Line> {
     let mut out = vec![Line::Info(format!(
         "Verification with {peer}: compare these emoji with the other device"
     ))];
@@ -31,7 +31,7 @@ pub fn sas_lines(peer: &str, emojis: &[(String, String)]) -> Vec<Line> {
 }
 
 /// A short, human reason for a decryption failure.
-pub fn utd_reason(reason: &UnableToDecryptReason) -> String {
+pub(crate) fn utd_reason(reason: &UnableToDecryptReason) -> String {
     match reason {
         UnableToDecryptReason::MissingMegolmSession { withheld_code: Some(code) } => {
             format!("key withheld: {code}")
@@ -53,7 +53,7 @@ pub fn utd_reason(reason: &UnableToDecryptReason) -> String {
 
 /// `-:-` text for an in-room `m.key.verification.<kind>` event (or the
 /// `m.key.verification.request` message type).
-pub fn verification_event_text(nick: &str, kind: &str) -> String {
+pub(crate) fn verification_event_text(nick: &str, kind: &str) -> String {
     match kind {
         "request" => format!("{nick} requested key verification"),
         "ready" => format!("{nick} is ready to verify"),

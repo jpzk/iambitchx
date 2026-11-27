@@ -9,7 +9,7 @@ use serde_json::Value;
 
 /// One `/sync` response -> sync / event / presence / ephemeral / todevice /
 /// crypto lines. Returns at once when debug is off.
-pub fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix::Tx) {
+pub(crate) fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix::Tx) {
     use matrix_sdk::deserialized_responses::{ProcessedToDeviceEvent, TimelineEventKind};
     start_forwarder(tx);
     if !on() {
@@ -86,7 +86,7 @@ pub fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix::Tx) {
 }
 
 /// `/set debug_raw on`: max chars of the compact raw JSON.
-pub const RAW_MAX: usize = 300;
+pub(super) const RAW_MAX: usize = 300;
 
 fn raw_value(s: &str) -> Value {
     serde_json::from_str(s).unwrap_or(Value::Null)
@@ -94,14 +94,14 @@ fn raw_value(s: &str) -> Value {
 
 /// Encryption state of an event as the client saw it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Enc {
+pub(super) enum Enc {
     Plain,
     Decrypted,
     Utd,
 }
 
 /// Counters of one `/sync` response.
-pub struct SyncCounts<'a> {
+pub(super) struct SyncCounts<'a> {
     pub next_batch: &'a str,
     pub joined: usize,
     pub invited: usize,
@@ -113,7 +113,7 @@ pub struct SyncCounts<'a> {
 }
 
 /// `next_batch=s123.. joined=3 events=5 presence=2 ephemeral=1 to_device=0`
-pub fn sync_line(c: &SyncCounts<'_>) -> String {
+pub(super) fn sync_line(c: &SyncCounts<'_>) -> String {
     let mut s = format!("next_batch={} joined={}", short_id(c.next_batch, 8), c.joined);
     if c.invited > 0 {
         s.push_str(&format!(" invited={}", c.invited));
@@ -137,7 +137,7 @@ fn str_at<'a>(v: &'a Value, path: &[&str]) -> Option<&'a str> {
 }
 
 /// `m.room.message $abcdefgh.. from @x:hs (m.megolm.v1.aes-sha2 -> decrypted)`
-pub fn event_line(v: &Value, enc: Enc) -> String {
+pub(super) fn event_line(v: &Value, enc: Enc) -> String {
     let ty = str_at(v, &["type"]).unwrap_or("?");
     let id = str_at(v, &["event_id"]).map(|i| short_id(i, 9)).unwrap_or_default();
     let from = str_at(v, &["sender"]).unwrap_or("?");
@@ -160,7 +160,7 @@ pub fn event_line(v: &Value, enc: Enc) -> String {
 }
 
 /// `@armin unavailable last_active 4h` (+ `active`, `"status"`).
-pub fn presence_line(v: &Value) -> Option<String> {
+pub(super) fn presence_line(v: &Value) -> Option<String> {
     let user = str_at(v, &["sender"])?;
     let c = v.get("content")?;
     let state = c.get("presence").and_then(Value::as_str).unwrap_or("?");
@@ -178,7 +178,7 @@ pub fn presence_line(v: &Value) -> Option<String> {
 }
 
 /// Milliseconds -> `12s` / `5m` / `4h` / `2d`.
-pub fn ago(ms: u64) -> String {
+pub(super) fn ago(ms: u64) -> String {
     let s = ms / 1000;
     match s {
         0..60 => format!("{s}s"),
@@ -189,7 +189,7 @@ pub fn ago(ms: u64) -> String {
 }
 
 /// Receipts / typing: `typing @a, @b` / `receipt m.read @u -> $ev..`.
-pub fn ephemeral_lines(v: &Value) -> Vec<String> {
+pub(super) fn ephemeral_lines(v: &Value) -> Vec<String> {
     let ty = str_at(v, &["type"]).unwrap_or("?");
     let Some(c) = v.get("content") else {
         return vec![ty.to_string()];
@@ -223,7 +223,7 @@ pub fn ephemeral_lines(v: &Value) -> Vec<String> {
 }
 
 /// `m.room_key from @x:hs (olm -> decrypted)`
-pub fn to_device_line(v: &Value, enc: Enc) -> String {
+pub(super) fn to_device_line(v: &Value, enc: Enc) -> String {
     let ty = str_at(v, &["type"]).unwrap_or("?");
     let from = str_at(v, &["sender"]).unwrap_or("?");
     let tail = match enc {
@@ -236,7 +236,7 @@ pub fn to_device_line(v: &Value, enc: Enc) -> String {
 
 /// Decrypted `m.room_key` / `m.forwarded_room_key` ->
 /// `room key received for !room from @x:hs`.
-pub fn room_key_line(v: &Value, enc: Enc) -> Option<String> {
+pub(super) fn room_key_line(v: &Value, enc: Enc) -> Option<String> {
     let ty = str_at(v, &["type"])?;
     if enc != Enc::Decrypted || !matches!(ty, "m.room_key" | "m.forwarded_room_key") {
         return None;

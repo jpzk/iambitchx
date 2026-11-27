@@ -21,16 +21,16 @@ use url::Url;
 use crate::bitchx::vars::BitchxConfig;
 
 /// Name of this application's directory under the config, data and cache dirs.
-pub const APP_DIR_NAME: &str = "iambitchx";
+pub(crate) const APP_DIR_NAME: &str = "iambitchx";
 
 /// Legacy directory name used by upstream iamb, which this fork falls back to.
-pub const LEGACY_APP_DIR_NAME: &str = "iamb";
+pub(crate) const LEGACY_APP_DIR_NAME: &str = "iamb";
 
 const DEFAULT_REQ_TIMEOUT: u64 = 120;
 
 /// Pick the application directory inside `base`: `iambitchx/` normally, but the legacy
 /// `iamb/` directory when only that one exists, so existing setups keep working.
-pub fn app_dir(base: &Path) -> PathBuf {
+pub(crate) fn app_dir(base: &Path) -> PathBuf {
     let dir = base.join(APP_DIR_NAME);
     let legacy = base.join(LEGACY_APP_DIR_NAME);
 
@@ -51,7 +51,7 @@ fn version() -> &'static str {
 /// Command line flags.
 #[derive(Parser, Debug)]
 #[clap(name = "iambitchx", version = version(), about, long_about = None)]
-pub struct Cli {
+pub(crate) struct Cli {
     /// Profile to use (defaults to `default_profile`).
     #[clap(short = 'P', long, value_parser)]
     pub profile: Option<String>,
@@ -136,7 +136,7 @@ impl From<OAuthSession> for Session {
 /// store is keyed by user and device ID).
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(untagged)]
-pub enum SavedDevice {
+pub(crate) enum SavedDevice {
     OAuth {
         user_id: OwnedUserId,
         device_id: OwnedDeviceId,
@@ -149,14 +149,14 @@ pub enum SavedDevice {
 }
 
 impl SavedDevice {
-    pub fn device_id(&self) -> &DeviceId {
+    pub(crate) fn device_id(&self) -> &DeviceId {
         match self {
             SavedDevice::OAuth { device_id, .. } => device_id,
             SavedDevice::MatrixAuth { device_id, .. } => device_id,
         }
     }
 
-    pub fn is_user(&self, user: &UserId) -> bool {
+    pub(crate) fn is_user(&self, user: &UserId) -> bool {
         match self {
             SavedDevice::OAuth { user_id, .. } => user == user_id,
             SavedDevice::MatrixAuth { user_id, .. } => user == user_id,
@@ -166,7 +166,7 @@ impl SavedDevice {
 
 /// `dirs` table (global or per profile).
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct Directories {
+pub(crate) struct Directories {
     pub cache: Option<String>,
     pub data: Option<String>,
     pub logs: Option<String>,
@@ -189,7 +189,7 @@ fn expand(dir: &str) -> anyhow::Result<PathBuf> {
 
 /// `settings` table; everything else in it (vim-era tunables) is ignored.
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct Settings {
+pub(crate) struct Settings {
     pub log_level: Option<String>,
     pub request_timeout: Option<u64>,
     /// `[settings.bitchx]`: `/set` variables.
@@ -210,7 +210,7 @@ impl Settings {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct ProfileConfig {
+pub(crate) struct ProfileConfig {
     pub user_id: Option<OwnedUserId>,
     pub url: Option<Url>,
     pub password_file: Option<PathBuf>,
@@ -219,7 +219,7 @@ pub struct ProfileConfig {
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub struct Config {
+pub(crate) struct Config {
     #[serde(default)]
     pub profiles: BTreeMap<String, ProfileConfig>,
     pub default_profile: Option<String>,
@@ -228,11 +228,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn parse_toml(s: &str) -> anyhow::Result<Self> {
+    pub(crate) fn parse_toml(s: &str) -> anyhow::Result<Self> {
         Ok(toml::from_str(s)?)
     }
 
-    pub fn load(dir: &Path) -> anyhow::Result<(Self, PathBuf)> {
+    pub(crate) fn load(dir: &Path) -> anyhow::Result<(Self, PathBuf)> {
         let toml_path = dir.join("config.toml");
         let json_path = dir.join("config.json");
 
@@ -260,7 +260,7 @@ fn valid_profile_name(name: &str) -> bool {
 
 /// Everything resolved for the active profile.
 #[derive(Clone, Debug)]
-pub struct ApplicationSettings {
+pub(crate) struct ApplicationSettings {
     pub profile_name: String,
     pub user_id: OwnedUserId,
     pub url: Option<Url>,
@@ -280,7 +280,7 @@ pub struct ApplicationSettings {
 }
 
 impl ApplicationSettings {
-    pub fn load(cli: &Cli) -> anyhow::Result<Self> {
+    pub(crate) fn load(cli: &Cli) -> anyhow::Result<Self> {
         let base = cli
             .config_directory
             .clone()
@@ -303,7 +303,7 @@ impl ApplicationSettings {
 
     /// Pick the profile and lay out its paths. `data_base`/`cache_base` are the
     /// XDG base dirs (without the app dir).
-    pub fn resolve(
+    pub(crate) fn resolve(
         config: Config,
         config_dir: &Path,
         profile: Option<String>,
@@ -381,14 +381,14 @@ impl ApplicationSettings {
         })
     }
 
-    pub fn create_dirs(&self) -> std::io::Result<()> {
+    pub(crate) fn create_dirs(&self) -> std::io::Result<()> {
         std::fs::create_dir_all(&self.sqlite_dir)?;
         std::fs::create_dir_all(&self.sqlite_cache_dir)?;
         std::fs::create_dir_all(&self.logs_dir)?;
         Ok(())
     }
 
-    pub fn read_session(&self, path: &Path) -> anyhow::Result<Session> {
+    pub(crate) fn read_session(&self, path: &Path) -> anyhow::Result<Session> {
         let reader = BufReader::new(File::open(path)?);
         Ok(serde_json::from_reader(reader)?)
     }
@@ -396,7 +396,7 @@ impl ApplicationSettings {
     /// Write `session.json` atomically (temp file + rename), so a concurrent
     /// reader never sees a half-written file. Callers hold the
     /// [`crate::session_guard::SessionLock`].
-    pub fn write_session(&self, session: impl Into<Session>) -> anyhow::Result<()> {
+    pub(crate) fn write_session(&self, session: impl Into<Session>) -> anyhow::Result<()> {
         let tmp = self.session_json.with_extension("json.tmp");
         {
             let mut writer = BufWriter::new(File::create(&tmp)?);
@@ -409,7 +409,7 @@ impl ApplicationSettings {
     }
 
     /// The device ID saved at logout, if it belongs to this profile's user.
-    pub fn read_saved_device(&self) -> Option<SavedDevice> {
+    pub(crate) fn read_saved_device(&self) -> Option<SavedDevice> {
         let reader = BufReader::new(File::open(&self.device_json).ok()?);
         let saved: SavedDevice = serde_json::from_reader(reader).ok()?;
         saved.is_user(&self.user_id).then_some(saved)

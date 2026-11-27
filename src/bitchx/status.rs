@@ -11,7 +11,7 @@ use crate::bitchx::format::sp;
 use crate::bitchx::model::PresenceMark;
 
 /// The status bar background (`ESC[44m`).
-pub fn status_bg() -> Style {
+pub(crate) fn status_bg() -> Style {
     Style::default().bg(Color::Blue).fg(Color::Gray)
 }
 
@@ -37,7 +37,7 @@ fn st_away() -> Style {
 
 /// A window with an unread mention in `Act:`: bold yellow on blue, as the
 /// `%Y` nick of the AR formats.
-pub fn st_hilite() -> Style {
+pub(crate) fn st_hilite() -> Style {
     status_bg().fg(Color::Yellow).add_modifier(StyleModifier::BOLD)
 }
 
@@ -47,22 +47,22 @@ fn st_alert() -> Style {
 }
 
 /// `%C` is cut to this many columns (`#bxrecon-0122` shows as `#bxrecon-0`).
-pub const CHANNEL_WIDTH: usize = 10;
+pub(crate) const CHANNEL_WIDTH: usize = 10;
 
 /// The first `n` characters of `s`.
-pub fn truncate(s: &str, n: usize) -> String {
+pub(crate) fn truncate(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
 /// `%T`: BitchX's 12-hour clock, `09:24pm` (CLOCK_24HOUR off).
-pub fn clock(t: impl chrono::Timelike) -> String {
+pub(crate) fn clock(t: impl chrono::Timelike) -> String {
     let (pm, h) = t.hour12();
     format!("{h:02}:{:02}{}", t.minute(), if pm { "pm" } else { "am" })
 }
 
 /// Member counts for `%!` (STATUS_USERS): `[O/n N/n I/n V/n F/n]`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub struct UserCounts {
+pub(crate) struct UserCounts {
     pub ops: usize,
     pub nonops: usize,
     pub voice: usize,
@@ -70,7 +70,7 @@ pub struct UserCounts {
 
 /// Everything shown on the two status lines.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct BxStatus {
+pub(crate) struct BxStatus {
     /// `%T`
     pub time: String,
     /// `%N`
@@ -117,7 +117,7 @@ impl BxStatus {
     ///
     /// As captured (recon 22, 29):
     /// ` [09:24pm][@nick(+iw)] [#bxrecon-0(+nt)]  [Query: x]`.
-    pub fn line1(&self) -> Line<'static> {
+    pub(crate) fn line1(&self) -> Line<'static> {
         let mut s = vec![
             sp(" ", st_bright()),
             sp("[", st_punct()),
@@ -216,7 +216,7 @@ impl BxStatus {
     ///
     /// `%L` reads `??` until the first lag sample, then the seconds
     /// right-aligned to two columns (`[Lag  0]`, recon 2).
-    pub fn line2(&self) -> Line<'static> {
+    pub(crate) fn line2(&self) -> Line<'static> {
         let lag = match self.lag {
             Some(n) => format!("{n:>2}"),
             None => "??".to_string(),
@@ -263,7 +263,7 @@ impl BxStatus {
     /// `[%u:%a:%f:%b:%h]`. BitchX shows `[U:a:S:b:h]` inside a channel and
     /// `[::::]` elsewhere, all cyan (recon 21, 22). The IRC flags have no
     /// Matrix meaning, so they are rendered exactly as captured.
-    pub fn line2_right(&self) -> Line<'static> {
+    pub(crate) fn line2_right(&self) -> Line<'static> {
         let flags = if self.channel.is_some() {
             "[U:a:S:b:h]"
         } else {

@@ -14,7 +14,7 @@ struct Completion {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct Input {
+pub(crate) struct Input {
     buf: Vec<char>,
     cursor: usize,
     history: Vec<String>,
@@ -28,87 +28,87 @@ pub struct Input {
 const HISTORY_MAX: usize = 100;
 
 impl Input {
-    pub fn text(&self) -> String {
+    pub(crate) fn text(&self) -> String {
         self.buf.iter().collect()
     }
 
     /// The chars to draw: secrets typed after `/recover ` are `*`.
-    pub fn display_chars(&self) -> Vec<char> {
+    pub(crate) fn display_chars(&self) -> Vec<char> {
         mask_secret(&self.text()).chars().collect()
     }
 
-    pub fn cursor(&self) -> usize {
+    pub(crate) fn cursor(&self) -> usize {
         self.cursor
     }
 
     #[cfg(test)]
-    pub fn chars(&self) -> &[char] {
+    pub(crate) fn chars(&self) -> &[char] {
         &self.buf
     }
 
-    pub fn is_empty(&self) -> bool {
+    pub(crate) fn is_empty(&self) -> bool {
         self.buf.is_empty()
     }
 
     /// Any key other than Tab ends a completion cycle.
-    pub fn reset_tab(&mut self) {
+    pub(crate) fn reset_tab(&mut self) {
         self.tab = None;
     }
 
-    pub fn set_text(&mut self, s: &str) {
+    pub(crate) fn set_text(&mut self, s: &str) {
         self.buf = s.chars().collect();
         self.cursor = self.buf.len();
     }
 
-    pub fn insert(&mut self, c: char) {
+    pub(crate) fn insert(&mut self, c: char) {
         self.buf.insert(self.cursor, c);
         self.cursor += 1;
     }
 
-    pub fn left(&mut self) {
+    pub(crate) fn left(&mut self) {
         self.cursor = self.cursor.saturating_sub(1);
     }
 
-    pub fn right(&mut self) {
+    pub(crate) fn right(&mut self) {
         self.cursor = (self.cursor + 1).min(self.buf.len());
     }
 
     /// Home / Ctrl-A.
-    pub fn home(&mut self) {
+    pub(crate) fn home(&mut self) {
         self.cursor = 0;
     }
 
     /// End / Ctrl-E.
-    pub fn end(&mut self) {
+    pub(crate) fn end(&mut self) {
         self.cursor = self.buf.len();
     }
 
-    pub fn backspace(&mut self) {
+    pub(crate) fn backspace(&mut self) {
         if self.cursor > 0 {
             self.cursor -= 1;
             self.buf.remove(self.cursor);
         }
     }
 
-    pub fn delete(&mut self) {
+    pub(crate) fn delete(&mut self) {
         if self.cursor < self.buf.len() {
             self.buf.remove(self.cursor);
         }
     }
 
     /// Ctrl-U: erase from the start of the line to the cursor.
-    pub fn kill_to_start(&mut self) {
+    pub(crate) fn kill_to_start(&mut self) {
         self.buf.drain(..self.cursor);
         self.cursor = 0;
     }
 
     /// Ctrl-K: erase from the cursor to the end of the line.
-    pub fn kill_to_end(&mut self) {
+    pub(crate) fn kill_to_end(&mut self) {
         self.buf.truncate(self.cursor);
     }
 
     /// Ctrl-W: erase the word before the cursor (and the spaces after it).
-    pub fn kill_word(&mut self) {
+    pub(crate) fn kill_word(&mut self) {
         let mut start = self.cursor;
         while start > 0 && self.buf[start - 1] == ' ' {
             start -= 1;
@@ -121,7 +121,7 @@ impl Input {
     }
 
     /// Enter: take the line, remember it in history.
-    pub fn submit(&mut self) -> String {
+    pub(crate) fn submit(&mut self) -> String {
         let line = self.text();
         self.buf.clear();
         self.cursor = 0;
@@ -141,7 +141,7 @@ impl Input {
     }
 
     /// Up: older history entry.
-    pub fn history_prev(&mut self) {
+    pub(crate) fn history_prev(&mut self) {
         let pos = match self.hist_pos {
             None if self.history.is_empty() => return,
             None => {
@@ -157,7 +157,7 @@ impl Input {
     }
 
     /// Down: newer history entry, then back to what was being typed.
-    pub fn history_next(&mut self) {
+    pub(crate) fn history_next(&mut self) {
         let Some(pos) = self.hist_pos else {
             return;
         };
@@ -176,7 +176,7 @@ impl Input {
     /// Tab: complete the word before the cursor against `nicks`; repeated
     /// Tabs cycle through the matches. At the start of the line the nick is
     /// followed by `: `, elsewhere by a space.
-    pub fn complete(&mut self, nicks: &[String]) {
+    pub(crate) fn complete(&mut self, nicks: &[String]) {
         if self.tab.is_none() {
             let mut start = self.cursor;
             while start > 0 && self.buf[start - 1] != ' ' {
