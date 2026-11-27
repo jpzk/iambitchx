@@ -14,12 +14,13 @@ impl App {
         let Some(room_id) = self.current_room() else {
             return vec![];
         };
+        // B1: the spoof-safe channel label plus the room ID, never the raw name.
+        let name = self.cur().channel().unwrap_or(&self.cur().room.name).to_string();
         if self.cur().room.encrypted {
-            self.info(format!("{} is already encrypted (+e)", self.cur().room.name));
+            self.info(format!("{name} [room id {room_id}] is already encrypted (+e)"));
             return vec![];
         }
-        let name = self.cur().room.name.clone();
-        self.info(encrypt_prompt(&name));
+        self.info(encrypt_prompt(&name, room_id.as_str()));
         self.confirm = Some(Confirm::Encrypt(room_id));
         vec![]
     }

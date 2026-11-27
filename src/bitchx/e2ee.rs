@@ -7,9 +7,13 @@ use matrix_sdk::deserialized_responses::UnableToDecryptReason;
 use crate::bitchx::model::Line;
 
 /// The `/encrypt` question. Encryption can never be turned off again.
-pub(crate) fn encrypt_prompt(room: &str) -> String {
+///
+/// B1: `room` is the spoof-safe channel label (`Window::channel`) and the
+/// room ID is always named too, so a room whose display name poses as
+/// another channel cannot hide which room is about to be encrypted.
+pub(crate) fn encrypt_prompt(room: &str, room_id: &str) -> String {
     format!(
-        "Enable end-to-end encryption in {room}? This is IRREVERSIBLE: \
+        "Enable end-to-end encryption in {room} [room id {room_id}]? This is IRREVERSIBLE: \
          encryption can never be turned off again. [y/n]"
     )
 }
@@ -139,7 +143,12 @@ mod tests {
 
     #[test]
     fn test_encrypt_prompt_says_irreversible() {
-        let p = encrypt_prompt("#room");
-        assert!(p.contains("#room") && p.contains("IRREVERSIBLE") && p.ends_with("[y/n]"));
+        let p = encrypt_prompt("#room", "!r:example.org");
+        assert!(
+            p.contains("#room")
+                && p.contains("[room id !r:example.org]")
+                && p.contains("IRREVERSIBLE")
+                && p.ends_with("[y/n]")
+        );
     }
 }
