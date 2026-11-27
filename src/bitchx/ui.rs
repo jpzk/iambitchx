@@ -33,8 +33,7 @@ pub(crate) fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<
         .flat_map(|(l, ts)| {
             let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
             // `%@`: the stamp leads the first row, in the timestamp colour.
-            let stamped =
-                !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_) | Line::LogoRuns(_));
+            let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoRuns(_));
             if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped)
                 && let Some(first) = out.first_mut()
             {

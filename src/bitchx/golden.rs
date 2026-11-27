@@ -108,7 +108,6 @@ fn every_line() -> Vec<Line> {
         Line::Sas { n: 1, emoji: s("*"), name: s("Dog") },
         Line::Raw(s("raw text")),
         Line::Logo(s("LOGO")),
-        Line::LogoDim(s("logo dim")),
         Line::LogoRuns(runs),
         Line::Users { chan: s("#room"), shown: 3, total: 4 },
         Line::Names {

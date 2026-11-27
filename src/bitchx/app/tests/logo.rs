@@ -62,7 +62,7 @@ fn test_startup_logos() {
     let text = |ls: &[Line]| {
         ls.iter()
             .map(|l| match l {
-                Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) => t.clone(),
+                Line::Logo(t) | Line::Raw(t) => t.clone(),
                 Line::LogoRuns(runs) => runs.iter().map(|r| r.text.clone()).collect::<String>(),
                 _ => String::new(),
             })
@@ -142,7 +142,7 @@ fn status_text(app: &App) -> Vec<String> {
         .lines
         .iter()
         .map(|l| match l {
-            Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) | Line::Error(t) => t.clone(),
+            Line::Logo(t) | Line::Raw(t) | Line::Error(t) => t.clone(),
             Line::LogoRuns(runs) => runs.iter().map(|r| r.text.clone()).collect::<String>(),
             _ => String::new(),
         })

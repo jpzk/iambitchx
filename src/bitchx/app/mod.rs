@@ -29,7 +29,6 @@ mod state;
 mod theme;
 mod verify;
 
-#[cfg(test)]
 pub(crate) use logo::{LOGO_START, Logo, startup_lines_for, utf8_terminal};
 pub(crate) use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
 pub(crate) use theme::{PICKER_ITEMS, PICKER_ROWS, Picker};

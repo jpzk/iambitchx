@@ -361,13 +361,6 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 bold(pal().logo).add_modifier(Modifier::ITALIC),
             ))]
         },
-        // The logo's shadow/fade rows: blue, dimmed, no italic.
-        Line::LogoDim(text) => {
-            vec![TLine::from(sp(
-                text.clone(),
-                fg(pal().logo).add_modifier(Modifier::DIM),
-            ))]
-        },
         // The splash art in the original's own colours: one span per run.
         Line::LogoRuns(runs) => {
             let spans: Vec<Span<'static>> = runs

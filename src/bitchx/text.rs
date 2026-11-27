@@ -135,7 +135,6 @@ pub(crate) fn clean_line(line: Line) -> Line {
         Line::SetVar { name, value } => Line::SetVar { name: o(name), value: opt(value) },
         Line::Raw(t) => Line::Raw(o(t)),
         Line::Logo(t) => Line::Logo(o(t)),
-        Line::LogoDim(t) => Line::LogoDim(o(t)),
         Line::LogoRuns(runs) => Line::LogoRuns(
             runs.iter().map(|r| Run { text: o(r.text.clone()), ..r.clone() }).collect(),
         ),

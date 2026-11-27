@@ -82,8 +82,6 @@ pub(crate) enum Line {
     Raw(String),
     /// One row of the startup logo: no prefix, bold blue.
     Logo(String),
-    /// One row of the startup logo's shadow: no prefix, dim blue.
-    LogoDim(String),
     /// One row of the startup art in the original's own colours: a run of
     /// text per colour change (the BitchX logo shades its 3D with
     /// background colours).

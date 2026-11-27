@@ -108,10 +108,6 @@
   line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "LOGO"]
 == Logo("LOGO") hl=true
   line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "LOGO"]
-== LogoDim("logo dim") hl=false
-  line None/None/NONE/NONE: [Some(Blue)/None/DIM/NONE "logo dim"]
-== LogoDim("logo dim") hl=true
-  line None/None/NONE/NONE: [Some(Blue)/None/DIM/NONE "logo dim"]
 == LogoRuns([Run { text: "r0", fg: Default, bg: White, bold: true }, Run { text: "r1", fg: Black, bg: Cyan, bold: false }, Run { text: "r2", fg: Red, bg: Magenta, bold: true }, Run { text: "r3", fg: Blue, bg: Blue, bold: false }, Run { text: "r4", fg: Magenta, bg: Red, bold: true }, Run { text: "r5", fg: Cyan, bg: Black, bold: false }, Run { text: "r6", fg: White, bg: Default, bold: true }]) hl=false
   line None/None/NONE/NONE: [None/Some(White)/BOLD/NONE "r0"] [Some(Black)/Some(Cyan)/NONE/NONE "r1"] [Some(Red)/Some(Magenta)/BOLD/NONE "r2"] [Some(Blue)/Some(Blue)/NONE/NONE "r3"] [Some(Magenta)/Some(Red)/BOLD/NONE "r4"] [Some(Cyan)/Some(Black)/NONE/NONE "r5"] [Some(White)/None/BOLD/NONE "r6"]
 == LogoRuns([Run { text: "r0", fg: Default, bg: White, bold: true }, Run { text: "r1", fg: Black, bg: Cyan, bold: false }, Run { text: "r2", fg: Red, bg: Magenta, bold: true }, Run { text: "r3", fg: Blue, bg: Blue, bold: false }, Run { text: "r4", fg: Magenta, bg: Red, bold: true }, Run { text: "r5", fg: Cyan, bg: Black, bold: false }, Run { text: "r6", fg: White, bg: Default, bold: true }]) hl=true
@@ -186,18 +182,18 @@
  26: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" SAS 1/7  " <Reset/Reset/NONE>"*  " <White/Reset/BOLD>"Dog" <Reset/Reset/NONE>"                                                                               "
  27: <Reset/Reset/NONE>"raw text                                                                                            "
  28: <Blue/Reset/BOLD | ITALIC>"LOGO" <Reset/Reset/NONE>"                                                                                                "
- 29: <Blue/Reset/DIM>"logo dim" <Reset/Reset/NONE>"                                                                                            "
- 30: <Reset/White/BOLD>"r0" <Black/Cyan/NONE>"r1" <Red/Magenta/BOLD>"r2" <Blue/Blue/NONE>"r3" <Magenta/Red/BOLD>"r4" <Cyan/Black/NONE>"r5" <White/Reset/BOLD>"r6" <Reset/Reset/NONE>"                                                                                      "
- 31: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" [" <Green/Reset/BOLD>"Users" <DarkGray/Reset/BOLD>"(" <Green/Reset/NONE>"#room" <DarkGray/Reset/BOLD>":" <Green/Reset/NONE>"3" <DarkGray/Reset/BOLD>"/" <Green/Reset/NONE>"4" <DarkGray/Reset/BOLD>")]" <Reset/Reset/NONE>"                                                                            "
- 32: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>"[" <Cyan/Reset/BOLD>"@" <White/Reset/BOLD>"armin  " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[" <Green/Reset/BOLD>"+" <Blue/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Green/Reset/NONE>"zZzZ" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Blue/Reset/BOLD>" " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[ " <Blue/Reset/BOLD>"carla" <DarkGray/Reset/BOLD>" (off" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Blue/Reset/BOLD>" " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[ " <Blue/Reset/BOLD>"dave   " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>"                                     "
- 33: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"------" <Green/Reset/NONE>"------" <DarkGray/Reset/BOLD>"--- --  -" <Reset/Reset/NONE>"                                                                          "
- 34: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"| " <White/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Reset/Reset/NONE>"@bob:x" <DarkGray/Reset/BOLD>") (" <White/Reset/BOLD>"Bob" <DarkGray/Reset/BOLD>")" <Reset/Reset/NONE>"                                                                           "
- 35: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"| " <White/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Reset/Reset/NONE>"@bob:x" <DarkGray/Reset/BOLD>") (" <White/Reset/BOLD>"Bob" <DarkGray/Reset/BOLD>") (" <Green/Reset/NONE>"zZzZ" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Reset/Reset/NONE>"                                                                 "
- 36: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>" " <White/Reset/BOLD>"i" <Reset/Reset/NONE>"rcname  : Bob                                                                                "
- 37: <Reset/Reset/NONE>"[ts] " <Green/Reset/NONE>"| " <White/Reset/BOLD>"s" <Reset/Reset/NONE>"erver   : x                                                                                 "
- 38: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>": " <White/Reset/BOLD>"i" <Reset/Reset/NONE>"dle     : 1m                                                                                "
- 39: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" " <Magenta/Reset/BOLD>"DBG" <Magenta/Reset/NONE>" sync" <DarkGray/Reset/NONE>" tick" <Reset/Reset/NONE>"                                                                                 "
- 40: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" " <Magenta/Reset/BOLD>"DBG" <DarkGray/Reset/NONE>" (suppressed 3)" <Reset/Reset/NONE>"                                                                            "
+ 29: <Reset/White/BOLD>"r0" <Black/Cyan/NONE>"r1" <Red/Magenta/BOLD>"r2" <Blue/Blue/NONE>"r3" <Magenta/Red/BOLD>"r4" <Cyan/Black/NONE>"r5" <White/Reset/BOLD>"r6" <Reset/Reset/NONE>"                                                                                      "
+ 30: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" [" <Green/Reset/BOLD>"Users" <DarkGray/Reset/BOLD>"(" <Green/Reset/NONE>"#room" <DarkGray/Reset/BOLD>":" <Green/Reset/NONE>"3" <DarkGray/Reset/BOLD>"/" <Green/Reset/NONE>"4" <DarkGray/Reset/BOLD>")]" <Reset/Reset/NONE>"                                                                            "
+ 31: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>"[" <Cyan/Reset/BOLD>"@" <White/Reset/BOLD>"armin  " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[" <Green/Reset/BOLD>"+" <Blue/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Green/Reset/NONE>"zZzZ" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Blue/Reset/BOLD>" " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[ " <Blue/Reset/BOLD>"carla" <DarkGray/Reset/BOLD>" (off" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Blue/Reset/BOLD>" " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>" " <DarkGray/Reset/BOLD>"[ " <Blue/Reset/BOLD>"dave   " <DarkGray/Reset/BOLD>"]" <Reset/Reset/NONE>"                                     "
+ 32: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"------" <Green/Reset/NONE>"------" <DarkGray/Reset/BOLD>"--- --  -" <Reset/Reset/NONE>"                                                                          "
+ 33: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"| " <White/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Reset/Reset/NONE>"@bob:x" <DarkGray/Reset/BOLD>") (" <White/Reset/BOLD>"Bob" <DarkGray/Reset/BOLD>")" <Reset/Reset/NONE>"                                                                           "
+ 34: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>"| " <White/Reset/BOLD>"bob" <DarkGray/Reset/BOLD>" (" <Reset/Reset/NONE>"@bob:x" <DarkGray/Reset/BOLD>") (" <White/Reset/BOLD>"Bob" <DarkGray/Reset/BOLD>") (" <Green/Reset/NONE>"zZzZ" <Reset/Reset/NONE>" 4h" <DarkGray/Reset/BOLD>")" <Reset/Reset/NONE>"                                                                 "
+ 35: <Reset/Reset/NONE>"[ts] " <Green/Reset/BOLD>" " <White/Reset/BOLD>"i" <Reset/Reset/NONE>"rcname  : Bob                                                                                "
+ 36: <Reset/Reset/NONE>"[ts] " <Green/Reset/NONE>"| " <White/Reset/BOLD>"s" <Reset/Reset/NONE>"erver   : x                                                                                 "
+ 37: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>": " <White/Reset/BOLD>"i" <Reset/Reset/NONE>"dle     : 1m                                                                                "
+ 38: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" " <Magenta/Reset/BOLD>"DBG" <Magenta/Reset/NONE>" sync" <DarkGray/Reset/NONE>" tick" <Reset/Reset/NONE>"                                                                                 "
+ 39: <Reset/Reset/NONE>"[ts] " <DarkGray/Reset/BOLD>" " <Magenta/Reset/BOLD>"DBG" <DarkGray/Reset/NONE>" (suppressed 3)" <Reset/Reset/NONE>"                                                                            "
+ 40: <Reset/Reset/NONE>"                                                                                                    "
  41: <Reset/Reset/NONE>"                                                                                                    "
  42: <Reset/Reset/NONE>"                                                                                                    "
  43: <Reset/Reset/NONE>"                                                                                                    "
@@ -274,17 +270,4 @@
   line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "                                                                    `$,"]
   line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "                                                                     `$"]
   line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "                                                                       `"]
-== logo Compact
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "    █  ███ █████████ █  █   ███ █    █   █"]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "      █   ██ █ ██   █   █  █    █     █ █ "]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "    █ █   ██ █ █████ █ ███ █    ████   █  "]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "    █ █   ██ █ ██   ██  █  █    █   █ █ █ "]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "    █  ███ █ █ █████ █  ███ ███ █   ██   █"]
-  line None/None/NONE/NONE: [Some(Blue)/None/DIM/NONE "     ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀"]
-  line None/None/NONE/NONE: [Some(Blue)/None/DIM/NONE "     ░  ░░░ ░ ░ ░░░░░ ░  ░░░ ░░░ ░   ░░   ░"]
-== logo Slant
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "        _               ____  _ __       __   _  __"]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "       (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /"]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "      / / __ `/ __ `__ \\ __  / / __/ ___/ __ \\|   /"]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "     / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |"]
-  line None/None/NONE/NONE: [Some(Blue)/None/BOLD | ITALIC/NONE "    /_/\\__,_/_/ /_/ /_/_____/_/\\__/\\___/_/ /_/_/|_|"]
+== logo None
