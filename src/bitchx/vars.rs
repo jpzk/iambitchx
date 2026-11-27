@@ -24,7 +24,8 @@
 //! [`DEBUG_CATEGORIES`], default `all`) and `DEBUG_RAW` (bool, default OFF):
 //! the protocol debug mode, see [`crate::debug_tap`].
 //!
-//! Values persist in `config.toml` under `[settings.bitchx]`.
+//! Values persist in `config.toml` under `[settings.bitchx]`, except `DEBUG`
+//! and `DEBUG_RAW`: those are session-scoped and never written or read.
 use std::fmt::Write as _;
 use std::path::Path;
 
@@ -277,13 +278,14 @@ impl Vars {
             away_nick: c.away_nick.clone().unwrap_or(d.away_nick),
             away_nick_orig: c.away_nick_orig.clone().filter(|s| !s.is_empty()),
             beep: c.beep.unwrap_or(d.beep),
-            debug: c.debug.unwrap_or(d.debug),
+            // F-07: the debug switches are session-scoped: never armed from the file
+            debug: d.debug,
             debug_filter: c
                 .debug_filter
                 .as_deref()
                 .and_then(|s| parse_debug_filter(s).ok())
                 .unwrap_or(d.debug_filter),
-            debug_raw: c.debug_raw.unwrap_or(d.debug_raw),
+            debug_raw: d.debug_raw,
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
         }
@@ -405,9 +407,10 @@ impl Vars {
         bx.insert("away_nick".into(), Value::String(self.away_nick.clone()));
         bx.insert("auto_reply".into(), Value::String(self.auto_reply.clone()));
         bx.insert("beep".into(), Value::Boolean(self.beep));
-        bx.insert("debug".into(), Value::Boolean(self.debug));
+        // F-07: never persist the debug switches; drop stale ones
+        bx.remove("debug");
         bx.insert("debug_filter".into(), Value::String(self.debug_filter.clone()));
-        bx.insert("debug_raw".into(), Value::Boolean(self.debug_raw));
+        bx.remove("debug_raw");
         match &self.away_nick_orig {
             Some(orig) => bx.insert("away_nick_orig".into(), Value::String(orig.clone())),
             None => bx.remove("away_nick_orig"),
@@ -532,7 +535,9 @@ mod tests {
         assert_eq!(cfg.default_profile.as_deref(), Some("x"));
         let settings = cfg.settings.unwrap();
         assert_eq!(settings.log_level.as_deref(), Some("warn"));
-        assert_eq!(Vars::from_config(&settings.bitchx.unwrap()), v);
+        // debug switches are session-scoped (F-07)
+        let want = Vars { debug: false, debug_raw: false, ..v.clone() };
+        assert_eq!(Vars::from_config(&settings.bitchx.unwrap()), want);
         assert!(cfg.profiles.contains_key("x"));
 
         // Missing file: created with just the table.
@@ -655,25 +660,37 @@ mod tests {
             ..Default::default()
         };
         let v = Vars::from_config(&c);
-        assert!(v.debug);
+        assert!(!v.debug, "never armed from the file");
         assert_eq!(v.debug_filter, "all");
     }
 
     #[test]
-    fn test_debug_persistence() {
+    fn test_debug_switches_never_persisted() {
+        // F-07: DEBUG / DEBUG_RAW were written to config.toml and re-armed
+        // the tap on every start; the filter is harmless and still persists
         let dir = std::env::temp_dir().join(format!("bx-dbgvars-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
+        // a stale file from an older version that armed the tap
+        std::fs::write(&path, "[settings.bitchx]\ndebug = true\ndebug_raw = true\n").unwrap();
+        let read = |p: &std::path::Path| {
+            let text = std::fs::read_to_string(p).unwrap();
+            let cfg = crate::config::Config::parse_toml(&text).unwrap();
+            (text, Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap()))
+        };
+        let (_, stale) = read(&path);
+        assert!(!stale.debug && !stale.debug_raw, "file must not arm the tap");
+
         let mut v = Vars::default();
         v.set("DEBUG", "on").unwrap();
+        v.set("DEBUG_RAW", "on").unwrap();
         v.set("DEBUG_FILTER", "http,presence").unwrap();
         v.persist(&path).unwrap();
-        let text = std::fs::read_to_string(&path).unwrap();
-        let cfg = crate::config::Config::parse_toml(&text).unwrap();
-        let back = Vars::from_config(&cfg.settings.unwrap().bitchx.unwrap());
-        assert!(back.debug && !back.debug_raw);
+        let (text, back) = read(&path);
+        assert!(!text.contains("debug ="), "{text}");
+        assert!(!text.contains("debug_raw"), "{text}");
+        assert!(!back.debug && !back.debug_raw);
         assert_eq!(back.debug_filter, "http,presence");
-        assert_eq!(back, v);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }

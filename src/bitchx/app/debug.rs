@@ -1,7 +1,5 @@
 //! Debug-tap glue: pushes DEBUG settings to [`crate::debug_tap`] and
-//! routes its lines into windows behind a per-second flood guard.
-
-use matrix_sdk::ruma::OwnedRoomId;
+//! routes its lines into the status window behind a per-second flood guard.
 
 use crate::bitchx::app::{App, DBG_PER_SEC};
 use crate::bitchx::model::Line;
@@ -19,16 +17,12 @@ impl App {
         }
     }
 
-    /// A DBG line: room-scoped lines go to that room's window, the rest to
-    /// the status window; at most [`DBG_PER_SEC`] per window and second,
-    /// then one `DBG (suppressed N)` when the next second starts.
+    /// A DBG line: always to the status window, never into a room window's
+    /// scrollback (F-06); room-scoped lines are tagged with the room id. At
+    /// most [`DBG_PER_SEC`] per second, then one `DBG (suppressed N)` when
+    /// the next second starts.
     pub(super) fn debug_line(&mut self, line: crate::debug_tap::DbgLine) {
-        let idx = line
-            .room
-            .as_deref()
-            .and_then(|r| OwnedRoomId::try_from(r).ok())
-            .and_then(|r| self.window_of(&r))
-            .unwrap_or(0);
+        let idx = 0;
         let sec = self.now().div_euclid(1000);
         let st = self.dbg_flood.entry(idx).or_insert((sec, 0, 0));
         let mut suppressed = 0;
@@ -47,7 +41,11 @@ impl App {
         }
         if show {
             let cat = line.cat.name().to_string();
-            self.windows[idx].push(None, Line::Debug { cat, text: line.text });
+            let text = match line.room {
+                Some(room) => format!("[{room}] {}", line.text),
+                None => line.text,
+            };
+            self.windows[idx].push(None, Line::Debug { cat, text });
         }
     }
 
