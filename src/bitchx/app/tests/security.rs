@@ -200,3 +200,36 @@ fn test_f30_f31_remote_text_cannot_forge_status_lines() {
     assert!(rows.contains(&"<eve> safe".to_string()), "{rows:#?}");
     assert!(rows.iter().all(|r| !r.chars().any(crate::bitchx::text::is_format)));
 }
+
+/// F-04: `/list` directory entries are cleaned at ingest like every other
+/// remote event: an LF (or escape) in a canonical alias, name or topic never
+/// reaches the scrollback, so it cannot forge rows.
+#[test]
+fn test_f04_list_entries_are_sanitised() {
+    use crate::bitchx::channels::ListEntry;
+    use crate::bitchx::text::{HOSTILE, assert_inert};
+    let mut app = app();
+    app.cur_mut().clear();
+    let entries: Vec<ListEntry> = HOSTILE
+        .iter()
+        .map(|p| ListEntry {
+            alias: Some(format!("#a{p}:evil.org")),
+            room_id: format!("!r{p}:evil.org"),
+            name: Some(format!("n{p}")),
+            members: 3,
+            topic: Some(format!("t{p}")),
+            space: false,
+        })
+        .collect();
+    let n = entries.len();
+    app.handle_mx(MxEvent::List { server: "evil.org".into(), search: None, entries });
+    for l in &app.cur().lines {
+        if let Line::Info(t) = l {
+            assert_inert(t);
+        }
+    }
+    let rows = rows(&mut app);
+    // Header, column titles, one row per entry, footer.
+    assert_eq!(rows.len(), n + 3, "{rows:#?}");
+    assert!(rows.iter().all(|r| !r.trim_start().starts_with("-:- bob")), "{rows:#?}");
+}

@@ -4,7 +4,7 @@
 use crate::bitchx::app::{App, Probe, Window, now_ms};
 use crate::bitchx::channels::list_lines;
 use crate::bitchx::model::{Effect, Line, MxEvent, RoomSnapshot, VerifyUpdate, nick_of};
-use crate::bitchx::text::{clean_line, clean_snapshot, one_line};
+use crate::bitchx::text::{clean_line, clean_list_entry, clean_snapshot, one_line};
 
 impl App {
     pub(crate) fn handle_mx(&mut self, ev: MxEvent) -> Vec<Effect> {
@@ -218,6 +218,12 @@ fn clean_event(ev: MxEvent) -> MxEvent {
         MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) } => {
             let e = e.into_iter().map(|(a, b)| (one_line(&a), one_line(&b))).collect();
             MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) }
+        },
+        // F-04: directory entries (alias, name, topic) are remote text too.
+        MxEvent::List { server, search, entries } => MxEvent::List {
+            server,
+            search,
+            entries: entries.into_iter().map(clean_list_entry).collect(),
         },
         ev => ev,
     }
