@@ -320,6 +320,7 @@ impl ApplicationSettings {
             Some(name) => profiles
                 .remove_entry(&name)
                 .ok_or_else(|| anyhow!("No configured profile with the name {name:?}"))?,
+            // len() == 1 was just checked, so next() is always Some.
             None if profiles.len() == 1 => profiles.into_iter().next().unwrap(),
             None if profiles.is_empty() => bail!("No profiles configured"),
             None => {

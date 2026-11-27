@@ -70,6 +70,8 @@ pub(super) fn redact_text(s: &str) -> String {
                 continue;
             }
         }
+        // i < s.len() (loop guard) and i only advances by whole ASCII tokens or
+        // ch.len_utf8(), so it is on a char boundary and next() is always Some.
         let ch = s[i..].chars().next().unwrap();
         out.push(ch);
         i += ch.len_utf8();
