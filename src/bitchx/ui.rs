@@ -34,8 +34,8 @@ pub fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<'static
             // `%@`: the stamp leads the first row, in the default colours.
             let stamped =
                 !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoDim(_) | Line::LogoRuns(_));
-            if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped) &&
-                let Some(first) = out.first_mut()
+            if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped)
+                && let Some(first) = out.first_mut()
             {
                 first.spans.insert(0, sp(stamp, n()));
             }
@@ -214,11 +214,11 @@ mod tests {
         for (room, text) in [("!b:example.org", "hi"), ("!c:example.org", "carla?")] {
             app.handle_mx(MxEvent::Lines {
                 room_id: matrix_sdk::ruma::OwnedRoomId::try_from(room).unwrap(),
-                lines: vec![(None, None, Line::Public {
-                    nick: "bob".into(),
-                    own: false,
-                    text: text.into(),
-                })],
+                lines: vec![(
+                    None,
+                    None,
+                    Line::Public { nick: "bob".into(), own: false, text: text.into() },
+                )],
                 backfill: false,
             });
         }
@@ -448,11 +448,11 @@ mod tests {
     /// `%T` is a 12-hour `hh:mmam`/`hh:mmpm` clock (recon 02, 22).
     fn is_bx_clock(s: &str) -> bool {
         let b = s.as_bytes();
-        b.len() == 7 &&
-            b[..2].iter().all(u8::is_ascii_digit) &&
-            b[2] == b':' &&
-            b[3..5].iter().all(u8::is_ascii_digit) &&
-            (s.ends_with("am") || s.ends_with("pm"))
+        b.len() == 7
+            && b[..2].iter().all(u8::is_ascii_digit)
+            && b[2] == b':'
+            && b[3..5].iter().all(u8::is_ascii_digit)
+            && (s.ends_with("am") || s.ends_with("pm"))
     }
 
     #[test]
@@ -609,11 +609,11 @@ mod tests {
         let mut app = app();
         app.handle_mx(MxEvent::Lines {
             room_id: owned_room_id!("!b:example.org"),
-            lines: vec![(None, None, Line::Public {
-                nick: "x".into(),
-                own: false,
-                text: "y".into(),
-            })],
+            lines: vec![(
+                None,
+                None,
+                Line::Public { nick: "x".into(), own: false, text: "y".into() },
+            )],
             backfill: false,
         });
         let buf = render(&mut app, 70, 8);

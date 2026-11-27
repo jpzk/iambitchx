@@ -19,8 +19,10 @@ pub fn sas_lines(peer: &str, emojis: &[(String, String)]) -> Vec<Line> {
     let mut out = vec![Line::Info(format!(
         "Verification with {peer}: compare these emoji with the other device"
     ))];
-    out.extend(emojis.iter().enumerate().map(|(i, (emoji, name))| {
-        Line::Sas { n: i + 1, emoji: emoji.clone(), name: name.clone() }
+    out.extend(emojis.iter().enumerate().map(|(i, (emoji, name))| Line::Sas {
+        n: i + 1,
+        emoji: emoji.clone(),
+        name: name.clone(),
     }));
     out.push(Line::Info(format!(
         "They match? /verify confirm {peer} -- if not: /verify mismatch {peer}"

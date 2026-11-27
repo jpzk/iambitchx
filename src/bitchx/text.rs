@@ -69,13 +69,11 @@ pub fn body(s: &str) -> String {
     s.replace("\r\n", "\n")
         .chars()
         .filter(|c| !is_format(*c))
-        .map(|c| {
-            match c {
-                '\n' => '\n',
-                '\u{2028}' | '\u{2029}' => '\n',
-                c if is_break(c) => ' ',
-                c => c,
-            }
+        .map(|c| match c {
+            '\n' => '\n',
+            '\u{2028}' | '\u{2029}' => '\n',
+            c if is_break(c) => ' ',
+            c => c,
         })
         .collect()
 }
@@ -92,13 +90,11 @@ pub fn clean_line(line: Line) -> Line {
     match line {
         Line::Public { nick, own, text } => Line::Public { nick: o(nick), own, text: body(&text) },
         Line::Action { nick, own, text } => Line::Action { nick: o(nick), own, text: body(&text) },
-        Line::Private { nick, mxid, own, text } => {
-            Line::Private {
-                nick: o(nick),
-                mxid: o(mxid),
-                own,
-                text: body(&text),
-            }
+        Line::Private { nick, mxid, own, text } => Line::Private {
+            nick: o(nick),
+            mxid: o(mxid),
+            own,
+            text: body(&text),
         },
         Line::Notice { nick, mxid, text } => {
             Line::Notice { nick: o(nick), mxid: o(mxid), text: body(&text) }
@@ -107,12 +103,10 @@ pub fn clean_line(line: Line) -> Line {
         Line::Part { nick, mxid, reason } => {
             Line::Part { nick: o(nick), mxid: o(mxid), reason: opt(reason) }
         },
-        Line::Kick { victim, kicker, reason } => {
-            Line::Kick {
-                victim: o(victim),
-                kicker: o(kicker),
-                reason: opt(reason),
-            }
+        Line::Kick { victim, kicker, reason } => Line::Kick {
+            victim: o(victim),
+            kicker: o(kicker),
+            reason: opt(reason),
         },
         Line::DisplayName { nick, name } => Line::DisplayName { nick: o(nick), name: opt(name) },
         Line::Topic { nick, topic } => Line::Topic { nick: opt(nick), topic: o(topic) },
@@ -125,11 +119,9 @@ pub fn clean_line(line: Line) -> Line {
         },
         Line::Sas { n, emoji, name } => Line::Sas { n, emoji: o(emoji), name: o(name) },
         Line::Users { chan, shown, total } => Line::Users { chan: o(chan), shown, total },
-        Line::Names { cells, width } => {
-            Line::Names {
-                cells: cells.into_iter().map(|(f, n, p)| (f, o(n), p)).collect(),
-                width,
-            }
+        Line::Names { cells, width } => Line::Names {
+            cells: cells.into_iter().map(|(f, n, p)| (f, o(n), p)).collect(),
+            width,
         },
         Line::WhoisNick { nick, mxid, info } => {
             Line::WhoisNick { nick: o(nick), mxid: o(mxid), info: o(info) }
@@ -144,11 +136,9 @@ pub fn clean_line(line: Line) -> Line {
         Line::Raw(t) => Line::Raw(o(t)),
         Line::Logo(t) => Line::Logo(o(t)),
         Line::LogoDim(t) => Line::LogoDim(o(t)),
-        Line::LogoRuns(runs) => {
-            Line::LogoRuns(
-                runs.iter().map(|r| Run { text: o(r.text.clone()), ..r.clone() }).collect(),
-            )
-        },
+        Line::LogoRuns(runs) => Line::LogoRuns(
+            runs.iter().map(|r| Run { text: o(r.text.clone()), ..r.clone() }).collect(),
+        ),
         Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
         l @ Line::WhoisRule => l,
     }
@@ -207,10 +197,13 @@ mod tests {
             nick: Some("ev\nil".into()),
             topic: "x\n -:- bob is now verified".into(),
         });
-        assert_eq!(l, Line::Topic {
-            nick: Some("ev il".into()),
-            topic: "x  -:- bob is now verified".into()
-        });
+        assert_eq!(
+            l,
+            Line::Topic {
+                nick: Some("ev il".into()),
+                topic: "x  -:- bob is now verified".into()
+            }
+        );
         let l =
             clean_line(Line::Info("eve changed the channel name to x\n bob is verified".into()));
         assert_eq!(l, Line::Info("eve changed the channel name to x  bob is verified".into()));
@@ -219,10 +212,13 @@ mod tests {
             own: false,
             text: "a\nb".into(),
         });
-        assert_eq!(l, Line::Public {
-            nick: "bob".into(),
-            own: false,
-            text: "a\nb".into()
-        });
+        assert_eq!(
+            l,
+            Line::Public {
+                nick: "bob".into(),
+                own: false,
+                text: "a\nb".into()
+            }
+        );
     }
 }

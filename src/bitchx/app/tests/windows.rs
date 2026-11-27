@@ -22,18 +22,24 @@ fn test_query_window() {
         backfill: false,
     });
     let n = app.cur().lines.len();
-    assert_eq!(app.cur().lines[n - 2], Line::Private {
-        nick: "armin".into(),
-        mxid: "@armin:remote.tld".into(),
-        own: true,
-        text: "t".into()
-    });
-    assert_eq!(app.cur().lines[n - 1], Line::Private {
-        nick: "armin".into(),
-        mxid: "@armin:remote.tld".into(),
-        own: false,
-        text: "t".into()
-    });
+    assert_eq!(
+        app.cur().lines[n - 2],
+        Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: true,
+            text: "t".into()
+        }
+    );
+    assert_eq!(
+        app.cur().lines[n - 1],
+        Line::Private {
+            nick: "armin".into(),
+            mxid: "@armin:remote.tld".into(),
+            own: false,
+            text: "t".into()
+        }
+    );
     // Channel windows keep `<nick>`.
     app.handle_mx(MxEvent::Lines {
         room_id: owned_room_id!("!a:example.org"),
@@ -51,12 +57,15 @@ fn test_query_window() {
     assert_eq!(app.cur().lines.len(), before);
     // `/msg user text` with no DM window echoes `[msg(user)] text`.
     typed(&mut app, "/msg bob yo");
-    assert_eq!(last(&app), Line::Private {
-        nick: "bob".into(),
-        mxid: "@bob:example.org".into(),
-        own: true,
-        text: "yo".into()
-    });
+    assert_eq!(
+        last(&app),
+        Line::Private {
+            nick: "bob".into(),
+            mxid: "@bob:example.org".into(),
+            own: true,
+            text: "yo".into()
+        }
+    );
 }
 
 #[test]
@@ -140,11 +149,11 @@ fn test_mention_hilites_window_and_beeps_once() {
     let say = |app: &mut App, room: &str, id: &str, own: bool, text: &str| {
         app.handle_mx(MxEvent::Lines {
             room_id: OwnedRoomId::try_from(room).unwrap(),
-            lines: vec![(Some(id.into()), None, Line::Public {
-                nick: "bob".into(),
-                own,
-                text: text.into(),
-            })],
+            lines: vec![(
+                Some(id.into()),
+                None,
+                Line::Public { nick: "bob".into(), own, text: text.into() },
+            )],
             backfill: false,
         })
     };
@@ -192,11 +201,15 @@ fn test_backfilled_mention_is_silent() {
     let mut app = app();
     app.handle_mx(MxEvent::Lines {
         room_id: owned_room_id!("!b:example.org"),
-        lines: vec![(Some("$old".into()), None, Line::Public {
-            nick: "bob".into(),
-            own: false,
-            text: "carla".into(),
-        })],
+        lines: vec![(
+            Some("$old".into()),
+            None,
+            Line::Public {
+                nick: "bob".into(),
+                own: false,
+                text: "carla".into(),
+            },
+        )],
         backfill: true,
     });
     assert!(!app.take_bell());

@@ -99,16 +99,14 @@ fn test_f37_sync_death_marker() {
 fn test_f44_verification_keyed_by_flow() {
     let mut app = app();
     let me2 = owned_user_id!("@armin:remote.tld");
-    let req = |flow: &str, dev: &str| {
-        MxEvent::Verify {
-            user: me2.clone(),
-            update: VerifyUpdate::Requested {
-                flow_id: flow.into(),
-                device: Some(dev.into()),
-                room_id: None,
-                we_started: false,
-            },
-        }
+    let req = |flow: &str, dev: &str| MxEvent::Verify {
+        user: me2.clone(),
+        update: VerifyUpdate::Requested {
+            flow_id: flow.into(),
+            device: Some(dev.into()),
+            room_id: None,
+            we_started: false,
+        },
     };
     app.handle_mx(req("flowA", "DEVA"));
     app.handle_mx(req("flowB", "DEVB"));
@@ -134,16 +132,22 @@ fn test_f44_verification_keyed_by_flow() {
         );
     }
     // The flow id (or a unique prefix) picks exactly that flow.
-    assert_eq!(typed(&mut app, "/verify accept armin flowA"), vec![Effect::Verify {
-        user: me2.clone(),
-        flow_id: Some("flowA".into()),
-        action: VerifyAction::Accept,
-    }]);
-    assert_eq!(typed(&mut app, "/verify accept armin flowB")[0], Effect::Verify {
-        user: me2.clone(),
-        flow_id: Some("flowB".into()),
-        action: VerifyAction::Accept,
-    });
+    assert_eq!(
+        typed(&mut app, "/verify accept armin flowA"),
+        vec![Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowA".into()),
+            action: VerifyAction::Accept,
+        }]
+    );
+    assert_eq!(
+        typed(&mut app, "/verify accept armin flowB")[0],
+        Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowB".into()),
+            action: VerifyAction::Accept,
+        }
+    );
     assert_eq!(typed(&mut app, "/verify accept armin flowC"), vec![]);
     // Emoji arrive while two flows are pending: they cannot be tied to a
     // flow, so confirm is refused even with an explicit flow id.
@@ -157,11 +161,14 @@ fn test_f44_verification_keyed_by_flow() {
     assert_eq!(typed(&mut app, "/verify confirm armin flowA"), vec![]);
     assert!(matches!(last(&app), Line::Error(t) if t.contains("may belong to another flow")));
     // Cancelling one: the Matrix side's Cancelled removes that flow only.
-    assert_eq!(typed(&mut app, "/verify cancel armin flowB")[0], Effect::Verify {
-        user: me2.clone(),
-        flow_id: Some("flowB".into()),
-        action: VerifyAction::Cancel,
-    });
+    assert_eq!(
+        typed(&mut app, "/verify cancel armin flowB")[0],
+        Effect::Verify {
+            user: me2.clone(),
+            flow_id: Some("flowB".into()),
+            action: VerifyAction::Cancel,
+        }
+    );
     app.handle_mx(MxEvent::Verify {
         user: me2.clone(),
         update: VerifyUpdate::Cancelled("user".into()),
@@ -177,11 +184,14 @@ fn test_f44_verification_keyed_by_flow() {
     });
     assert!(app.verifications.is_empty());
     app.handle_mx(req("flowC", "DEVA"));
-    assert_eq!(typed(&mut app, "/verify confirm armin"), vec![Effect::Verify {
-        user: me2,
-        flow_id: Some("flowC".into()),
-        action: VerifyAction::Confirm,
-    }]);
+    assert_eq!(
+        typed(&mut app, "/verify confirm armin"),
+        vec![Effect::Verify {
+            user: me2,
+            flow_id: Some("flowC".into()),
+            action: VerifyAction::Confirm,
+        }]
+    );
 }
 
 #[test]
@@ -194,11 +204,14 @@ fn test_verify_dispatch() {
     assert_eq!(typed(&mut app, "/verify accept armin"), vec![]);
     assert!(matches!(last(&app), Line::Error(t) if t.contains("No pending verification")));
     // Start needs no pending request.
-    assert_eq!(typed(&mut app, "/verify start armin DEV1"), vec![Effect::Verify {
-        user: armin.clone(),
-        flow_id: None,
-        action: VerifyAction::Start { device: Some("DEV1".into()) },
-    }]);
+    assert_eq!(
+        typed(&mut app, "/verify start armin DEV1"),
+        vec![Effect::Verify {
+            user: armin.clone(),
+            flow_id: None,
+            action: VerifyAction::Start { device: Some("DEV1".into()) },
+        }]
+    );
     // An incoming to-device request shows an info line in the status window.
     app.handle_mx(MxEvent::Verify {
         user: armin.clone(),
@@ -227,11 +240,14 @@ fn test_verify_dispatch() {
     assert_eq!(typed(&mut app, "/verify confirm @armin:remote.tld"), fx(VerifyAction::Confirm));
     assert_eq!(typed(&mut app, "/verify mismatch armin"), fx(VerifyAction::Mismatch));
     assert_eq!(typed(&mut app, "/verify cancel armin"), fx(VerifyAction::Cancel));
-    assert!(matches!(&typed(&mut app, "/verify start armin")[0], Effect::Verify {
-        flow_id: Some(_),
-        action: VerifyAction::Start { device: None },
-        ..
-    }));
+    assert!(matches!(
+        &typed(&mut app, "/verify start armin")[0],
+        Effect::Verify {
+            flow_id: Some(_),
+            action: VerifyAction::Start { device: None },
+            ..
+        }
+    ));
     assert_eq!(typed(&mut app, "/verify accept nobody"), vec![]);
 
     // Emoji go to the request's window and the current one.
@@ -278,12 +294,14 @@ fn test_verify_dispatch() {
 #[test]
 fn test_devices_trust_recover_dispatch() {
     let mut app = app();
-    assert_eq!(typed(&mut app, "/devices"), vec![Effect::Devices(owned_user_id!(
-        "@carla:example.org"
-    ))]);
-    assert_eq!(typed(&mut app, "/devices armin"), vec![Effect::Devices(owned_user_id!(
-        "@armin:remote.tld"
-    ))]);
+    assert_eq!(
+        typed(&mut app, "/devices"),
+        vec![Effect::Devices(owned_user_id!("@carla:example.org"))]
+    );
+    assert_eq!(
+        typed(&mut app, "/devices armin"),
+        vec![Effect::Devices(owned_user_id!("@armin:remote.tld"))]
+    );
     assert_eq!(typed(&mut app, "/trust"), vec![Effect::Trust]);
     let key = "EsTc 9xQ2 kLm7 Zz11";
     let fx = typed(&mut app, &format!("/recover {key}"));

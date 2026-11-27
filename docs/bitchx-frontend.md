@@ -276,7 +276,7 @@ is already used in `src/main.rs` for `normal_after_send`).
 
 ## 6. Style constraints (CI enforces these)
 
-* `cargo +nightly fmt --all -- --check` must pass.
+* `cargo fmt --all -- --check` (stable 1.96 rustfmt) must pass.
 * `./.github/workflows/check-imports-format.sh` must pass for every file in
   `src/` — import order is: `std` imports, blank line, other imports, blank
   line, `crate` imports; and a `use` with braces may only pull from a single

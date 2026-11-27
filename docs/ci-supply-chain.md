@@ -88,7 +88,7 @@ GitHub API (release `published_at`, tag commit date) and the crates.io API
 
 ## Not pinned (runner-provided)
 
-- rustup / Rust toolchains (`stable`, `1.96`, `nightly` for rustfmt) are
+- rustup / Rust toolchains (`stable`, `1.96` incl. rustfmt) are
   fetched from static.rust-lang.org by rustup, signature-checked by rustup.
 - the RustSec advisory DB is fetched fresh by cargo-audit on every run (by
   design: a stale DB defeats the scan).

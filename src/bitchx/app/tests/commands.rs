@@ -7,17 +7,23 @@ fn test_plain_text_sends() {
     assert!(matches!(last(&app), Line::Error(_)));
     app.handle_key(alt('2'));
     let fx = typed(&mut app, "hello world");
-    assert_eq!(fx, vec![Effect::Send {
-        room_id: owned_room_id!("!a:example.org"),
-        text: "hello world".into(),
-        emote: false,
-    }]);
+    assert_eq!(
+        fx,
+        vec![Effect::Send {
+            room_id: owned_room_id!("!a:example.org"),
+            text: "hello world".into(),
+            emote: false,
+        }]
+    );
     let fx = typed(&mut app, "/me waves");
-    assert_eq!(fx, vec![Effect::Send {
-        room_id: owned_room_id!("!a:example.org"),
-        text: "waves".into(),
-        emote: true,
-    }]);
+    assert_eq!(
+        fx,
+        vec![Effect::Send {
+            room_id: owned_room_id!("!a:example.org"),
+            text: "waves".into(),
+            emote: true,
+        }]
+    );
     let fx = typed(&mut app, "//slash");
     assert!(matches!(&fx[0], Effect::Send { text, .. } if text == "/slash"));
 }
@@ -35,24 +41,33 @@ fn test_commands_to_effects() {
     app.handle_key(alt('2'));
     let a = owned_room_id!("!a:example.org");
     let armin = owned_user_id!("@armin:remote.tld");
-    assert_eq!(typed(&mut app, "/join #new:x"), vec![Effect::Join(JoinTarget {
-        id: "#new:x".into(),
-        implicit_server: false,
-        via: vec![],
-    })]);
+    assert_eq!(
+        typed(&mut app, "/join #new:x"),
+        vec![Effect::Join(JoinTarget {
+            id: "#new:x".into(),
+            implicit_server: false,
+            via: vec![],
+        })]
+    );
     // No server: our own homeserver.
-    assert_eq!(typed(&mut app, "/join #new"), vec![Effect::Join(JoinTarget {
-        id: "#new:example.org".into(),
-        implicit_server: true,
-        via: vec![],
-    })]);
+    assert_eq!(
+        typed(&mut app, "/join #new"),
+        vec![Effect::Join(JoinTarget {
+            id: "#new:example.org".into(),
+            implicit_server: true,
+            via: vec![],
+        })]
+    );
     // An alias always goes to the server (F29: room names can pose as
     // aliases); a joined room ID just switches.
-    assert_eq!(typed(&mut app, "/join #other:example.org"), vec![Effect::Join(JoinTarget {
-        id: "#other:example.org".into(),
-        implicit_server: false,
-        via: vec![],
-    })]);
+    assert_eq!(
+        typed(&mut app, "/join #other:example.org"),
+        vec![Effect::Join(JoinTarget {
+            id: "#other:example.org".into(),
+            implicit_server: false,
+            via: vec![],
+        })]
+    );
     assert!(
         typed(&mut app, "/join !b:example.org")
             .iter()
@@ -60,44 +75,54 @@ fn test_commands_to_effects() {
     );
     assert_eq!(app.cur().room.name, "#other");
     app.handle_key(alt('2'));
-    assert_eq!(typed(&mut app, "/list matrix.org -s rust"), vec![Effect::List(ListArgs {
-        server: Some("matrix.org".into()),
-        search: Some("rust".into()),
-    })]);
-    assert_eq!(typed(&mut app, "/topic hi there"), vec![Effect::Topic {
-        room_id: a.clone(),
-        topic: "hi there".into()
-    }]);
-    assert_eq!(typed(&mut app, "/op armin"), vec![Effect::Power {
-        room_id: a.clone(),
-        user: armin.clone(),
-        level: 50
-    }]);
-    assert_eq!(typed(&mut app, "/deop ARMIN"), vec![Effect::Power {
-        room_id: a.clone(),
-        user: armin.clone(),
-        level: 0
-    }]);
-    assert_eq!(typed(&mut app, "/kick bob spam"), vec![Effect::Kick {
-        room_id: a.clone(),
-        user: owned_user_id!("@bob:example.org"),
-        reason: Some("spam".into())
-    }]);
-    assert_eq!(typed(&mut app, "/invite @x:y"), vec![Effect::Invite {
-        room_id: a.clone(),
-        user: owned_user_id!("@x:y")
-    }]);
+    assert_eq!(
+        typed(&mut app, "/list matrix.org -s rust"),
+        vec![Effect::List(ListArgs {
+            server: Some("matrix.org".into()),
+            search: Some("rust".into()),
+        })]
+    );
+    assert_eq!(
+        typed(&mut app, "/topic hi there"),
+        vec![Effect::Topic { room_id: a.clone(), topic: "hi there".into() }]
+    );
+    assert_eq!(
+        typed(&mut app, "/op armin"),
+        vec![Effect::Power { room_id: a.clone(), user: armin.clone(), level: 50 }]
+    );
+    assert_eq!(
+        typed(&mut app, "/deop ARMIN"),
+        vec![Effect::Power { room_id: a.clone(), user: armin.clone(), level: 0 }]
+    );
+    assert_eq!(
+        typed(&mut app, "/kick bob spam"),
+        vec![Effect::Kick {
+            room_id: a.clone(),
+            user: owned_user_id!("@bob:example.org"),
+            reason: Some("spam".into())
+        }]
+    );
+    assert_eq!(
+        typed(&mut app, "/invite @x:y"),
+        vec![Effect::Invite { room_id: a.clone(), user: owned_user_id!("@x:y") }]
+    );
     assert_eq!(typed(&mut app, "/whois armin"), vec![Effect::Whois(armin.clone())]);
     // An open DM window takes the message; unknown users get a new DM.
-    assert_eq!(typed(&mut app, "/msg armin yo"), vec![Effect::Send {
-        room_id: owned_room_id!("!c:example.org"),
-        text: "yo".into(),
-        emote: false
-    }]);
-    assert_eq!(typed(&mut app, "/msg bob yo"), vec![Effect::Msg {
-        user: owned_user_id!("@bob:example.org"),
-        text: "yo".into()
-    }]);
+    assert_eq!(
+        typed(&mut app, "/msg armin yo"),
+        vec![Effect::Send {
+            room_id: owned_room_id!("!c:example.org"),
+            text: "yo".into(),
+            emote: false
+        }]
+    );
+    assert_eq!(
+        typed(&mut app, "/msg bob yo"),
+        vec![Effect::Msg {
+            user: owned_user_id!("@bob:example.org"),
+            text: "yo".into()
+        }]
+    );
     assert_eq!(typed(&mut app, "/nick neo"), vec![Effect::Nick("neo".into())]);
     assert_eq!(typed(&mut app, "/away lunch"), vec![Effect::Away(Some("lunch".into()))]);
     assert_eq!(typed(&mut app, "/back"), vec![Effect::Away(None)]);
@@ -105,9 +130,10 @@ fn test_commands_to_effects() {
     assert!(typed(&mut app, "/kick nobody").is_empty());
     assert_eq!(last(&app), Line::Error("nobody: No such nick".into()));
     // An existing DM window is reused by /query.
-    assert_eq!(typed(&mut app, "/query armin"), vec![Effect::Backfill(owned_room_id!(
-        "!c:example.org"
-    ))]);
+    assert_eq!(
+        typed(&mut app, "/query armin"),
+        vec![Effect::Backfill(owned_room_id!("!c:example.org"))]
+    );
     assert_eq!(app.refnum(), 4);
     assert_eq!(typed(&mut app, "/query @new:x"), vec![Effect::Query(owned_user_id!("@new:x"))]);
     assert_eq!(typed(&mut app, "/quit"), vec![Effect::Quit]);

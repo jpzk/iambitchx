@@ -16,20 +16,8 @@ use crate::bitchx::format::names_cell_width;
 use crate::bitchx::input::Input;
 use crate::bitchx::mention::Matcher;
 use crate::bitchx::model::{
-    Effect,
-    Ink,
-    Line,
-    Member,
-    MxEvent,
-    Presence,
-    RoomSnapshot,
-    Run,
-    VerifyAction,
-    VerifyUpdate,
-    nick_of,
-    register_me,
-    same_localpart,
-    whois_idle,
+    Effect, Ink, Line, Member, MxEvent, Presence, RoomSnapshot, Run, VerifyAction, VerifyUpdate,
+    nick_of, register_me, same_localpart, whois_idle,
 };
 use crate::bitchx::status::{BxStatus, UserCounts};
 use crate::bitchx::text::{clean_line, clean_snapshot, one_line};
@@ -52,11 +40,9 @@ fn clean_event(ev: MxEvent) -> MxEvent {
             presence.status_msg = presence.status_msg.map(|m| one_line(&m));
             MxEvent::Presence { user, presence }
         },
-        MxEvent::Verify { user, update: VerifyUpdate::Cancelled(r) } => {
-            MxEvent::Verify {
-                user,
-                update: VerifyUpdate::Cancelled(one_line(&r)),
-            }
+        MxEvent::Verify { user, update: VerifyUpdate::Cancelled(r) } => MxEvent::Verify {
+            user,
+            update: VerifyUpdate::Cancelled(one_line(&r)),
         },
         MxEvent::Verify { user, update: VerifyUpdate::Emoji(e) } => {
             let e = e.into_iter().map(|(a, b)| (one_line(&a), one_line(&b))).collect();
@@ -842,12 +828,12 @@ pub fn utf8_supported(term: &str, locale: &str) -> bool {
         if term.contains("utf") || term.contains("256") || term.contains("color") {
             return true;
         }
-        if term == "dumb" ||
-            term == "ansi" ||
-            term.starts_with("vt1") ||
-            term.starts_with("vt2") ||
-            term.starts_with("vt3") ||
-            term.contains("ascii")
+        if term == "dumb"
+            || term == "ansi"
+            || term.starts_with("vt1")
+            || term.starts_with("vt2")
+            || term.starts_with("vt3")
+            || term.contains("ascii")
         {
             return false;
         }
@@ -925,13 +911,11 @@ impl Logo {
                     .collect()
             },
             Logo::Acid => BANNER_ACID.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
-            Logo::Compact => {
-                BANNER_BLOCKS
-                    .iter()
-                    .map(|l| Line::Logo(format!("    {l}")))
-                    .chain(BANNER_SHADOW.iter().map(|l| Line::LogoDim(format!("    {l}"))))
-                    .collect()
-            },
+            Logo::Compact => BANNER_BLOCKS
+                .iter()
+                .map(|l| Line::Logo(format!("    {l}")))
+                .chain(BANNER_SHADOW.iter().map(|l| Line::LogoDim(format!("    {l}"))))
+                .collect(),
             Logo::Slant => BANNER_ASCII.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
         }
     }
@@ -1081,8 +1065,8 @@ impl Window {
 
     /// Append a line stamped `ts` (unix millis).
     fn push_at(&mut self, id: Option<String>, ts: i64, line: Line) -> bool {
-        if let Some(id) = id &&
-            !self.ids.insert(id)
+        if let Some(id) = id
+            && !self.ids.insert(id)
         {
             return false;
         }
@@ -1100,8 +1084,8 @@ impl Window {
         let mut fresh = vec![];
         let mut times = vec![];
         for (id, ts, line) in lines {
-            if let Some(id) = id &&
-                !self.ids.insert(id)
+            if let Some(id) = id
+                && !self.ids.insert(id)
             {
                 continue;
             }
@@ -1468,12 +1452,10 @@ impl App {
         if win.room.encrypted {
             modes.push('e');
         }
-        let users = win.room.room_id.as_ref().map(|_| {
-            UserCounts {
-                ops: win.room.members.iter().filter(|m| m.is_op()).count(),
-                nonops: win.room.members.iter().filter(|m| !m.is_op()).count(),
-                voice: win.room.members.iter().filter(|m| m.is_voice()).count(),
-            }
+        let users = win.room.room_id.as_ref().map(|_| UserCounts {
+            ops: win.room.members.iter().filter(|m| m.is_op()).count(),
+            nonops: win.room.members.iter().filter(|m| !m.is_op()).count(),
+            voice: win.room.members.iter().filter(|m| m.is_voice()).count(),
         });
 
         BxStatus {
@@ -1526,13 +1508,11 @@ impl App {
                     return vec![];
                 };
                 // our own profile change seen in a room (e.g. from another client)
-                let own_name = lines.iter().rev().find_map(|(_, _, l)| {
-                    match l {
-                        Line::DisplayName { nick, name: Some(n) } if *nick == self.nick => {
-                            Some(n.clone())
-                        },
-                        _ => None,
-                    }
+                let own_name = lines.iter().rev().find_map(|(_, _, l)| match l {
+                    Line::DisplayName { nick, name: Some(n) } if *nick == self.nick => {
+                        Some(n.clone())
+                    },
+                    _ => None,
                 });
                 if let Some(name) = own_name.filter(|_| !backfill) {
                     self.own_name(name);
@@ -1701,11 +1681,11 @@ impl App {
         self.flush_debug();
         let secs = self.vars.auto_away_time;
         let now = self.now();
-        if !self.auto_away_armed ||
-            !self.vars.auto_away ||
-            secs == 0 ||
-            self.away.is_some() ||
-            now - self.last_input < i64::from(secs) * 1000
+        if !self.auto_away_armed
+            || !self.vars.auto_away
+            || secs == 0
+            || self.away.is_some()
+            || now - self.last_input < i64::from(secs) * 1000
         {
             return vec![];
         }
@@ -1909,8 +1889,8 @@ impl App {
     /// Persist [`Self::vars`] (the away nick original) if there is a
     /// `config.toml`; quietly skipped otherwise.
     fn save_vars(&mut self) {
-        if let Some(path) = self.config_toml.clone() &&
-            let Err(e) = self.vars.persist(&path)
+        if let Some(path) = self.config_toml.clone()
+            && let Err(e) = self.vars.persist(&path)
         {
             self.error(format!("Could not save {}: {e:#}", path.display()));
         }
@@ -2028,8 +2008,8 @@ impl App {
             return self.answer(confirm, line);
         }
 
-        if let Some(rest) = line.strip_prefix('/') &&
-            !rest.starts_with('/')
+        if let Some(rest) = line.strip_prefix('/')
+            && !rest.starts_with('/')
         {
             return match parse(rest) {
                 Ok(Some(cmd)) => self.command(cmd),
@@ -2111,8 +2091,8 @@ impl App {
         }
         // Not in any window: still refuse if we have seen several.
         let seen = same_localpart(target);
-        if seen.len() > 1 &&
-            let Some(r) = one(seen)
+        if seen.len() > 1
+            && let Some(r) = one(seen)
         {
             return r;
         }
@@ -2307,12 +2287,11 @@ impl App {
                 vec![Effect::Quit]
             },
             BitchxCommand::Nick { nick } => vec![Effect::Nick(nick)],
-            BitchxCommand::Topic { topic } => {
-                self.current_room()
-                    .map(|room_id| Effect::Topic { room_id, topic })
-                    .into_iter()
-                    .collect()
-            },
+            BitchxCommand::Topic { topic } => self
+                .current_room()
+                .map(|room_id| Effect::Topic { room_id, topic })
+                .into_iter()
+                .collect(),
             BitchxCommand::Away { reason } => {
                 let msg = reason
                     .or_else(|| Some(self.vars.away_msg.clone()).filter(|m| !m.is_empty()))
@@ -2360,14 +2339,12 @@ impl App {
                 self.info(format!("Window {}: {name}", self.refnum()));
                 vec![]
             },
-            BitchxCommand::Window { target: Some(t) } => {
-                match self.window_arg(&t) {
-                    Some(idx) => self.switch(idx),
-                    None => {
-                        self.error(format!("No such window: {t}"));
-                        vec![]
-                    },
-                }
+            BitchxCommand::Window { target: Some(t) } => match self.window_arg(&t) {
+                Some(idx) => self.switch(idx),
+                None => {
+                    self.error(format!("No such window: {t}"));
+                    vec![]
+                },
             },
             BitchxCommand::WindowSplit(on) => {
                 self.split = on.unwrap_or(!self.split);
@@ -2435,10 +2412,10 @@ impl App {
                 self.info("Recovering secrets from secure backup with the given key (********)");
                 vec![Effect::Recover(key)]
             },
-            BitchxCommand::Mode { .. } |
-            BitchxCommand::Ctcp { .. } |
-            BitchxCommand::Ignore { .. } |
-            BitchxCommand::Unignore { .. } => {
+            BitchxCommand::Mode { .. }
+            | BitchxCommand::Ctcp { .. }
+            | BitchxCommand::Ignore { .. }
+            | BitchxCommand::Unignore { .. } => {
                 self.error("Not supported on Matrix");
                 vec![]
             },
@@ -2593,8 +2570,8 @@ impl App {
             ));
             return vec![];
         }
-        if matches!(action, VerifyAction::Cancel | VerifyAction::Mismatch) &&
-            let Some(p) = self.verifications.iter_mut().find(|p| p.flow_id == v.flow_id)
+        if matches!(action, VerifyAction::Cancel | VerifyAction::Mismatch)
+            && let Some(p) = self.verifications.iter_mut().find(|p| p.flow_id == v.flow_id)
         {
             // the Matrix side's `Cancelled` (no flow id) then removes this one
             p.state = "cancelled";
@@ -2624,8 +2601,8 @@ impl App {
         let n = self.flows_of(&user).len();
         let room_id = self.flows_of(&user).last().and_then(|v| v.room_id.clone());
         let set_state = |app: &mut App, state| {
-            if n == 1 &&
-                let Some(v) = app.verifications.iter_mut().find(|v| v.user == user)
+            if n == 1
+                && let Some(v) = app.verifications.iter_mut().find(|v| v.user == user)
             {
                 v.state = state;
             }

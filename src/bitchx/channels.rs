@@ -32,9 +32,9 @@ fn percent_decode(s: &str) -> String {
     let mut out = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        if b[i] == b'%' &&
-            i + 2 < b.len() &&
-            let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2]))
+        if b[i] == b'%'
+            && i + 2 < b.len()
+            && let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2]))
         {
             out.push(h << 4 | l);
             i += 3;
@@ -58,8 +58,8 @@ pub fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, Stri
         Some((_, frag)) => {
             let (id, query) = frag.split_once('?').unwrap_or((frag, ""));
             for kv in query.split('&') {
-                if let Some(v) = kv.strip_prefix("via=") &&
-                    !v.is_empty()
+                if let Some(v) = kv.strip_prefix("via=")
+                    && !v.is_empty()
                 {
                     via.push(percent_decode(v));
                 }
@@ -93,13 +93,11 @@ pub fn normalize_join(target: &str, own_server: &str) -> Result<JoinTarget, Stri
             Ok(JoinTarget { id: chan, implicit_server: false, via })
         },
         Some(_) => Err(format!("Bad channel name: {target}")),
-        None => {
-            Ok(JoinTarget {
-                id: format!("{chan}:{own_server}"),
-                implicit_server: true,
-                via,
-            })
-        },
+        None => Ok(JoinTarget {
+            id: format!("{chan}:{own_server}"),
+            implicit_server: true,
+            via,
+        }),
     }
 }
 
@@ -239,18 +237,24 @@ mod tests {
 
     #[test]
     fn test_join_alias_normalisation() {
-        assert_eq!(j("#x"), JoinTarget {
-            id: "#x:own.server".into(),
-            implicit_server: true,
-            via: vec![]
-        });
+        assert_eq!(
+            j("#x"),
+            JoinTarget {
+                id: "#x:own.server".into(),
+                implicit_server: true,
+                via: vec![]
+            }
+        );
         assert_eq!(j("x").id, "#x:own.server");
         assert!(j("x").implicit_server);
-        assert_eq!(j("#x:matrix.org"), JoinTarget {
-            id: "#x:matrix.org".into(),
-            implicit_server: false,
-            via: vec![]
-        });
+        assert_eq!(
+            j("#x:matrix.org"),
+            JoinTarget {
+                id: "#x:matrix.org".into(),
+                implicit_server: false,
+                via: vec![]
+            }
+        );
         assert_eq!(j("!abc:matrix.org").id, "!abc:matrix.org");
         assert_eq!(j("!abc").id, "!abc");
         assert!(!j("!abc:matrix.org").implicit_server);
@@ -303,10 +307,13 @@ mod tests {
         assert_eq!(p(""), ListArgs::default());
         assert_eq!(p("matrix.org"), ListArgs { server: Some("matrix.org".into()), search: None });
         assert_eq!(p("-s rust lang"), ListArgs { server: None, search: Some("rust lang".into()) });
-        assert_eq!(p("matrix.org -s rust"), ListArgs {
-            server: Some("matrix.org".into()),
-            search: Some("rust".into()),
-        });
+        assert_eq!(
+            p("matrix.org -s rust"),
+            ListArgs {
+                server: Some("matrix.org".into()),
+                search: Some("rust".into()),
+            }
+        );
         assert_eq!(p("https://matrix.org/").server.as_deref(), Some("matrix.org"));
         assert!(parse_list_args("-s").is_err());
         assert!(parse_list_args("-x").is_err());

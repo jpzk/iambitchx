@@ -241,24 +241,20 @@ pub async fn recover_locked<O: TokenOps>(
     let in_use = ops.in_use();
     let on_disk = ops.on_disk();
     match decide(mode, in_use.as_ref(), on_disk.as_ref(), attempts) {
-        Recovery::ReloadFromDisk => {
-            match ops.adopt_disk(on_disk.as_ref()).await {
-                Ok(true) => Ok(Done::Reloaded),
-                Ok(false) => Ok(Done::Refreshed),
-                Err(e) => {
-                    tracing::warn!("adopting session.json failed: {e}");
-                    Err(relogin())
-                },
-            }
+        Recovery::ReloadFromDisk => match ops.adopt_disk(on_disk.as_ref()).await {
+            Ok(true) => Ok(Done::Reloaded),
+            Ok(false) => Ok(Done::Refreshed),
+            Err(e) => {
+                tracing::warn!("adopting session.json failed: {e}");
+                Err(relogin())
+            },
         },
-        Recovery::Refresh => {
-            match ops.refresh().await {
-                Ok(()) => Ok(Done::Refreshed),
-                Err(e) => {
-                    tracing::warn!("token refresh failed: {e}");
-                    Err(relogin())
-                },
-            }
+        Recovery::Refresh => match ops.refresh().await {
+            Ok(()) => Ok(Done::Refreshed),
+            Err(e) => {
+                tracing::warn!("token refresh failed: {e}");
+                Err(relogin())
+            },
         },
         Recovery::Relogin | Recovery::Fail => Err(relogin()),
     }
@@ -284,15 +280,13 @@ pub async fn proactive_locked<O: TokenOps>(
     let decision =
         decide_proactive(mode, in_use.as_ref(), on_disk.as_ref(), ops.disk_age(), fresh_within);
     match decision {
-        Proactive::ReloadFromDisk => {
-            ops.adopt_disk(on_disk.as_ref()).await.map(|adopted| {
-                if adopted {
-                    Done::Reloaded
-                } else {
-                    Done::Refreshed
-                }
-            })
-        },
+        Proactive::ReloadFromDisk => ops.adopt_disk(on_disk.as_ref()).await.map(|adopted| {
+            if adopted {
+                Done::Reloaded
+            } else {
+                Done::Refreshed
+            }
+        }),
         Proactive::Refresh => ops.refresh().await.map(|()| Done::Refreshed),
         Proactive::Skip => Ok(Done::Skipped),
         Proactive::Stop => Ok(Done::Stopped),

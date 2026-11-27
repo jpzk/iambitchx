@@ -59,14 +59,12 @@ fn test_utf8_detection() {
 fn test_startup_logos() {
     let text = |ls: &[Line]| {
         ls.iter()
-            .map(|l| {
-                match l {
-                    Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) => t.clone(),
-                    Line::LogoRuns(runs) => {
-                        runs.iter().map(|r| r.text.clone()).collect::<Vec<_>>().join("")
-                    },
-                    _ => String::new(),
-                }
+            .map(|l| match l {
+                Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) => t.clone(),
+                Line::LogoRuns(runs) => {
+                    runs.iter().map(|r| r.text.clone()).collect::<Vec<_>>().join("")
+                },
+                _ => String::new(),
             })
             .collect::<Vec<_>>()
     };
@@ -87,11 +85,9 @@ fn test_startup_logos() {
     // background colours, the strokes in the foreground ones.
     let runs: Vec<Run> = startup_lines_for("carla", Logo::Original)
         .iter()
-        .filter_map(|l| {
-            match l {
-                Line::LogoRuns(runs) => Some(runs.clone()),
-                _ => None,
-            }
+        .filter_map(|l| match l {
+            Line::LogoRuns(runs) => Some(runs.clone()),
+            _ => None,
         })
         .flatten()
         .collect();

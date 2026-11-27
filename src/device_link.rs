@@ -137,17 +137,15 @@ pub fn classify_poll(status: u16, body: &[u8]) -> PollOutcome {
     }
 
     match serde_json::from_slice::<OAuthErrorResponse>(body) {
-        Ok(err) => {
-            match err.error.as_str() {
-                "authorization_pending" => PollOutcome::Pending,
-                "slow_down" => PollOutcome::SlowDown,
-                "expired_token" => PollOutcome::Expired,
-                "access_denied" => PollOutcome::Denied,
-                other => {
-                    let desc = err.error_description.map(|d| format!(": {d}")).unwrap_or_default();
-                    PollOutcome::Failed(format!("token endpoint error {other}{desc}"))
-                },
-            }
+        Ok(err) => match err.error.as_str() {
+            "authorization_pending" => PollOutcome::Pending,
+            "slow_down" => PollOutcome::SlowDown,
+            "expired_token" => PollOutcome::Expired,
+            "access_denied" => PollOutcome::Denied,
+            other => {
+                let desc = err.error_description.map(|d| format!(": {d}")).unwrap_or_default();
+                PollOutcome::Failed(format!("token endpoint error {other}{desc}"))
+            },
         },
         Err(_) => PollOutcome::Failed(format!("token endpoint returned HTTP {status}")),
     }
@@ -473,10 +471,11 @@ pub async fn device_link_login(
     tracing::info!("Starting device link login with issuer {issuer}");
 
     let scope = build_scope(&device_id);
-    let (status, body) = post_form(&http, &device_endpoint, &[
-        ("client_id", client_id.as_str()),
-        ("scope", scope.as_str()),
-    ])
+    let (status, body) = post_form(
+        &http,
+        &device_endpoint,
+        &[("client_id", client_id.as_str()), ("scope", scope.as_str())],
+    )
     .await
     .map_err(fail)?;
 
@@ -511,11 +510,15 @@ pub async fn device_link_login(
         }
         tokio::time::sleep(timer.interval()).await;
 
-        let outcome = match post_form(&http, &token_endpoint, &[
-            ("grant_type", DEVICE_CODE_GRANT_TYPE),
-            ("device_code", auth.device_code.expose()),
-            ("client_id", client_id.as_str()),
-        ])
+        let outcome = match post_form(
+            &http,
+            &token_endpoint,
+            &[
+                ("grant_type", DEVICE_CODE_GRANT_TYPE),
+                ("device_code", auth.device_code.expose()),
+                ("client_id", client_id.as_str()),
+            ],
+        )
         .await
         {
             Ok((status, body)) => classify_poll(status, &body),

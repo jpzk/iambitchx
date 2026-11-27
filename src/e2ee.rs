@@ -6,11 +6,7 @@
 //! tokens are never logged or printed.
 use futures::StreamExt;
 use matrix_sdk::encryption::verification::{
-    SasState,
-    SasVerification,
-    Verification,
-    VerificationRequest,
-    VerificationRequestState,
+    SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
 };
 use matrix_sdk::ruma::events::key::verification::VerificationMethod;
 use matrix_sdk::ruma::events::key::verification::request::ToDeviceKeyVerificationRequestEvent;
@@ -71,12 +67,16 @@ pub fn register_verification_handlers(client: &Client, tx: Tx) {
 /// Report a request and follow it: ready -> SAS -> emoji -> done/cancelled.
 pub fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
     let user = req.other_user_id().to_owned();
-    update(&tx, &user, VerifyUpdate::Requested {
-        flow_id: req.flow_id().to_string(),
-        device,
-        room_id: req.room_id().map(ToOwned::to_owned),
-        we_started: req.we_started(),
-    });
+    update(
+        &tx,
+        &user,
+        VerifyUpdate::Requested {
+            flow_id: req.flow_id().to_string(),
+            device,
+            room_id: req.room_id().map(ToOwned::to_owned),
+            we_started: req.we_started(),
+        },
+    );
 
     tokio::spawn(async move {
         let mut changes = req.changes();
@@ -84,20 +84,18 @@ pub fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
         loop {
             let st = match state.take() {
                 Some(s) => s,
-                None => {
-                    match changes.next().await {
-                        Some(s) => s,
-                        None => break,
-                    }
+                None => match changes.next().await {
+                    Some(s) => s,
+                    None => break,
                 },
             };
             match st {
-                VerificationRequestState::Created { .. } |
-                VerificationRequestState::Requested { .. } => {},
+                VerificationRequestState::Created { .. }
+                | VerificationRequestState::Requested { .. } => {},
                 VerificationRequestState::Ready { .. } => {
                     update(&tx, &user, VerifyUpdate::Ready);
-                    if req.we_started() &&
-                        let Err(e) = req.start_sas().await
+                    if req.we_started()
+                        && let Err(e) = req.start_sas().await
                     {
                         update(&tx, &user, VerifyUpdate::Cancelled(e.to_string()));
                         break;
@@ -133,8 +131,8 @@ pub fn track_request(req: VerificationRequest, device: Option<String>, tx: Tx) {
 pub fn track_sas(sas: SasVerification, tx: Tx) {
     tokio::spawn(async move {
         let user = sas.other_user_id().to_owned();
-        if !sas.we_started() &&
-            let Err(e) = sas.accept().await
+        if !sas.we_started()
+            && let Err(e) = sas.accept().await
         {
             update(&tx, &user, VerifyUpdate::Cancelled(e.to_string()));
             return;
@@ -144,22 +142,19 @@ pub fn track_sas(sas: SasVerification, tx: Tx) {
         loop {
             let st = match state.take() {
                 Some(s) => s,
-                None => {
-                    match changes.next().await {
-                        Some(s) => s,
-                        None => break,
-                    }
+                None => match changes.next().await {
+                    Some(s) => s,
+                    None => break,
                 },
             };
             match st {
                 SasState::KeysExchanged { emojis, decimals } => {
                     let pairs = match emojis {
-                        Some(e) => {
-                            e.emojis
-                                .iter()
-                                .map(|e| (e.symbol.to_string(), e.description.to_string()))
-                                .collect()
-                        },
+                        Some(e) => e
+                            .emojis
+                            .iter()
+                            .map(|e| (e.symbol.to_string(), e.description.to_string()))
+                            .collect(),
                         None => {
                             let (a, b, c) = decimals;
                             vec![
