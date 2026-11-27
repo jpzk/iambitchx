@@ -1,7 +1,9 @@
+use super::logo::*;
 use super::*;
 use matrix_sdk::ruma::{owned_room_id, owned_user_id};
 
 use crate::bitchx::channels::{JoinTarget, ListArgs};
+use crate::bitchx::model::{Ink, Run};
 
 pub fn key(code: KeyCode) -> KeyEvent {
     KeyEvent::new(code, KeyModifiers::NONE)
