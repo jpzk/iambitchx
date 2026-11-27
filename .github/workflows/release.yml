@@ -210,6 +210,10 @@ jobs:
       && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
       && !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
     runs-on: ubuntu-latest
+    # human gate: the `release` environment requires a maintainer approval
+    # before this job (the only one with contents: write) starts.
+    # Deployment policy: tags matching v* only.
+    environment: release
     permissions:
       contents: write
     steps:
