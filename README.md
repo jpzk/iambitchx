@@ -58,6 +58,10 @@ Type `/help` inside the client.
 More: [docs/bitchx-frontend.md](docs/bitchx-frontend.md),
 [docs/bitchx-formats.md](docs/bitchx-formats.md).
 
+## Security
+
+Found a vulnerability? Please report it privately, see [SECURITY.md](SECURITY.md).
+
 ## Credits & license
 
 - **Shoutout to [iamb.chat](https://iamb.chat) and to Ulyssa.** iamBitchX is a

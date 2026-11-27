@@ -20,6 +20,11 @@ You can generate an HTML report with [cargo-tarpaulin] by running:
 % cargo tarpaulin --avoid-cfg-tarpaulin --out html
 ```
 
+## Security issues
+
+Do not open public issues or pull requests for vulnerabilities. Follow
+[SECURITY.md](SECURITY.md) instead.
+
 ## Tests
 
 You can run the unit tests and documentation tests using `cargo test`.
