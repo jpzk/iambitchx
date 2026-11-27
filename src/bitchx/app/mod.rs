@@ -541,7 +541,9 @@ impl App {
             // Our own aliases are shown short (`#x`), so `#x:<our server>`
             // is a room name dressed up as one.
             let fake_own = name.starts_with('#') && name.ends_with(&own);
-            w.spoof = clash || fake_own;
+            // M-03: a `#name` taken from the room name rather than an alias
+            // is byte-identical to one of our own aliases.
+            w.spoof = clash || fake_own || w.room.from_room_name;
         }
     }
 

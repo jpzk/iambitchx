@@ -121,7 +121,10 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
         .map(|m| Member::new(m.user_id().to_owned(), power(m.power_level())))
         .collect();
 
-    let is_direct = room.is_direct().await.unwrap_or(false);
+    // M-04: `m.direct` is the server's word; a "DM" with more than two
+    // members is a group room and is never shown as a private query.
+    let is_direct =
+        room.is_direct().await.unwrap_or(false) && dm_members_ok(room.active_members_count());
     let dm_peer = if is_direct {
         room.direct_targets()
             .iter()
@@ -135,6 +138,7 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
 
     RoomSnapshot {
         room_id: Some(room.room_id().to_owned()),
+        from_room_name: room.canonical_alias().is_none() && peer_nick.is_none(),
         name: channel_name(room, me, peer_nick),
         dm_peer,
         topic: room.topic().filter(|t| !t.trim().is_empty()).map(|t| sanitize(&t)),
@@ -466,9 +470,23 @@ fn room_of(client: &Client, room_id: &OwnedRoomId) -> anyhow::Result<Room> {
 /// `create_dm` puts `m.room.encryption` (megolm) in the initial state.
 async fn dm_room(client: &Client, user: &UserId) -> anyhow::Result<Room> {
     match client.get_dm_room(user) {
+        // M-04: the server's `m.direct` map alone does not make a room
+        // private; refuse one that has more than us and the peer in it.
+        Some(room) if !dm_members_ok(room.active_members_count()) => anyhow::bail!(
+            "{} is listed as your private chat with {user} but has {} members; \
+             not sending there",
+            room.room_id(),
+            room.active_members_count()
+        ),
         Some(room) => Ok(room),
         None => Ok(client.create_dm(user).await?),
     }
+}
+
+/// M-04: a direct message room holds at most us and the peer (joined or
+/// invited).
+fn dm_members_ok(active_members: u64) -> bool {
+    active_members <= 2
 }
 
 async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> anyhow::Result<()> {
@@ -735,6 +753,16 @@ mod tests {
     use super::*;
     use crate::bitchx::app::App;
     use crate::bitchx::app::tests::{app, typed};
+
+    #[test]
+    fn test_m04_dm_needs_at_most_two_members() {
+        // A room the server lists in `m.direct` is only private while it
+        // holds us and the peer.
+        assert!(dm_members_ok(1));
+        assert!(dm_members_ok(2));
+        assert!(!dm_members_ok(3));
+        assert!(!dm_members_ok(50));
+    }
 
     /// What the sync loop's `set_presence` becomes after these effects ran
     /// (the [`Effect::Away`] executor drives [`SYNC_AWAY`]); `None` if no

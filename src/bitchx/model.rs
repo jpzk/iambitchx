@@ -381,6 +381,10 @@ pub(crate) struct RoomSnapshot {
     pub name: String,
     /// The other user, when this room is a direct message.
     pub dm_peer: Option<OwnedUserId>,
+    /// M-03: `name` came from the room's own (sender-chosen) `m.room.name`,
+    /// not from a canonical alias or a DM peer, so its `#name` would look
+    /// exactly like an alias on our server: the room ID is shown instead.
+    pub from_room_name: bool,
     pub topic: Option<String>,
     pub encrypted: bool,
     pub invite_only: bool,
