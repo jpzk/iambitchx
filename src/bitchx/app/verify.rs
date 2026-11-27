@@ -90,6 +90,60 @@ impl App {
         }
     }
 
+    /// `/verify start <user> [device|flow]` (E5): never guesses a flow. No
+    /// pending flow: a new request (to `device` if given). Otherwise the arg
+    /// selects a flow by id (prefix) or device; a device with no flow gets a
+    /// new request; no arg goes through `pick_flow`, refusing when several.
+    fn start_cmd(&mut self, user: OwnedUserId, device: Option<String>) -> Vec<Effect> {
+        let new = |user, device| {
+            vec![Effect::Verify {
+                user,
+                flow_id: None,
+                action: VerifyAction::Start { device },
+            }]
+        };
+        if self.flows_of(&user).is_empty() {
+            return new(user, device);
+        }
+        let Some(arg) = device else {
+            let Some(v) = self.pick_flow(&user, None) else {
+                return vec![];
+            };
+            let action = VerifyAction::Start { device: None };
+            return vec![Effect::Verify { user, flow_id: Some(v.flow_id), action }];
+        };
+        let by_flow = self.flows_of(&user).iter().any(|v| v.flow_id.starts_with(arg.as_str()));
+        let by_dev = self.flows_of(&user).iter().any(|v| v.device.as_deref() == Some(&*arg));
+        if by_flow && !by_dev {
+            let Some(v) = self.pick_flow(&user, Some(&arg)) else {
+                return vec![];
+            };
+            let action = VerifyAction::Start { device: None };
+            return vec![Effect::Verify { user, flow_id: Some(v.flow_id), action }];
+        }
+        let flows: Vec<String> = self
+            .flows_of(&user)
+            .iter()
+            .filter(|v| v.device.as_deref() == Some(&*arg))
+            .map(|v| v.flow_id.clone())
+            .collect();
+        match flows.as_slice() {
+            [] => new(user, Some(arg)),
+            [f] => {
+                let action = VerifyAction::Start { device: Some(arg) };
+                vec![Effect::Verify { user, flow_id: Some(f.clone()), action }]
+            },
+            many => {
+                self.error(format!(
+                    "{user} has {} pending verifications with device {arg}: {} -- give the flow id",
+                    many.len(),
+                    many.join(", ")
+                ));
+                vec![]
+            },
+        }
+    }
+
     pub(super) fn verify_cmd(&mut self, cmd: VerifyCmd) -> Vec<Effect> {
         let (target, flow, action) = match cmd {
             VerifyCmd::List => {
@@ -124,9 +178,8 @@ impl App {
         let Some(user) = self.user_cmd(&target) else {
             return vec![];
         };
-        if let VerifyAction::Start { .. } = action {
-            let flow_id = self.flows_of(&user).last().map(|v| v.flow_id.clone());
-            return vec![Effect::Verify { user, flow_id, action }];
+        if let VerifyAction::Start { device } = action {
+            return self.start_cmd(user, device);
         }
         let Some(v) = self.pick_flow(&user, flow.as_deref()) else {
             return vec![];

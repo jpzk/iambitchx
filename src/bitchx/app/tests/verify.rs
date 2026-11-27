@@ -322,3 +322,46 @@ fn test_devices_trust_recover_dispatch() {
     typed(&mut app, "/recover");
     assert!(matches!(last(&app), Line::Error(t) if t.contains("missing argument")));
 }
+
+/// E5: with several pending flows `/verify start` must not pick one itself.
+#[test]
+fn test_e5_verify_start_refuses_to_guess_flow() {
+    let mut app = app();
+    let armin = owned_user_id!("@armin:remote.tld");
+    let req = |flow: &str, dev: &str| MxEvent::Verify {
+        user: armin.clone(),
+        update: VerifyUpdate::Requested {
+            flow_id: flow.into(),
+            device: Some(dev.into()),
+            room_id: None,
+            we_started: true,
+        },
+    };
+    app.handle_mx(req("flowA", "DEVA"));
+    app.handle_mx(req("flowB", "DEVB"));
+    // No selection: refused, flows listed.
+    assert_eq!(typed(&mut app, "/verify start armin"), vec![]);
+    assert!(matches!(last(&app), Line::Error(t)
+        if t.contains("2 pending verifications") && t.contains("flowA") && t.contains("flowB")));
+    let start = |flow: &str, device: Option<&str>| {
+        vec![Effect::Verify {
+            user: armin.clone(),
+            flow_id: Some(flow.into()),
+            action: VerifyAction::Start { device: device.map(Into::into) },
+        }]
+    };
+    // Selected by flow id (prefix) or by the device of the flow.
+    assert_eq!(typed(&mut app, "/verify start armin flowA"), start("flowA", None));
+    assert_eq!(typed(&mut app, "/verify start armin DEVB"), start("flowB", Some("DEVB")));
+    // A device with no pending flow is a new request.
+    assert_eq!(
+        typed(&mut app, "/verify start armin DEVC"),
+        vec![Effect::Verify {
+            user: armin.clone(),
+            flow_id: None,
+            action: VerifyAction::Start { device: Some("DEVC".into()) },
+        }]
+    );
+    // An ambiguous prefix is refused.
+    assert_eq!(typed(&mut app, "/verify start armin flow"), vec![]);
+}
