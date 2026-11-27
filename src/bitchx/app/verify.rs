@@ -263,6 +263,12 @@ impl App {
                     "Verification with {user} is ready, starting emoji (SAS)"
                 ))]
             },
+            VerifyUpdate::SasOffered => {
+                set_state(self, "emoji offered");
+                vec![Line::Info(format!(
+                    "{user} started emoji verification -- /verify accept {user} to compare emoji, or /verify cancel {user}"
+                ))]
+            },
             VerifyUpdate::Emoji(emojis) => {
                 set_state(self, "emoji");
                 let mut lines = sas_lines(user.as_str(), &emojis);

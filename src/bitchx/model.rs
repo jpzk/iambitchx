@@ -509,6 +509,8 @@ pub(crate) enum VerifyUpdate {
     },
     /// Both sides are ready; SAS can start.
     Ready,
+    /// E2: the peer started emoji (SAS); it waits for `/verify accept`.
+    SasOffered,
     /// The short auth string: 7 (emoji, name) pairs.
     Emoji(Vec<(String, String)>),
     /// We confirmed; waiting for the other side.
