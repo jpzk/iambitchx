@@ -85,11 +85,9 @@
 == SetVar { name: "AWAY_MSG", value: None } hl=true
   line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [Some(DarkGray)/None/BOLD/NONE "    away_msg has no value"]
 == Info("info\nmore info") hl=false
-  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "info"]
-  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "more info"]
+  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "info more info"]
 == Info("info\nmore info") hl=true
-  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "info"]
-  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "more info"]
+  line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/NONE/NONE "info more info"]
 == Error("broken") hl=false
   line None/None/NONE/NONE: [Some(DarkGray)/None/BOLD/NONE " "] [None/None/BOLD/NONE "iamBitchX"] [None/None/NONE/NONE ": broken"]
 == Error("broken") hl=true
