@@ -38,6 +38,7 @@ fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocki
         .filename_prefix(format!("iambitchx-log-{}", settings.profile_name))
         .max_log_files(7)
         .build(&settings.logs_dir)
+        // Fail fast at startup: logs dir was just created by create_dirs().
         .expect("can build appending tracing logger");
     let (appender, guard) = tracing_appender::non_blocking(appender);
 
@@ -54,6 +55,7 @@ fn setup_logging(settings: &ApplicationSettings) -> tracing_appender::non_blocki
     let subscriber = tracing_subscriber::registry()
         .with(fmt.with_filter(filter))
         .with(debug_tap::layer());
+    // Fail fast: only fails if a global subscriber was already set (a bug).
     tracing::subscriber::set_global_default(subscriber).expect("setting default subscriber failed");
 
     guard
@@ -111,6 +113,7 @@ fn main() {
             format!("iambitchx-worker-{}", ID.fetch_add(1, Ordering::SeqCst))
         })
         .build()
+        // Fail fast: without a runtime nothing can run; main() returns ().
         .expect("tokio runtime");
 
     let res = rt.block_on(run(settings, cli.smoke));
