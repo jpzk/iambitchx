@@ -30,8 +30,7 @@ mod theme;
 mod verify;
 
 #[cfg(test)]
-pub(crate) use logo::{BANNER_BLOCKS, BANNER_SHADOW};
-pub(crate) use logo::{Logo, startup_lines_for, utf8_terminal};
+pub(crate) use logo::{LOGO_START, Logo, startup_lines_for, utf8_terminal};
 pub(crate) use state::{Confirm, DBG_PER_SEC, PendingVerify, Probe, Window, now_ms};
 pub(crate) use theme::{PICKER_ITEMS, PICKER_ROWS, Picker};
 
@@ -119,14 +118,11 @@ impl App {
     /// [`App::new`] with an explicit logo.
     pub(crate) fn new_with_logo(me: OwnedUserId, logo: Logo) -> Self {
         let lines = startup_lines_for(me.localpart(), logo);
-        let logo_start = lines
-            .iter()
-            .position(|l| matches!(l, Line::Logo(_) | Line::LogoDim(_)))
-            .unwrap_or(0);
-        let logo_len = lines[logo_start..]
-            .iter()
-            .take_while(|l| matches!(l, Line::Logo(_) | Line::LogoDim(_)))
-            .count();
+        // The logo slot is positional, not found by line kind: `None` has no
+        // lines and the original art is `LogoRuns`, so a scan for `Logo`
+        // lines would land on the `[ iamBitchX-ver]` credit instead.
+        let logo_start = LOGO_START;
+        let logo_len = logo.lines(env!("CARGO_PKG_VERSION")).len();
         Self::with_startup(me, lines, logo, logo_start, logo_len)
     }
 

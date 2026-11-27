@@ -3,27 +3,6 @@
 
 use crate::bitchx::model::{Ink, Line, Run};
 
-/// The iamBitchX logo shown in the status window, drawn in block characters:
-/// full blocks for the wordmark.
-///
-/// The ASCII slant could not be converted: its strokes are one character
-/// wide, so every block mapping (full-block doubling, half-block pairing,
-/// quadrant bridging) turned the letterforms into mush. The wordmark is
-/// therefore drawn in a block font instead.
-pub(crate) const BANNER_BLOCKS: [&str; 5] = [
-    "█  ███ █████████ █  █   ███ █    █   █",
-    "  █   ██ █ ██   █   █  █    █     █ █ ",
-    "█ █   ██ █ █████ █ ███ █    ████   █  ",
-    "█ █   ██ █ ██   ██  █  █    █   █ █ █ ",
-    "█  ███ █ █ █████ █  ███ ███ █   ██   █",
-];
-
-/// The logo's drop shadow: a half-block row (hard edge) and a light-shade
-/// dither row fading it out, offset one column to the right.
-pub(crate) const BANNER_SHADOW: [&str; 2] = [
-    " ▀  ▀▀▀ ▀ ▀ ▀▀▀▀▀ ▀  ▀▀▀ ▀▀▀ ▀   ▀▀   ▀",
-    " ░  ░░░ ░ ░ ░░░░░ ░  ░░░ ░░░ ░   ░░   ░",
-];
 /// The original BitchX 1.3 splash logo, from `art.c`
 /// (`do_ansi_logo`, case 0), decoded from CP437 to Unicode.
 ///
@@ -741,17 +720,7 @@ pub(crate) const BANNER_ACID: [&str; 19] = [
     "                                                                   `",
 ];
 
-/// The ASCII fallback logo, in figlet `slant` style (47 columns). Used when
-/// the terminal cannot render the UTF-8 block wordmark.
-pub(crate) const BANNER_ASCII: [&str; 5] = [
-    r"    _               ____  _ __       __   _  __",
-    r"   (_)___ _____ ___/ __ )(_) /______/ /_ | |/ /",
-    r"  / / __ `/ __ `__ \ __  / / __/ ___/ __ \|   /",
-    r" / / /_/ / / / / / / /_/ / / /_/ /__/ / / /   |",
-    r"/_/\__,_/_/ /_/ /_/_____/_/\__/\___/_/ /_/_/|_|",
-];
-
-/// Can this terminal render the UTF-8 block wordmark (`TERM` + locale)?
+/// Can this terminal render UTF-8 art (`TERM` + locale)?
 ///
 /// `TERM` decides first: `dumb` and the legacy `vt1xx`/`ansi` names mean no,
 /// names carrying `utf`/`256`/`color` mean yes. For everything else the
@@ -815,24 +784,22 @@ pub(crate) enum Logo {
     Original,
     /// The original BitchX ASCII "acidjazz" art (78 cols).
     Acid,
-    /// Our compact block wordmark (36 cols).
-    Compact,
-    /// The original figlet slant (47 cols).
-    Slant,
+    /// No art at all: the terminal is too small for the splash. The
+    /// `[ iamBitchX-ver]` credit line is still shown, it carries the version.
+    None,
 }
 
 impl Logo {
     /// Pick the logo that fits this terminal.
     ///
     /// The original art wants 78 columns and about 36 rows; without that
-    /// room the compact wordmark (UTF-8) or the ASCII slant is used.
+    /// room no logo is drawn at all.
     pub(crate) fn pick(utf8: bool, width: u16, height: u16) -> Logo {
         let room = width >= 78 && height >= 36;
         match (utf8, room) {
+            (_, false) => Logo::None,
             (true, true) => Logo::Original,
-            (true, false) => Logo::Compact,
             (false, true) => Logo::Acid,
-            (false, false) => Logo::Slant,
         }
     }
 
@@ -850,12 +817,7 @@ impl Logo {
                     .collect()
             },
             Logo::Acid => BANNER_ACID.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
-            Logo::Compact => BANNER_BLOCKS
-                .iter()
-                .map(|l| Line::Logo(format!("    {l}")))
-                .chain(BANNER_SHADOW.iter().map(|l| Line::LogoDim(format!("    {l}"))))
-                .collect(),
-            Logo::Slant => BANNER_ASCII.iter().map(|l| Line::Logo(format!("    {l}"))).collect(),
+            Logo::None => Vec::new(),
         }
     }
 
@@ -864,8 +826,7 @@ impl Logo {
         match self {
             Logo::Original => "original bitchx logo",
             Logo::Acid => "acidjazz logo",
-            Logo::Compact => "block logo",
-            Logo::Slant => "ascii logo",
+            Logo::None => "no logo",
         }
     }
 }
@@ -914,6 +875,10 @@ pub(super) fn header_line(logo: Logo) -> Line {
 /// The startup lines of window 1, as in recon captures 00/01: version
 /// header, the iamb credit line, logo with its `[ version]` credit, then
 /// ` iamBitchX:` lines.
+/// Where the logo starts in [`startup_lines_for`]: after the four header
+/// lines, a blank one and the iamb credit line.
+pub(crate) const LOGO_START: usize = 6;
+
 pub(crate) fn startup_lines_for(nick: &str, logo: Logo) -> Vec<Line> {
     let ver = env!("CARGO_PKG_VERSION");
     let sha = option_env!("VERGEN_GIT_SHA").unwrap_or("unknown");

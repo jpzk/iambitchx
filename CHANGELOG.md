@@ -16,6 +16,18 @@ for that.
 
 ## [Unreleased]
 
+### Changed
+
+- A terminal too small for the splash (< 78 columns or < 36 rows) now
+  shows no logo at all instead of the compact block wordmark or the figlet
+  slant; the `[ iamBitchX-ver]` credit line stays. Resizing to a big
+  terminal brings the original art back, shrinking drops it again.
+
+### Fixed
+
+- The splash swap on resize no longer duplicates or loses the version
+  credit line: the logo slot is tracked by position, not by line kind.
+
 ## [0.1.1] — 2026-11-27
 
 ### Changed

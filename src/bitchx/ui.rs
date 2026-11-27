@@ -349,9 +349,9 @@ mod tests {
     #[test]
     fn test_original_logo_renders_in_a_big_terminal() {
         let mut app = app();
-        // A small terminal gets the compact wordmark.
+        // A small terminal gets no logo at all.
         let buf = render(&mut app, 60, 30);
-        assert!(rows(&buf)[6].contains('\u{2588}'), "compact wordmark");
+        assert!(rows(&buf)[6].starts_with("    [ iamBitchX-"), "no logo");
 
         // Room for the original art: the splash switches over, in place.
         app.fit_logo(true, 120, 50);
@@ -406,26 +406,17 @@ mod tests {
         // Credit line over the logo: iamb (iamb.chat) by Ulyssa is the base.
         assert!(r[5].starts_with("    based on iamb"), "{:?}", r[5]);
         assert!(r[5].contains("iamb.chat"), "{:?}", r[5]);
-        // Block wordmark: full blocks plus a half-block + dither shadow.
-        for (i, l) in crate::bitchx::app::BANNER_BLOCKS.iter().enumerate() {
-            assert!(l.chars().count() <= 70);
-            assert!(r[6 + i].starts_with(&format!("    {l}")), "{:?}", r[6 + i]);
-        }
-        for (i, l) in crate::bitchx::app::BANNER_SHADOW.iter().enumerate() {
-            assert!(r[11 + i].starts_with(&format!("    {l}")), "{:?}", r[11 + i]);
-        }
-        // The wordmark rows are full blocks, the shadow a half block and a
-        // light-shade dither fade.
-        assert!(r[6].contains('\u{2588}'), "full block: {:?}", r[6]);
-        assert!(r[11].contains('\u{2580}'), "half-block shadow: {:?}", r[11]);
-        assert!(r[12].contains('\u{2591}'), "dither fade: {:?}", r[12]);
-        // Buffer indexing is (x, y): column 8, row 6 = first logo line.
+        // 60x30 is too small for the splash: no logo at all, the version
+        // credit follows the iamb line directly.
+        assert!(r[3].contains("(no logo)"), "{:?}", r[3]);
+        assert!(r[6].starts_with("    [ iamBitchX-"), "{:?}", r[6]);
+        assert!(
+            !r.iter().any(|l| l.contains('\u{2588}') || l.contains('\u{2591}')),
+            "no block art: {r:?}"
+        );
+        // The credit line keeps the logo style: blue italic.
         assert_eq!(buf[(8, 6)].fg, Color::Blue);
         assert!(buf[(8, 6)].modifier.contains(Modifier::ITALIC));
-        // The shadow rows are dimmed, not italic.
-        assert!(buf[(8, 11)].modifier.contains(Modifier::DIM));
-        assert!(!buf[(8, 11)].modifier.contains(Modifier::ITALIC));
-        assert!(r[13].starts_with("    [ iamBitchX-"), "{:?}", r[13]);
         assert!(
             r.iter()
                 .any(|l| l.starts_with(" iamBitchX: Auto Response is set to - carla"))

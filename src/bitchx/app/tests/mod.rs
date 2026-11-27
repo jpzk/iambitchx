@@ -43,7 +43,7 @@ pub(crate) fn room(id: &str, name: &str) -> RoomSnapshot {
 
 /// An app with the status window and three rooms.
 pub(crate) fn app() -> App {
-    let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::Compact);
+    let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::None);
     app.clock = Some("09:24pm".into());
     app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
     app.handle_mx(MxEvent::Room(room("!b:example.org", "#other")));

@@ -40,15 +40,14 @@ Two things had to be understood to fix it:
    wordmark lands. This is why `src/bitchx/app.rs` carries the art as
    pre-rendered lines: the layout was computed once, offline.
 
-We ship it in four flavours, picked at runtime from the terminal's
+We ship it in two flavours, picked at runtime from the terminal's
 capability and size (`Logo::pick`):
 
 | terminal | logo |
 |---|---|
 | UTF-8, >= 78 cols, >= 36 rows | the original art, decoded to Unicode |
-| UTF-8, smaller | our compact block wordmark (+ half-block shadow, dither fade) |
 | no UTF-8, roomy | the original "acidjazz" ASCII art |
-| no UTF-8, smaller | the original figlet-slant art |
+| either, < 78 cols or < 36 rows | no logo at all (the `[ iamBitchX-ver]` credit stays) |
 
 The size is only known once the terminal exists, so `App::fit_logo()`
 re-picks the logo at startup (and on resize) and splices the lines in

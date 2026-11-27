@@ -70,8 +70,7 @@ fn test_startup_logos() {
     };
     let orig = text(&startup_lines_for("carla", Logo::Original));
     let acid = text(&startup_lines_for("carla", Logo::Acid));
-    let compact = text(&startup_lines_for("carla", Logo::Compact));
-    let slant = text(&startup_lines_for("carla", Logo::Slant));
+    let none = text(&startup_lines_for("carla", Logo::None));
 
     // The original BitchX art, decoded to real Unicode, with the artist
     // credits kept and the version slot filled in.
@@ -101,23 +100,24 @@ fn test_startup_logos() {
     assert!(acid.iter().any(|l| l.contains("-acidjazz")), "{acid:?}");
     assert!(!acid.iter().any(|l| l.contains('\u{2588}')), "ascii art has no blocks");
 
-    // Our compact wordmark: full blocks plus a dither fade.
-    assert!(compact.iter().any(|l| l.contains('\u{2588}')), "compact logo has blocks");
-    assert!(compact.iter().any(|l| l.contains('\u{2591}')), "compact logo has a dither fade");
+    // No logo: no art lines at all, the credit line follows the iamb line.
+    assert!(Logo::None.lines("0.0.0").is_empty());
+    assert!(none[LOGO_START - 1].contains("iamb.chat"), "{none:?}");
+    assert!(none[LOGO_START].starts_with("    [ iamBitchX-"), "{none:?}");
 
-    // The ASCII fallback.
-    assert!(slant.iter().any(|l| l.contains("____  _ __")), "slant art");
-    assert!(!slant.iter().any(|l| l.contains('\u{2588}')), "slant has no blocks");
-
-    // Every variant carries the iamb credit line.
-    for l in [&orig, &acid, &compact, &slant] {
+    // Every variant carries the iamb credit line and the version credit.
+    for l in [&orig, &acid, &none] {
         assert!(l.iter().any(|x| x.contains("iamb.chat")), "{l:?}");
+        assert!(
+            l.iter()
+                .any(|x| x.starts_with(&format!("    [ iamBitchX-{}]", env!("CARGO_PKG_VERSION")))),
+            "{l:?}"
+        );
     }
     // The header says which logo was chosen.
     assert!(orig[3].contains("original bitchx logo"), "{:?}", orig[3]);
     assert!(acid[3].contains("acidjazz logo"), "{:?}", acid[3]);
-    assert!(compact[3].contains("block logo"), "{:?}", compact[3]);
-    assert!(slant[3].contains("ascii logo"), "{:?}", slant[3]);
+    assert!(none[3].contains("no logo"), "{:?}", none[3]);
 }
 
 #[test]
@@ -125,9 +125,80 @@ fn test_logo_pick() {
     // Room for the original art: 78 columns and ~36 rows.
     assert_eq!(Logo::pick(true, 100, 50), Logo::Original);
     assert_eq!(Logo::pick(false, 100, 50), Logo::Acid);
-    // Too narrow or too short: the compact/ASCII variants.
-    assert_eq!(Logo::pick(true, 60, 50), Logo::Compact);
-    assert_eq!(Logo::pick(true, 100, 30), Logo::Compact);
-    assert_eq!(Logo::pick(false, 60, 50), Logo::Slant);
-    assert_eq!(Logo::pick(false, 100, 30), Logo::Slant);
+    assert_eq!(Logo::pick(true, 78, 36), Logo::Original);
+    assert_eq!(Logo::pick(false, 78, 36), Logo::Acid);
+    // Too narrow (<78) or too short (<36): no logo at all.
+    for utf8 in [true, false] {
+        assert_eq!(Logo::pick(utf8, 77, 50), Logo::None);
+        assert_eq!(Logo::pick(utf8, 100, 35), Logo::None);
+        assert_eq!(Logo::pick(utf8, 60, 30), Logo::None);
+        assert_eq!(Logo::pick(utf8, 0, 0), Logo::None);
+    }
+}
+
+/// The text of every line in the status window.
+fn status_text(app: &App) -> Vec<String> {
+    app.windows[0]
+        .lines
+        .iter()
+        .map(|l| match l {
+            Line::Logo(t) | Line::LogoDim(t) | Line::Raw(t) | Line::Error(t) => t.clone(),
+            Line::LogoRuns(runs) => runs.iter().map(|r| r.text.clone()).collect::<String>(),
+            _ => String::new(),
+        })
+        .collect()
+}
+
+/// Resizing big -> small drops the logo, small -> big brings the original
+/// back; the iamb and version credit lines survive every swap, exactly once.
+#[test]
+fn test_fit_logo_resize() {
+    let ver_credit = format!("    [ iamBitchX-{}]", env!("CARGO_PKG_VERSION"));
+    let check = |app: &App, logo: Logo, what: &str| {
+        let t = status_text(app);
+        let art = logo.lines(env!("CARGO_PKG_VERSION")).len();
+        assert_eq!(app.logo, logo, "{what}");
+        assert!(t[3].contains(logo.label()), "{what}: {:?}", t[3]);
+        assert!(t[LOGO_START - 1].contains("iamb.chat"), "{what}: {t:?}");
+        assert!(t[LOGO_START + art].starts_with(&ver_credit), "{what}: {t:?}");
+        assert_eq!(t.iter().filter(|l| l.starts_with(&ver_credit)).count(), 1, "{what}");
+        assert_eq!(t.iter().filter(|l| l.contains("iamb.chat")).count(), 1, "{what}");
+        assert_eq!(
+            t.iter().filter(|l| l.contains("PhonyEye")).count(),
+            usize::from(logo == Logo::Original),
+            "{what}"
+        );
+        assert_eq!(
+            t.iter().filter(|l| l.contains("-acidjazz")).count(),
+            usize::from(logo == Logo::Acid),
+            "{what}"
+        );
+        assert_eq!(app.windows[0].lines.len(), app.windows[0].times.len(), "{what}");
+    };
+
+    // Start the way the client does: size unknown, so no logo.
+    let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::pick(true, 0, 0));
+    check(&app, Logo::None, "startup");
+    let base = app.windows[0].lines.len();
+    app.fit_logo(true, 120, 50);
+    check(&app, Logo::Original, "small -> big");
+    app.fit_logo(true, 60, 50);
+    check(&app, Logo::None, "big -> narrow");
+    assert_eq!(app.windows[0].lines.len(), base);
+    app.fit_logo(true, 120, 50);
+    check(&app, Logo::Original, "narrow -> big");
+    app.fit_logo(true, 120, 30);
+    check(&app, Logo::None, "big -> short");
+    app.fit_logo(false, 100, 40);
+    check(&app, Logo::Acid, "short -> big ascii");
+    app.fit_logo(false, 100, 20);
+    check(&app, Logo::None, "big ascii -> short");
+
+    // Starting big (an explicit original) and shrinking also drops it.
+    let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::Original);
+    check(&app, Logo::Original, "start big");
+    app.fit_logo(true, 40, 20);
+    check(&app, Logo::None, "start big -> small");
+    app.fit_logo(true, 80, 40);
+    check(&app, Logo::Original, "start big -> small -> big");
 }

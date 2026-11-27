@@ -219,7 +219,7 @@ pub(crate) fn snapshot() -> String {
     dump_screen(&mut out, "query-away", &mut a, 80, 12);
 
     // Each splash logo (the status window itself holds the pid and $TERM).
-    for logo in [Logo::Original, Logo::Acid, Logo::Compact, Logo::Slant] {
+    for logo in [Logo::Original, Logo::Acid, Logo::None] {
         let _ = writeln!(out, "== logo {logo:?}");
         for line in logo.lines("0.0.0") {
             dump_lines(&mut out, &format_line_hl(&line, "", false));
@@ -288,7 +288,7 @@ fn test_terminal_theme_has_no_colours() {
             check_lines(&format!("{line:?}"), &format_line_hl(&line, "#room", hl));
         }
     }
-    for logo in [Logo::Original, Logo::Acid, Logo::Compact, Logo::Slant] {
+    for logo in [Logo::Original, Logo::Acid, Logo::None] {
         for line in logo.lines("0.0.0") {
             check_lines(&format!("{logo:?}"), &format_line_hl(&line, "", false));
         }
