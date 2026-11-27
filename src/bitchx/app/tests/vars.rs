@@ -211,27 +211,30 @@ fn test_debug_routing_and_flood_guard() {
         dbg_texts(&app.windows[0]),
         vec![
             "http GET /_matrix/client/v3/sync 200 1.2s",
-            "http unknown room"
+            "http [!nope:example.org] unknown room"
         ],
-        "non-room / unknown-room lines go to the status window"
+        "every line goes to the status window, room lines tagged"
     );
-    assert!(dbg_texts(&app.windows[a]).is_empty());
 
     for i in 0..25 {
         app.handle_mx(dbg(Some("!a:example.org"), &format!("l{i}")));
     }
-    let shown = dbg_texts(&app.windows[a]);
+    let shown = dbg_texts(&app.windows[0]);
     assert_eq!(shown.len(), DBG_PER_SEC as usize);
-    assert_eq!(shown.last().unwrap(), "http l19");
-    // the status window has its own budget
-    app.handle_mx(dbg(None, "status still flows"));
-    assert_eq!(dbg_texts(&app.windows[0]).len(), 3);
+    assert_eq!(shown.last().unwrap(), "http [!a:example.org] l17");
+    assert!(dbg_texts(&app.windows[a]).is_empty());
 
     // next second: the suppressed count first, then the line
     app.fake_now = Some(T0 + 1000);
     app.handle_mx(dbg(Some("!a:example.org"), "next"));
-    let shown = dbg_texts(&app.windows[a]);
-    assert_eq!(shown[20..], ["(suppressed 5)".to_string(), "http next".to_string()]);
+    let shown = dbg_texts(&app.windows[0]);
+    assert_eq!(
+        shown[20..],
+        [
+            "(suppressed 7)".to_string(),
+            "http [!a:example.org] next".to_string()
+        ]
+    );
 
     // a burst's tail is flushed by the timer
     for i in 0..22 {
@@ -239,11 +242,12 @@ fn test_debug_routing_and_flood_guard() {
     }
     app.fake_now = Some(T0 + 2500);
     app.tick();
-    let shown = dbg_texts(&app.windows[a]);
+    let shown = dbg_texts(&app.windows[0]);
     assert_eq!(shown.last().unwrap(), "(suppressed 3)");
     assert_eq!(shown.len(), 22 + 19 + 1);
     app.tick();
-    assert_eq!(dbg_texts(&app.windows[a]).len(), 42, "flushed once");
+    assert_eq!(dbg_texts(&app.windows[0]).len(), 42, "flushed once");
+    assert!(dbg_texts(&app.windows[a]).is_empty());
 
     let tl = crate::bitchx::format::format_line(
         &Line::Debug {
@@ -260,6 +264,23 @@ fn test_debug_routing_and_flood_guard() {
     assert_eq!(s, " DBG sync next_batch=s1.. joined=3");
     let tag = tl[0].spans.iter().find(|s| s.content == "DBG").unwrap();
     assert_eq!(tag.style.fg, Some(ratatui::style::Color::Magenta));
+}
+
+#[test]
+fn test_debug_lines_stay_out_of_room_scrollback() {
+    // F-06: room-scoped tap lines were pushed into the room window, between
+    // the messages of the conversation
+    let mut app = app();
+    let a = app.window_of(&owned_room_id!("!a:example.org")).unwrap();
+    assert_ne!(a, 0);
+    let before = app.windows[a].lines.len();
+    app.handle_mx(dbg(Some("!a:example.org"), "raw {\"type\":\"m.room.message\"}"));
+    assert_eq!(app.windows[a].lines.len(), before, "room scrollback untouched");
+    assert!(dbg_texts(&app.windows[a]).is_empty());
+    assert_eq!(
+        dbg_texts(&app.windows[0]),
+        vec!["http [!a:example.org] raw {\"type\":\"m.room.message\"}"]
+    );
 }
 
 #[test]

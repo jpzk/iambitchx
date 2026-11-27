@@ -5,7 +5,7 @@
 
 use serde_json::Value;
 
-const MASK_STR: &str = "<redacted>";
+pub(super) const MASK_STR: &str = "<redacted>";
 
 /// URL or path -> path only (scheme/host/query/fragment dropped).
 pub(super) fn redact_path(url: &str) -> String {
@@ -141,10 +141,7 @@ fn token_shaped(run: &str) -> bool {
     if dot_segs.iter().any(|g| g.starts_with("eyJ") && g.len() >= 10) {
         return true;
     }
-    if dot_segs
-        .windows(3)
-        .any(|w| w.iter().all(|g| g.len() >= 8 && is_b64url(g)))
-    {
+    if dot_segs.windows(3).any(|w| w.iter().all(|g| g.len() >= 8 && is_b64url(g))) {
         return true;
     }
     // long hex (any case, incl. all-digit)
@@ -160,10 +157,7 @@ fn token_shaped(run: &str) -> bool {
         return true;
     }
     // standard base64 whose `/` or `+` splits it into short pieces
-    !run.starts_with('/')
-        && run.len() >= 20
-        && run.contains(['/', '+'])
-        && char_classes(run) >= 2
+    !run.starts_with('/') && run.len() >= 20 && run.contains(['/', '+']) && char_classes(run) >= 2
 }
 
 /// Split `k=v` at an `=` that is not base64 padding (followed by more data).

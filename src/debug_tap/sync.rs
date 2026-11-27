@@ -5,7 +5,7 @@
 
 use std::fmt::Write as _;
 
-use super::redact::{compact_json, short_id, truncate};
+use super::redact::{MASK_STR, compact_json, short_id, truncate};
 use super::{Cat, emit, on, raw, start_forwarder, wants};
 use serde_json::Value;
 
@@ -43,7 +43,7 @@ pub(crate) fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix:
                 let v = raw_value(tev.raw().json().get());
                 emit(Cat::Event, room, event_line(&v, enc));
                 if raw() {
-                    emit(Cat::Event, room, format!("raw {}", compact_json(&v, RAW_MAX)));
+                    emit(Cat::Event, room, raw_line(&v));
                 }
             }
         }
@@ -63,7 +63,7 @@ pub(crate) fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix:
                 emit(Cat::Presence, None, l);
             }
             if raw() {
-                emit(Cat::Presence, None, format!("raw {}", compact_json(&v, RAW_MAX)));
+                emit(Cat::Presence, None, raw_line(&v));
             }
         }
     }
@@ -82,13 +82,40 @@ pub(crate) fn on_sync(resp: &matrix_sdk::sync::SyncResponse, tx: &crate::matrix:
             emit(Cat::Crypto, None, l);
         }
         if raw() {
-            emit(Cat::ToDevice, None, format!("raw {}", compact_json(&v, RAW_MAX)));
+            emit(Cat::ToDevice, None, raw_line(&v));
         }
     }
 }
 
 /// `/set debug_raw on`: max chars of the compact raw JSON.
 pub(super) const RAW_MAX: usize = 300;
+
+/// Free-text fields a user types (message bodies, status messages): masked
+/// in raw output by default (F-05), wherever they are nested.
+const FREE_TEXT_KEYS: &[&str] = &["body", "formatted_body", "status_msg"];
+
+/// `raw {…}`: the compact redacted JSON with free-text fields masked.
+pub(super) fn raw_line(v: &Value) -> String {
+    let mut v = v.clone();
+    mask_free_text(&mut v);
+    format!("raw {}", compact_json(&v, RAW_MAX))
+}
+
+fn mask_free_text(v: &mut Value) {
+    match v {
+        Value::Object(m) => {
+            for (k, x) in m.iter_mut() {
+                if FREE_TEXT_KEYS.contains(&k.as_str()) {
+                    *x = Value::String(MASK_STR.into());
+                } else {
+                    mask_free_text(x);
+                }
+            }
+        },
+        Value::Array(a) => a.iter_mut().for_each(mask_free_text),
+        _ => {},
+    }
+}
 
 fn raw_value(s: &str) -> Value {
     serde_json::from_str(s).unwrap_or(Value::Null)

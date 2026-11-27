@@ -154,7 +154,10 @@ fn test_redact_text_token_strings() {
     assert!(r.contains("Bearer <redacted>"));
     // F-04: a token prefix is masked wherever it occurs (fail closed, so a
     // word that merely contains `mat_` is masked too); ordinary words stay
-    assert_eq!(redact_text("format_x primary_key MAT_"), "format_<redacted> primary_key MAT_<redacted>");
+    assert_eq!(
+        redact_text("format_x primary_key MAT_"),
+        "format_<redacted> primary_key MAT_<redacted>"
+    );
     assert_eq!(redact_text("DBG http GET /sync 200"), "DBG http GET /sync 200");
 }
 
@@ -354,7 +357,14 @@ fn test_redact_text_masks_token_shapes() {
 fn test_redact_text_prefix_anywhere() {
     // F-04: the mask only fired at a word start
     let mct = "mct_FakeCompatToken0123abcd";
-    for (pre, tok) in [("-", SYT), (".", SYT), ("_", AT), ("~", RT), ("x", mct), ("hdr-", AT)] {
+    for (pre, tok) in [
+        ("-", SYT),
+        (".", SYT),
+        ("_", AT),
+        ("~", RT),
+        ("x", mct),
+        ("hdr-", AT),
+    ] {
         let r = redact_text(&format!("value {pre}{tok} end"));
         no_secrets(&r);
         assert!(!r.contains(tok), "leaked {tok:?} in {r:?}");
@@ -366,4 +376,24 @@ fn test_redact_text_prefix_anywhere() {
     // short tails after a prefix are masked too
     assert_eq!(redact_text("a.syt_ab"), "a.syt_<redacted>");
     assert_eq!(redact_text("a.syt_<redacted>"), "a.syt_<redacted>");
+}
+
+#[test]
+fn test_raw_line_masks_message_bodies() {
+    // F-05: raw mode printed the plaintext of every unencrypted message
+    let ev = json!({"type":"m.room.message","event_id":"$e","sender":"@x:hs",
+        "content":{"msgtype":"m.text","body":"my pw is plainpw hunter-two",
+            "formatted_body":"<b>plainpw hunter-two</b>",
+            "m.new_content":{"body":"edited plainpw hunter-two"}}});
+    let r = raw_line(&ev);
+    assert!(r.starts_with("raw {"), "{r}");
+    assert!(!r.contains("plainpw"), "body leaked in {r}");
+    assert!(!r.contains("hunter-two"), "body leaked in {r}");
+    assert!(r.contains("\"type\":\"m.room.message\""), "{r}");
+    assert!(r.contains("\"msgtype\":\"m.text\""), "{r}");
+    let p = json!({"type":"m.presence","sender":"@x:hs",
+        "content":{"presence":"online","status_msg":"door code 4711"}});
+    let r = raw_line(&p);
+    assert!(!r.contains("4711"), "{r}");
+    assert!(r.contains("\"presence\":\"online\""), "{r}");
 }
