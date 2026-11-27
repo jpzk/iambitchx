@@ -7,7 +7,7 @@
 //!
 //! This task closes that gap: it refreshes [`REFRESH_MARGIN`] before the
 //! access token expires, through [`session_guard::proactive_locked`] (same
-//! SessionLock and disk comparison as the 401 recovery: adopt `session.json`
+//! `SessionLock` and disk comparison as the 401 recovery: adopt `session.json`
 //! if another process already rotated, else refresh and persist), then
 //! reschedules from the new token's issue time. The 401 recovery in the sync
 //! loop stays as the safety net. `--smoke` ([`Mode::ReadOnly`]) never starts
@@ -33,10 +33,10 @@ use crate::session_guard::{self, Done, Mode};
 
 /// Access-token lifetime assumed when the SDK hides `expires_in` (measured
 /// from MAS: 300s; see module docs).
-pub(crate) const ACCESS_TOKEN_TTL: Duration = Duration::from_secs(300);
+pub(crate) const ACCESS_TOKEN_TTL: Duration = Duration::from_mins(5);
 
 /// Refresh this long before the access token expires.
-pub(crate) const REFRESH_MARGIN: Duration = Duration::from_secs(60);
+pub(crate) const REFRESH_MARGIN: Duration = Duration::from_mins(1);
 
 /// After a failed proactive refresh, try again this much later (the 401
 /// recovery remains armed meanwhile).
@@ -170,7 +170,7 @@ mod tests {
         assert!(REFRESH_MARGIN < ACCESS_TOKEN_TTL);
         let fresh = fresh_within(ACCESS_TOKEN_TTL, REFRESH_MARGIN);
         // an on-time wake-up (age = ttl - margin) is never treated as "just refreshed"
-        assert!(fresh < ACCESS_TOKEN_TTL - REFRESH_MARGIN);
+        assert!(fresh < ACCESS_TOKEN_TTL.checked_sub(REFRESH_MARGIN).unwrap());
         assert!(fresh > S(0));
         assert!(RETRY_AFTER_ERROR < REFRESH_MARGIN);
     }

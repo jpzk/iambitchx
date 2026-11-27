@@ -132,3 +132,22 @@ assets = [
     { source = "config.full.toml", dest = "assets/config.full.toml", mode = "644"},
     { source = "docs/iambitchx.metainfo.xml", dest = "assets/iambitchx.metainfo.xml", mode = "644"},
 ]
+
+[lints.rust]
+# The only unsafe is the libc::umask call in main.rs (locally allowed, with a reason).
+unsafe_code = "deny"
+missing_debug_implementations = "warn"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+# Short allow-list for noisy pedantic lints:
+# - module_name_repetitions / must_use_candidate: naming / annotation churn, no correctness value.
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+# - too_many_lines: big event/render/command matches; splitting them is a refactor, not a lint fix.
+too_many_lines = "allow"
+# - cast_possible_truncation: TUI geometry is usize -> u16 everywhere; values are bounded by the terminal.
+cast_possible_truncation = "allow"
+# - struct_excessive_bools: App/status/vars structs mirror BitchX /SET on/off toggles one-to-one.
+struct_excessive_bools = "allow"

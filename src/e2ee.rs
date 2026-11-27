@@ -149,20 +149,18 @@ pub(crate) fn track_sas(sas: SasVerification, tx: Tx) {
             };
             match st {
                 SasState::KeysExchanged { emojis, decimals } => {
-                    let pairs = match emojis {
-                        Some(e) => e
-                            .emojis
+                    let pairs = if let Some(e) = emojis {
+                        e.emojis
                             .iter()
                             .map(|e| (e.symbol.to_string(), e.description.to_string()))
-                            .collect(),
-                        None => {
-                            let (a, b, c) = decimals;
-                            vec![
-                                (a.to_string(), "number".into()),
-                                (b.to_string(), "number".into()),
-                                (c.to_string(), "number".into()),
-                            ]
-                        },
+                            .collect()
+                    } else {
+                        let (a, b, c) = decimals;
+                        vec![
+                            (a.to_string(), "number".into()),
+                            (b.to_string(), "number".into()),
+                            (c.to_string(), "number".into()),
+                        ]
                     };
                     update(&tx, &user, VerifyUpdate::Emoji(pairs));
                 },
@@ -213,7 +211,9 @@ pub(crate) async fn verify(
             );
         },
         VerifyAction::Start { device } => {
-            if let Some(req) = req.filter(|r| r.is_ready()) {
+            if let Some(req) =
+                req.filter(matrix_sdk::encryption::verification::VerificationRequest::is_ready)
+            {
                 // The tracker picks up the SAS when the request transitions.
                 req.start_sas().await?;
                 return Ok(());
@@ -259,7 +259,7 @@ pub(crate) async fn verify(
                 Err(_) => {
                     req.ok_or_else(|| anyhow::anyhow!("no verification with {user}"))?
                         .cancel()
-                        .await?
+                        .await?;
                 },
             }
         },

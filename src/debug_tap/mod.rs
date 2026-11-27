@@ -174,6 +174,6 @@ pub(crate) fn emit(cat: Cat, room: Option<&str>, text: impl AsRef<str>) {
         text: redact_text(text.as_ref()),
     };
     match tx.try_send(line) {
-        Ok(()) | Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {},
+        Ok(()) | Err(TrySendError::Full(_) | TrySendError::Disconnected(_)) => {},
     }
 }

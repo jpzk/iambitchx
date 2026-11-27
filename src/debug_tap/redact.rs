@@ -12,7 +12,7 @@ pub(super) fn redact_path(url: &str) -> String {
     let path = match s.find("://") {
         Some(i) => {
             let rest = &s[i + 3..];
-            rest.find('/').map(|j| &rest[j..]).unwrap_or("/")
+            rest.find('/').map_or("/", |j| &rest[j..])
         },
         None => s,
     };
@@ -21,7 +21,6 @@ pub(super) fn redact_path(url: &str) -> String {
 
 /// Field names whose values must never be shown.
 pub(super) fn is_secret_key(key: &str) -> bool {
-    let k = key.to_ascii_lowercase();
     const NEEDLES: &[&str] = &[
         "token",
         "password",
@@ -37,6 +36,7 @@ pub(super) fn is_secret_key(key: &str) -> bool {
         "pickle",
         "nonce",
     ];
+    let k = key.to_ascii_lowercase();
     NEEDLES.iter().any(|n| k.contains(n)) || k == "code" || k == "device_keys"
 }
 

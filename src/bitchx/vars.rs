@@ -58,7 +58,7 @@ pub(crate) const DEFAULT_AUTO_AWAY_TIME: u32 = 600;
 pub(crate) const DEFAULT_AWAY_NICK: &str = "%n^afk";
 /// `AWAY_MSG` default, for `/away` without text.
 pub(crate) const DEFAULT_AWAY_MSG: &str = "away";
-/// `AUTO_AWAY_MSG` default: `%t` is AUTO_AWAY_TIME in minutes.
+/// `AUTO_AWAY_MSG` default: `%t` is `AUTO_AWAY_TIME` in minutes.
 pub(crate) const DEFAULT_AUTO_AWAY_MSG: &str = "Auto-Away after %t mins";
 
 /// `AWAY_NICK` with `%n` replaced by `name`; `None` when empty (off).
@@ -270,7 +270,7 @@ impl Vars {
         let d = Vars::default();
         Vars {
             auto_away: c.auto_away.unwrap_or(d.auto_away),
-            auto_away_time: c.auto_away_time.map(clamp_away_time).unwrap_or(d.auto_away_time),
+            auto_away_time: c.auto_away_time.map_or(d.auto_away_time, clamp_away_time),
             auto_away_msg: c.auto_away_msg.clone().unwrap_or(d.auto_away_msg),
             auto_reply: c.auto_reply.clone().unwrap_or(d.auto_reply),
             away_msg: c.away_msg.clone().unwrap_or(d.away_msg),

@@ -56,7 +56,7 @@ pub(crate) struct Cli {
     #[clap(short = 'P', long, value_parser)]
     pub profile: Option<String>,
 
-    /// Configuration directory (defaults to $XDG_CONFIG_HOME/iambitchx).
+    /// Configuration directory (defaults to $`XDG_CONFIG_HOME/iambitchx`).
     #[clap(short = 'C', long, value_parser)]
     pub config_directory: Option<PathBuf>,
 
@@ -151,15 +151,17 @@ pub(crate) enum SavedDevice {
 impl SavedDevice {
     pub(crate) fn device_id(&self) -> &DeviceId {
         match self {
-            SavedDevice::OAuth { device_id, .. } => device_id,
-            SavedDevice::MatrixAuth { device_id, .. } => device_id,
+            SavedDevice::OAuth { device_id, .. } | SavedDevice::MatrixAuth { device_id, .. } => {
+                device_id
+            },
         }
     }
 
     pub(crate) fn is_user(&self, user: &UserId) -> bool {
         match self {
-            SavedDevice::OAuth { user_id, .. } => user == user_id,
-            SavedDevice::MatrixAuth { user_id, .. } => user == user_id,
+            SavedDevice::OAuth { user_id, .. } | SavedDevice::MatrixAuth { user_id, .. } => {
+                user == user_id
+            },
         }
     }
 }
@@ -389,6 +391,10 @@ impl ApplicationSettings {
         Ok(())
     }
 
+    #[allow(
+        clippy::unused_self,
+        reason = "method form is called by the backend login.rs under a no-edit policy"
+    )]
     pub(crate) fn read_session(&self, path: &Path) -> anyhow::Result<Session> {
         let reader = BufReader::new(File::open(path)?);
         Ok(serde_json::from_reader(reader)?)

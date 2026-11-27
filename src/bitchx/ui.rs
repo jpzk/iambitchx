@@ -91,10 +91,10 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
     let st = app.status();
     let y1 = area.y + area.height - 3;
     let y2 = y1 + 1;
-    let row1 = Rect::new(area.x, y1, area.width, 1);
-    let row2 = Rect::new(area.x, y2, area.width, 1);
-    frame.render_widget(Paragraph::new(st.line1()).style(status_bg()), row1);
-    frame.render_widget(Paragraph::new(st.line2()).style(status_bg()), row2);
+    let status1 = Rect::new(area.x, y1, area.width, 1);
+    let status2 = Rect::new(area.x, y2, area.width, 1);
+    frame.render_widget(Paragraph::new(st.line1()).style(status_bg()), status1);
+    frame.render_widget(Paragraph::new(st.line2()).style(status_bg()), status2);
     let right = st.line2_right();
     let rw = (right.width() as u16).min(area.width);
     frame.render_widget(
@@ -457,6 +457,7 @@ mod tests {
 
     #[test]
     fn test_status_clock_is_12h_am_pm() {
+        use chrono::NaiveTime;
         let mut app = room_app();
         app.clock = None;
         let buf = render(&mut app, 60, 12);
@@ -465,8 +466,7 @@ mod tests {
         assert_eq!(&r[..2], " [");
         assert_eq!(&r[9..11], "][");
 
-        use chrono::NaiveTime;
-        let t = |h, m| crate::bitchx::status::clock(NaiveTime::from_hms_opt(h, m, 0).unwrap());
+        let t = |h, m| crate::bitchx::status::clock(&NaiveTime::from_hms_opt(h, m, 0).unwrap());
         assert_eq!(t(21, 24), "09:24pm");
         assert_eq!(t(9, 5), "09:05am");
         assert_eq!(t(0, 0), "12:00am");
@@ -531,8 +531,8 @@ mod tests {
         assert!(!row(&render(&mut app, 80, 12), 0).starts_with(TOP_BAR));
     }
 
-    const H4: std::time::Duration = std::time::Duration::from_secs(4 * 3_600);
-    const D2: std::time::Duration = std::time::Duration::from_secs(2 * 86_400);
+    const H4: std::time::Duration = std::time::Duration::from_hours(4);
+    const D2: std::time::Duration = std::time::Duration::from_hours(48);
 
     #[test]
     fn test_status_away_marker() {

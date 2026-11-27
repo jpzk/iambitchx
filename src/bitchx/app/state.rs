@@ -24,7 +24,7 @@ pub(crate) struct Window {
     pub times: Vec<i64>,
     pub(super) ids: HashSet<String>,
     pub unread: bool,
-    /// Unread mention (BitchX AUTO_REPLY): shown apart in `Act:`.
+    /// Unread mention (BitchX `AUTO_REPLY)`: shown apart in `Act:`.
     pub hilite: bool,
     /// Rows scrolled up from the bottom (PageUp/PageDown).
     pub scroll: usize,
@@ -160,13 +160,13 @@ pub(crate) struct PendingVerify {
 pub(crate) const DBG_PER_SEC: u32 = 20;
 
 /// The connect-time self-whois: its lines are swallowed, the `ircname` row
-/// becomes [`App::display_name`].
+/// becomes [`App::display_name`](crate::bitchx::app::App::display_name).
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) enum Probe {
     /// Not sent yet (sent on the first lag measurement, i.e. once online).
     #[default]
     Start,
-    /// Sent; `rule` = the leading WhoisRule was swallowed.
+    /// Sent; `rule` = the leading `WhoisRule` was swallowed.
     Pending {
         rule: bool,
     },

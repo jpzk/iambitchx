@@ -1,6 +1,6 @@
 //! # The terminal loop
 //!
-//! Raw mode + alternate screen; crossterm's EventStream and the Matrix
+//! Raw mode + alternate screen; crossterm's `EventStream` and the Matrix
 //! channel are multiplexed in one `select!`.
 use std::io::{Stdout, stdout};
 

@@ -68,15 +68,15 @@ pub(crate) struct App {
     pub vars: Vars,
     /// Where `/set` persists (`config.toml`); `None`: not saved.
     pub config_toml: Option<PathBuf>,
-    /// Unix millis of the last keypress: the AUTO_AWAY idle clock.
+    /// Unix millis of the last keypress: the `AUTO_AWAY` idle clock.
     pub last_input: i64,
-    /// The current away was set by AUTO_AWAY; the next keypress clears it.
+    /// The current away was set by `AUTO_AWAY`; the next keypress clears it.
     pub auto_away: bool,
     /// When we went away (unix millis), for `You were /away for ...`.
     pub away_since: Option<i64>,
     /// MSGCOUNT: query messages received while away (`%A`).
     pub away_msgs: usize,
-    /// AUTO_AWAY only runs in the interactive client: never in `--smoke`.
+    /// `AUTO_AWAY` only runs in the interactive client: never in `--smoke`.
     pub auto_away_armed: bool,
     /// Fixed clock for tests (unix millis); `None` uses the real time.
     pub fake_now: Option<i64>,
@@ -84,7 +84,7 @@ pub(crate) struct App {
     pub presence: HashMap<OwnedUserId, Presence>,
     /// Fixed monotonic clock for tests (presence ages); `None`: real time.
     pub fake_mono: Option<Instant>,
-    /// The user of the /whois being printed (from its WhoisNick line), so
+    /// The user of the /whois being printed (from its `WhoisNick` line), so
     /// the idle row can be spliced in before the last row.
     pub whois_user: Option<OwnedUserId>,
     /// Our own Matrix display name, once known (silent self-whois at
@@ -331,7 +331,7 @@ impl App {
             time: self
                 .clock
                 .clone()
-                .unwrap_or_else(|| crate::bitchx::status::clock(chrono::Local::now())),
+                .unwrap_or_else(|| crate::bitchx::status::clock(&chrono::Local::now())),
             nick: self.nick.clone(),
             umodes: String::new(),
             away: self.away.is_some(),
@@ -651,12 +651,11 @@ impl App {
                     Some(r) => self.window_arg(&r).filter(|i| *i > 0),
                     None => Some(self.current).filter(|i| *i > 0),
                 };
-                match idx.and_then(|i| self.windows[i].room_id().cloned()) {
-                    Some(room_id) => vec![Effect::Part { room_id, reason }],
-                    None => {
-                        self.error("You're not on that channel");
-                        vec![]
-                    },
+                if let Some(room_id) = idx.and_then(|i| self.windows[i].room_id().cloned()) {
+                    vec![Effect::Part { room_id, reason }]
+                } else {
+                    self.error("You're not on that channel");
+                    vec![]
                 }
             },
             BitchxCommand::Leave | BitchxCommand::Close => {
@@ -719,12 +718,13 @@ impl App {
                 self.info(format!("Window {}: {name}", self.refnum()));
                 vec![]
             },
-            BitchxCommand::Window { target: Some(t) } => match self.window_arg(&t) {
-                Some(idx) => self.switch(idx),
-                None => {
+            BitchxCommand::Window { target: Some(t) } => {
+                if let Some(idx) = self.window_arg(&t) {
+                    self.switch(idx)
+                } else {
                     self.error(format!("No such window: {t}"));
                     vec![]
-                },
+                }
             },
             BitchxCommand::WindowSplit(on) => {
                 self.split = on.unwrap_or(!self.split);
@@ -817,12 +817,11 @@ impl App {
             Some(t) => self.window_arg(&t),
             None => Some(self.current),
         };
-        match idx.filter(|i| *i > 0) {
-            Some(i) => Some(i),
-            None => {
-                self.error("No channel");
-                None
-            },
+        if let Some(i) = idx.filter(|i| *i > 0) {
+            Some(i)
+        } else {
+            self.error("No channel");
+            None
         }
     }
 
@@ -870,7 +869,7 @@ impl App {
 
     /// A /whois from the Matrix side, with what only the UI knows spliced
     /// in: the peer's presence marker on the nick row, and BitchX's
-    /// WHOIS_IDLE row (`source/numbers.c:870-877`) before the closing row.
+    /// `WHOIS_IDLE` row (`source/numbers.c:870-877`) before the closing row.
     fn whois_splice(&mut self, line: Line) -> Vec<Line> {
         match line {
             Line::WhoisNick { nick, mxid, info } => {

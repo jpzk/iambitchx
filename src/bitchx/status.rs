@@ -1,8 +1,8 @@
 //! # BitchX status lines
 //!
 //! The two blue status lines BitchX draws above the input line
-//! (`DOUBLE_STATUS_LINE`), built from the "default bx" STATUS_FORMAT1 and
-//! STATUS_FORMAT2 in BitchX1.3 `include/color.h`, with the expandos of
+//! (`DOUBLE_STATUS_LINE`), built from the "default bx" `STATUS_FORMAT1` and
+//! `STATUS_FORMAT2` in BitchX1.3 `include/color.h`, with the expandos of
 //! `source/status.c`.
 use ratatui::style::{Color, Modifier as StyleModifier, Style};
 use ratatui::text::{Line, Span};
@@ -30,7 +30,7 @@ fn st_text() -> Style {
     status_bg().fg(Color::Gray)
 }
 
-/// `ESC[1;32m`: bold green on blue (the `zZzZ` of STATUS_AWAY).
+/// `ESC[1;32m`: bold green on blue (the `zZzZ` of `STATUS_AWAY`).
 fn st_away() -> Style {
     status_bg().fg(Color::Green).add_modifier(StyleModifier::BOLD)
 }
@@ -54,13 +54,13 @@ pub(crate) fn truncate(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }
 
-/// `%T`: BitchX's 12-hour clock, `09:24pm` (CLOCK_24HOUR off).
-pub(crate) fn clock(t: impl chrono::Timelike) -> String {
+/// `%T`: BitchX's 12-hour clock, `09:24pm` (`CLOCK_24HOUR` off).
+pub(crate) fn clock(t: &impl chrono::Timelike) -> String {
     let (pm, h) = t.hour12();
     format!("{h:02}:{:02}{}", t.minute(), if pm { "pm" } else { "am" })
 }
 
-/// Member counts for `%!` (STATUS_USERS): `[O/n N/n I/n V/n F/n]`.
+/// Member counts for `%!` (`STATUS_USERS)`: `[O/n N/n I/n V/n F/n]`.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct UserCounts {
     pub ops: usize,
@@ -101,7 +101,7 @@ pub(crate) struct BxStatus {
     pub modes: String,
     /// `%F`: refnums of other windows with unread activity.
     pub act: Vec<usize>,
-    /// The subset of `act` with an unread mention (AUTO_REPLY), highlighted.
+    /// The subset of `act` with an unread mention (`AUTO_REPLY`), highlighted.
     pub hilite: Vec<usize>,
     /// `%!`; `None` outside of channels.
     pub users: Option<UserCounts>,
@@ -113,7 +113,7 @@ pub(crate) struct BxStatus {
 }
 
 impl BxStatus {
-    /// STATUS_FORMAT1: ` [%T][%*%@%=%N%#%A]%M [%C%+%W] %Q %H%B%F`.
+    /// `STATUS_FORMAT1`: ` [%T][%*%@%=%N%#%A]%M [%C%+%W] %Q %H%B%F`.
     ///
     /// As captured (recon 22, 29):
     /// ` [09:24pm][@nick(+iw)] [#bxrecon-0(+nt)]  [Query: x]`.
@@ -212,7 +212,7 @@ impl BxStatus {
         Line::from(s).style(status_bg())
     }
 
-    /// STATUS_FORMAT2, left part: `%L %!` (`[Lag ??] [O/1 N/2 I/0 V/0 F/0]`).
+    /// `STATUS_FORMAT2`, left part: `%L %!` (`[Lag ??] [O/1 N/2 I/0 V/0 F/0]`).
     ///
     /// `%L` reads `??` until the first lag sample, then the seconds
     /// right-aligned to two columns (`[Lag  0]`, recon 2).
@@ -259,7 +259,7 @@ impl BxStatus {
         Line::from(s).style(status_bg())
     }
 
-    /// STATUS_FORMAT2, right-justified part (after `%>`):
+    /// `STATUS_FORMAT2`, right-justified part (after `%>`):
     /// `[%u:%a:%f:%b:%h]`. BitchX shows `[U:a:S:b:h]` inside a channel and
     /// `[::::]` elsewhere, all cyan (recon 21, 22). The IRC flags have no
     /// Matrix meaning, so they are rendered exactly as captured.

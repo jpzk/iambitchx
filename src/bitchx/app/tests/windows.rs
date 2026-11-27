@@ -236,6 +236,6 @@ fn test_dedupe_and_backfill_order() {
         ],
         backfill: true,
     });
-    let texts: Vec<_> = app.windows[1].lines.to_vec();
+    let texts: Vec<_> = app.windows[1].lines.clone();
     assert_eq!(texts, vec![l("old"), l("new")]);
 }

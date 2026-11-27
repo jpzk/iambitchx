@@ -1,4 +1,4 @@
-//! Away handling: the AUTO_AWAY idle timer, AWAY_NICK display-name
+//! Away handling: the `AUTO_AWAY` idle timer, `AWAY_NICK` display-name
 //! swapping, the connect-time self-whois probe and persisting vars.
 
 use crate::bitchx::app::{App, Probe};
@@ -7,7 +7,7 @@ use crate::bitchx::vars::{expand_auto_away_msg, expand_away_nick, strip_away_nic
 
 impl App {
     /// The timer: `check_auto_away` (`source/misc.c:1204-1225`). After
-    /// AUTO_AWAY_TIME seconds without a keypress, go away with
+    /// `AUTO_AWAY_TIME` seconds without a keypress, go away with
     /// `Auto-Away after N mins`, unless already away (by hand or not).
     pub(crate) fn tick(&mut self) -> Vec<Effect> {
         self.flush_debug();
@@ -44,7 +44,7 @@ impl App {
         vec![]
     }
 
-    /// Going away: switch the display name to AWAY_NICK, remembering (and
+    /// Going away: switch the display name to `AWAY_NICK`, remembering (and
     /// persisting) the original. Nothing while already away, when off, or
     /// while our display name is unknown. Never stacks: an already-away
     /// name (`carla^afk`) is unwrapped to its original first.
@@ -168,23 +168,20 @@ impl App {
     /// return BitchX's `You were /away for ...` (`source/commands.c:3124`).
     pub(super) fn away_changed(&mut self, away: Option<String>) {
         let now = self.now();
-        match &away {
-            Some(r) => {
-                self.away_since.get_or_insert(now);
-                self.info(format!("You have been marked as being away ({r})"));
-            },
-            None => {
-                if let Some(since) = self.away_since.take() {
-                    let t = (now - since).max(0) / 1000;
-                    let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
-                    self.info(format!(
-                        "You were /away for {h} hours {m} minutes and {s} seconds. [BX-MsgLog Off]"
-                    ));
-                }
-                self.info("You are no longer marked as being away");
-                self.auto_away = false;
-                self.away_msgs = 0;
-            },
+        if let Some(r) = &away {
+            self.away_since.get_or_insert(now);
+            self.info(format!("You have been marked as being away ({r})"));
+        } else {
+            if let Some(since) = self.away_since.take() {
+                let t = (now - since).max(0) / 1000;
+                let (h, m, s) = (t / 3600, (t % 3600) / 60, t % 60);
+                self.info(format!(
+                    "You were /away for {h} hours {m} minutes and {s} seconds. [BX-MsgLog Off]"
+                ));
+            }
+            self.info("You are no longer marked as being away");
+            self.auto_away = false;
+            self.away_msgs = 0;
         }
         self.away = away;
     }

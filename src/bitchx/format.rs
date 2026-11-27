@@ -72,13 +72,13 @@ fn g_line(rest: Vec<Span<'static>>) -> TLine<'static> {
 }
 
 /// Lines of a multi-line body, the continuation lines indented under the text.
-fn body_lines(prefix: Vec<Span<'static>>, text: &str, style: Style) -> Vec<TLine<'static>> {
-    let indent = " ".repeat(TLine::from(prefix.clone()).width());
+fn body_lines(prefix: &[Span<'static>], text: &str, style: Style) -> Vec<TLine<'static>> {
+    let indent = " ".repeat(TLine::from(prefix.to_vec()).width());
     text.split('\n')
         .enumerate()
         .map(|(i, part)| {
             let mut spans = if i == 0 {
-                prefix.clone()
+                prefix.to_vec()
             } else {
                 vec![Span::raw(indent.clone())]
             };
@@ -116,10 +116,10 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
                 sp(">", fg(Color::Blue)),
                 sp(" ", n()),
             ];
-            body_lines(prefix, text, hl_text())
+            body_lines(&prefix, text, hl_text())
         },
         Line::Action { nick, own: false, text } => {
-            body_lines(vec![sp("* ", k()), sp(format!("{nick} "), y)], text, hl_text())
+            body_lines(&[sp("* ", k()), sp(format!("{nick} "), y)], text, hl_text())
         },
         Line::Private { nick, mxid, own: false, text } => {
             let prefix = vec![
@@ -130,7 +130,7 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
                 sp(")]", k()),
                 sp(" ", n()),
             ];
-            body_lines(prefix, text, hl_text())
+            body_lines(&prefix, text, hl_text())
         },
         Line::Notice { nick, mxid, text } => {
             let prefix = vec![
@@ -141,13 +141,13 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
                 sp(")-", k()),
                 sp(" ", n()),
             ];
-            body_lines(prefix, text, hl_text())
+            body_lines(&prefix, text, hl_text())
         },
         _ => return None,
     })
 }
 
-/// [`format_line`], with `hl` (a mention, see [`crate::bitchx::mention`])
+/// `format_line` (test-only), with `hl` (a mention, see [`crate::bitchx::mention`])
 /// rendering the AR form.
 pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> {
     if hl && let Some(out) = format_ar(line) {
@@ -168,7 +168,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 sp(">", bracket),
                 sp(" ", n()),
             ];
-            body_lines(prefix, text, n())
+            body_lines(&prefix, text, n())
         },
         // Own: ` nick text` (nick bold white). Others: ` nick/#chan text`
         // (nick and channel bold yellow).
@@ -178,7 +178,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             } else {
                 sp(format!("{nick}/{chan} "), bold(Color::Yellow))
             };
-            body_lines(vec![sp(" ", k()), who], text, n())
+            body_lines(&[sp(" ", k()), who], text, n())
         },
         // Query lines (capture 29). Sent: `[msg(peer)] text`, `msg` red and
         // the peer bold red. Received: `[nick(mxid)] text`, nick bold
@@ -203,7 +203,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                     sp(" ", n()),
                 ]
             };
-            body_lines(prefix, text, n())
+            body_lines(&prefix, text, n())
         },
         // `-nick(mxid)- text`: punctuation dark grey, nick and host magenta.
         Line::Notice { nick, mxid, text } => {
@@ -215,7 +215,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
                 sp(")-", k()),
                 sp(" ", n()),
             ];
-            body_lines(prefix, text, n())
+            body_lines(&prefix, text, n())
         },
         // ` nick [mxid] has joined #chan`: nick bold cyan, host cyan.
         Line::Join { nick, mxid } => {
@@ -239,7 +239,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             ];
             match reason {
                 Some(r) if !r.is_empty() => {
-                    s.extend([sp("[", k()), sp(r.clone(), n()), sp("]", k())])
+                    s.extend([sp("[", k()), sp(r.clone(), n()), sp("]", k())]);
                 },
                 _ => s.push(sp("[]", k())),
             }
@@ -487,7 +487,7 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
     }
 }
 
-/// A presence marker `zZzZ 4h` / `off 2d`: green zZzZ like STATUS_AWAY,
+/// A presence marker `zZzZ 4h` / `off 2d`: green zZzZ like `STATUS_AWAY`,
 /// grey `off`, the age in the default colour.
 pub(crate) fn mark_spans(mark: &PresenceMark) -> Vec<Span<'static>> {
     let word = if mark.offline { k() } else { fg(Color::Green) };
@@ -676,6 +676,10 @@ mod tests {
     }
 
     #[test]
+    #[allow(
+        clippy::many_single_char_names,
+        reason = "short fixture names: one letter per membership event kind"
+    )]
     fn test_membership_lines() {
         let p = Line::Part {
             nick: "a".into(),

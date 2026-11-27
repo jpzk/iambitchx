@@ -15,7 +15,7 @@ const SYT: &str = "syt_ZWxpYQ_aBcDeFgHiJkLmNoPqRsT_0a1b2c";
 pub(crate) fn harness() -> std::sync::MutexGuard<'static, Receiver<DbgLine>> {
     static RX: OnceLock<std::sync::Mutex<Receiver<DbgLine>>> = OnceLock::new();
     let m = RX.get_or_init(|| std::sync::Mutex::new(init().expect("tap init")));
-    let g = m.lock().unwrap_or_else(|e| e.into_inner());
+    let g = m.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     while g.try_recv().is_ok() {}
     g
 }
@@ -35,7 +35,7 @@ fn test_layer_http_auth_crypto() {
         let s = tracing::info_span!(target: "matrix_sdk::http_client", "send",
                 uri = Empty, config = "cfg", method = Empty, status = Empty,
                 response_size = Empty, request_duration = Empty);
-        let _e = s.enter();
+        let entered = s.enter();
         s.record(
             "uri",
             format!("https://hs.example/_matrix/client/v3/sync?since=s1&access_token={AT}"),
@@ -44,7 +44,7 @@ fn test_layer_http_auth_crypto() {
         s.record("status", 200u16);
         s.record("response_size", "4.3 kB");
         s.record("request_duration", tracing::field::debug(std::time::Duration::from_millis(1234)));
-        drop(_e);
+        drop(entered);
         drop(s);
         let k = tracing::info_span!(target: "matrix_sdk::http_client", "send",
                 uri = "https://hs.example/_matrix/client/v3/keys/query", method = "POST",
@@ -162,7 +162,7 @@ fn test_redact_json_keys() {
     let v = json!({
         "access_token": AT,
         "refresh_token": RT,
-        "expires_in_ms": 300000,
+        "expires_in_ms": 300_000,
         "password": "hunter2",
         "auth": {"type": "m.login.password", "password": "hunter2"},
         "headers": {"Authorization": format!("Bearer {AT}")},
