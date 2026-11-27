@@ -5,6 +5,7 @@
 //! the UI as [`MxEvent::Verify`] and `-:-` lines. Keys, recovery keys and
 //! tokens are never logged or printed.
 use futures::StreamExt;
+use matrix_sdk::encryption::identities::Device;
 use matrix_sdk::encryption::verification::{
     SasState, SasVerification, Verification, VerificationRequest, VerificationRequestState,
 };
@@ -39,7 +40,7 @@ pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
                 client.encryption().get_verification_request(&ev.sender, &flow_id).await
             {
                 let dev = request_device(&client, &ev.sender, &ev.content.from_device).await;
-                track_request(req, Some(dev), tx);
+                track_request(req, Some(dev), false, tx);
             }
         }
     });
@@ -60,7 +61,8 @@ pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
                 .await
             {
                 let dev = request_device(&client, &ev.sender, &content.from_device).await;
-                track_request(req, Some(dev), tx);
+                // In-room requests verify the user (cross-signing identity).
+                track_request(req, Some(dev), true, tx);
             }
         }
     });
@@ -70,10 +72,12 @@ pub(crate) fn register_verification_handlers(client: &Client, tx: Tx) {
 /// the SDK's device list for that user (id + ed25519 key), else as unknown.
 async fn request_device(client: &Client, user: &UserId, from_device: &DeviceId) -> ReqDevice {
     let dev = client.encryption().get_device(user, from_device).await.ok().flatten();
-    req_device(
-        from_device.as_str(),
-        dev.map(|d| (d.device_id().to_string(), d.ed25519_key().map(|k| k.to_base64()))),
-    )
+    req_device(from_device.as_str(), dev.as_ref().map(sdk_device))
+}
+
+/// The SDK's id and ed25519 key (base64) of a device.
+fn sdk_device(d: &Device) -> (String, Option<String>) {
+    (d.device_id().to_string(), d.ed25519_key().map(|k| k.to_base64()))
 }
 
 fn req_device(claimed: &str, sdk: Option<(String, Option<String>)>) -> ReqDevice {
@@ -84,7 +88,13 @@ fn req_device(claimed: &str, sdk: Option<(String, Option<String>)>) -> ReqDevice
 }
 
 /// Report a request and follow it: ready -> SAS -> emoji -> done/cancelled.
-pub(crate) fn track_request(req: VerificationRequest, device: Option<ReqDevice>, tx: Tx) {
+/// E4: `device` and `identity` say what is being verified, for the UI.
+pub(crate) fn track_request(
+    req: VerificationRequest,
+    device: Option<ReqDevice>,
+    identity: bool,
+    tx: Tx,
+) {
     let user = req.other_user_id().to_owned();
     update(
         &tx,
@@ -94,6 +104,7 @@ pub(crate) fn track_request(req: VerificationRequest, device: Option<ReqDevice>,
             device,
             room_id: req.room_id().map(ToOwned::to_owned),
             we_started: req.we_started(),
+            identity,
         },
     );
 
@@ -285,14 +296,18 @@ pub(crate) async fn verify(
                 start_sas(&req).await?;
                 return Ok(());
             }
-            let req = match device {
+            // E4: the started flow carries what it verifies: one device or the identity.
+            let (req, device, identity) = match device {
                 Some(device) => {
                     let dev = enc
                         .get_device(&user, device.as_str().into())
                         .await?
                         .ok_or_else(|| anyhow::anyhow!("{user} has no device {device}"))?;
-                    dev.request_verification_with_methods(vec![VerificationMethod::SasV1])
-                        .await?
+                    let shown = req_device(device.as_str(), Some(sdk_device(&dev)));
+                    let req = dev
+                        .request_verification_with_methods(vec![VerificationMethod::SasV1])
+                        .await?;
+                    (req, Some(shown), false)
                 },
                 None if client.user_id() == Some(&*user) => {
                     anyhow::bail!(
@@ -304,12 +319,13 @@ pub(crate) async fn verify(
                         .get_user_identity(&user)
                         .await?
                         .ok_or_else(|| anyhow::anyhow!("{user} has no cross-signing identity"))?;
-                    identity
+                    let req = identity
                         .request_verification_with_methods(vec![VerificationMethod::SasV1])
-                        .await?
+                        .await?;
+                    (req, None, true)
                 },
             };
-            track_request(req, None, tx.clone());
+            track_request(req, device, identity, tx.clone());
         },
         VerifyAction::Confirm => {
             let f = flow_id.unwrap_or_default();
