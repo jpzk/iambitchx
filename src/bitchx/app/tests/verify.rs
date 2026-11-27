@@ -110,6 +110,7 @@ fn test_f44_verification_keyed_by_flow() {
             device: Some(ReqDevice::Known { id: dev.into(), ed25519: None }),
             room_id: None,
             we_started: false,
+            identity: false,
         },
     };
     app.handle_mx(req("flowA", "DEVA"));
@@ -224,6 +225,7 @@ fn test_verify_dispatch() {
             device: Some(ReqDevice::Known { id: "DEV1".into(), ed25519: None }),
             room_id: None,
             we_started: false,
+            identity: false,
         },
     });
     assert!(matches!(app.windows[0].lines.last(), Some(Line::Info(t))
@@ -268,7 +270,7 @@ fn test_verify_dispatch() {
     assert_eq!(sas(app.cur()), 7);
     app.handle_mx(MxEvent::Verify { user: armin.clone(), update: VerifyUpdate::Done });
     assert!(app.verifications.is_empty());
-    assert_eq!(last(&app), Line::Info("@armin:remote.tld is now verified".into()));
+    assert_eq!(last(&app), Line::Info("@armin:remote.tld is now verified (device DEV1)".into()));
 
     // In-room request lands in that room's window; cancel clears it.
     app.handle_key(alt('1'));
@@ -279,6 +281,7 @@ fn test_verify_dispatch() {
             device: None,
             room_id: Some(owned_room_id!("!c:example.org")),
             we_started: false,
+            identity: false,
         },
     });
     assert!(
@@ -335,6 +338,7 @@ fn test_e5_verify_start_refuses_to_guess_flow() {
             device: Some(ReqDevice::Known { id: dev.into(), ed25519: None }),
             room_id: None,
             we_started: true,
+            identity: false,
         },
     };
     app.handle_mx(req("flowA", "DEVA"));
@@ -379,6 +383,7 @@ fn test_e2_peer_sas_offered_needs_accept() {
             device: Some(ReqDevice::Known { id: "DEVA".into(), ed25519: None }),
             room_id: None,
             we_started: false,
+            identity: false,
         },
     });
     app.handle_mx(MxEvent::Verify {
@@ -412,6 +417,7 @@ fn test_e3_request_shows_sdk_device_not_claim() {
             device: Some(device),
             room_id: None,
             we_started: false,
+            identity: false,
         },
     };
     app.handle_mx(req(
@@ -437,4 +443,57 @@ fn test_e3_request_shows_sdk_device_not_claim() {
     });
     assert!(shown);
     assert_eq!(app.verifications[1].device, None);
+}
+
+/// E4: a flow we started names what it verifies -- one device (request,
+/// emoji header, done line) or the whole cross-signing identity, flagged as
+/// trusting ALL their devices -- so the two are never shown the same.
+#[test]
+fn test_e4_flow_names_device_or_identity() {
+    let mut app = app();
+    let armin = owned_user_id!("@armin:remote.tld");
+    let ev = |update| MxEvent::Verify { user: armin.clone(), update };
+    let emojis: Vec<(String, String)> =
+        (0..7).map(|i| (format!("e{i}"), format!("n{i}"))).collect();
+    let info = |app: &App, needle: &str| {
+        app.windows[0]
+            .lines
+            .iter()
+            .any(|l| matches!(l, Line::Info(t) if t.contains(needle)))
+    };
+
+    // /verify start armin DEVX: the device stays shown through to done.
+    app.handle_mx(ev(VerifyUpdate::Requested {
+        flow_id: "fd".into(),
+        device: Some(ReqDevice::Known { id: "DEVX".into(), ed25519: Some("AbCd".into()) }),
+        room_id: None,
+        we_started: true,
+        identity: false,
+    }));
+    assert!(info(&app, "Verification request sent to @armin:remote.tld [device DEVX"));
+    assert!(!info(&app, "IDENTITY"));
+    app.handle_mx(ev(VerifyUpdate::Emoji(emojis.clone())));
+    assert!(info(&app, "Verification with @armin:remote.tld (device DEVX): compare"));
+    app.handle_mx(ev(VerifyUpdate::Done));
+    assert_eq!(last(&app), Line::Info("@armin:remote.tld is now verified (device DEVX)".into()));
+
+    // /verify start armin (cross-signing identity): flagged as ALL devices.
+    app.handle_mx(ev(VerifyUpdate::Requested {
+        flow_id: "fi".into(),
+        device: None,
+        room_id: None,
+        we_started: true,
+        identity: true,
+    }));
+    assert!(info(&app, "[IDENTITY: verifies ALL their devices]"));
+    app.handle_mx(ev(VerifyUpdate::Emoji(emojis)));
+    assert!(info(&app, "(their cross-signing identity: ALL their devices): compare"));
+    app.handle_mx(ev(VerifyUpdate::Done));
+    assert_eq!(
+        last(&app),
+        Line::Info(
+            "@armin:remote.tld is now verified (their cross-signing identity: ALL their devices)"
+                .into()
+        )
+    );
 }

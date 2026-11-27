@@ -231,7 +231,7 @@ impl App {
             }
         };
         let lines = match update {
-            VerifyUpdate::Requested { flow_id, device, room_id, we_started } => {
+            VerifyUpdate::Requested { flow_id, device, room_id, we_started, identity } => {
                 // E3: the SDK keeps the first request of a reused flow id;
                 // a later one must not replace the device shown for it.
                 if self.verifications.iter().any(|v| v.flow_id == flow_id) {
@@ -240,7 +240,11 @@ impl App {
                     ));
                     return self.verify_lines(room_id, vec![line]);
                 }
-                let dev = device.as_ref().map(req_device_label).unwrap_or_default();
+                let mut dev = device.as_ref().map(req_device_label).unwrap_or_default();
+                let subject = verify_subject(device.as_ref(), identity);
+                if identity {
+                    dev.push_str(" [IDENTITY: verifies ALL their devices]");
+                }
                 let device = match device {
                     Some(ReqDevice::Known { id, .. }) => Some(id),
                     _ => None,
@@ -263,6 +267,7 @@ impl App {
                     device,
                     room_id: room_id.clone(),
                     we_started,
+                    subject,
                     state: "requested",
                     ambiguous: false,
                 });
@@ -282,7 +287,11 @@ impl App {
             },
             VerifyUpdate::Emoji(emojis) => {
                 set_state(self, "emoji");
-                let mut lines = sas_lines(user.as_str(), &emojis);
+                let subject = match self.flows_of(user).as_slice() {
+                    [v] => v.subject.clone(),
+                    _ => "which flow is unknown".to_owned(),
+                };
+                let mut lines = sas_lines(user.as_str(), &subject, &emojis);
                 if n > 1 {
                     for v in self.verifications.iter_mut().filter(|v| v.user == *user) {
                         v.ambiguous = true;
@@ -300,8 +309,10 @@ impl App {
                 ))]
             },
             VerifyUpdate::Done => {
+                let mut subject = None;
                 if n == 1 {
-                    self.verifications.retain(|v| v.user != *user);
+                    let i = self.verifications.iter().position(|v| v.user == *user);
+                    subject = i.map(|i| self.verifications.remove(i).subject);
                 } else {
                     // The flow we confirmed (never an ambiguous one) finished.
                     let done = self
@@ -309,10 +320,14 @@ impl App {
                         .iter()
                         .position(|v| v.user == *user && v.state == "confirmed");
                     if let Some(i) = done {
-                        self.verifications.remove(i);
+                        subject = Some(self.verifications.remove(i).subject);
                     }
                 }
-                vec![Line::Info(format!("{user} is now verified"))]
+                // E4: say what was verified -- one device or the whole identity.
+                vec![Line::Info(match subject {
+                    Some(s) => format!("{user} is now verified ({s})"),
+                    None => format!("{user} is now verified"),
+                })]
             },
             VerifyUpdate::Cancelled(reason) => {
                 let mut lines = vec![Line::Error(format!(
@@ -339,6 +354,19 @@ impl App {
             },
         };
         self.verify_lines(room_id, lines);
+    }
+}
+
+/// E4: what a flow verifies, for the SAS header and the done line.
+fn verify_subject(device: Option<&ReqDevice>, identity: bool) -> String {
+    let s = crate::bitchx::format::sanitize;
+    if identity {
+        return "their cross-signing identity: ALL their devices".to_owned();
+    }
+    match device {
+        Some(ReqDevice::Known { id, .. }) => format!("device {}", s(id)),
+        Some(ReqDevice::Unknown(c)) => format!("UNKNOWN device \"{}\"", s(c)),
+        None => "device unknown".to_owned(),
     }
 }
 

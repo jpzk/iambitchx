@@ -149,6 +149,8 @@ pub(crate) struct PendingVerify {
     pub device: Option<String>,
     pub room_id: Option<OwnedRoomId>,
     pub we_started: bool,
+    /// E4: what the emoji verify, shown in the SAS and done lines.
+    pub subject: String,
     /// requested / ready / emoji / confirmed.
     pub state: &'static str,
     /// Several flows with this user reached SAS: the emoji shown cannot be

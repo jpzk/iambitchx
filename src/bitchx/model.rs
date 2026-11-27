@@ -516,6 +516,9 @@ pub(crate) enum VerifyUpdate {
         device: Option<ReqDevice>,
         room_id: Option<OwnedRoomId>,
         we_started: bool,
+        /// E4: the whole cross-signing identity is being verified (trusts
+        /// every device of the user), not one device.
+        identity: bool,
     },
     /// Both sides are ready; SAS can start.
     Ready,

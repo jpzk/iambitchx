@@ -14,10 +14,11 @@ pub(crate) fn encrypt_prompt(room: &str) -> String {
     )
 }
 
-/// The SAS block: a header, the 7 emoji with their names, and the hint.
-pub(crate) fn sas_lines(peer: &str, emojis: &[(String, String)]) -> Vec<Line> {
+/// The SAS block: a header naming what is verified (E4: `subject`, a device
+/// or the whole identity), the 7 emoji with their names, and the hint.
+pub(crate) fn sas_lines(peer: &str, subject: &str, emojis: &[(String, String)]) -> Vec<Line> {
     let mut out = vec![Line::Info(format!(
-        "Verification with {peer}: compare these emoji with the other device"
+        "Verification with {peer} ({subject}): compare these emoji with the other device"
     ))];
     out.extend(emojis.iter().enumerate().map(|(i, (emoji, name))| Line::Sas {
         n: i + 1,
@@ -96,7 +97,7 @@ mod tests {
 
     #[test]
     fn test_sas_emoji_lines() {
-        let lines = sas_lines("armin", &sample());
+        let lines = sas_lines("armin", "device DEV", &sample());
         assert_eq!(lines.len(), 9);
         assert_eq!(lines[1], Line::Sas { n: 1, emoji: "🐶".into(), name: "Dog".into() });
         assert_eq!(lines[7], Line::Sas { n: 7, emoji: "🔒".into(), name: "Lock".into() });
