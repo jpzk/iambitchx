@@ -138,7 +138,7 @@ fn test_bind_runs_command() {
 
 #[test]
 fn test_alias_bind_persist() {
-    let dir = std::env::temp_dir().join(format!("bx-alias-bind-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("bx-aliasbind-persist-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("config.toml");
     std::fs::write(&path, "[settings]\nlog_level = \"info\"\n").unwrap();
