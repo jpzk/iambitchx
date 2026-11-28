@@ -11,24 +11,32 @@ use std::time::{Duration, Instant};
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::deserialized_responses::{TimelineEvent, TimelineEventKind};
 use matrix_sdk::room::MessagesOptions;
+use matrix_sdk::room::power_levels::RoomPowerLevelChanges;
 use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered::v3::Request as PublicRoomsRequest;
 use matrix_sdk::ruma::api::client::presence::get_presence::v3::Request as GetPresenceRequest;
 use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as PresenceRequest;
 use matrix_sdk::ruma::api::client::profile::DisplayName;
+use matrix_sdk::ruma::api::client::room::Visibility;
+use matrix_sdk::ruma::api::client::room::create_room::v3::{
+    Request as CreateRoomRequest, RoomPreset,
+};
 use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
+use matrix_sdk::ruma::events::room::join_rules::JoinRule;
 use matrix_sdk::ruma::events::room::member::MembershipChange;
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
 use matrix_sdk::ruma::events::{
-    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, SyncMessageLikeEvent,
-    SyncStateEvent,
+    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, InitialStateEvent,
+    MessageLikeEventType, StateEventType, SyncMessageLikeEvent, SyncStateEvent,
 };
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::room::JoinRuleKind;
 use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{
-    Int, OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, UserId, uint,
+    Int, OwnedRoomAliasId, OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, UserId,
+    uint,
 };
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
@@ -40,6 +48,7 @@ use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{
     Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, away_of, nick_of,
 };
+use crate::bitchx::modes::RoomModes;
 use crate::config::ApplicationSettings;
 use crate::login;
 use crate::session_guard::Mode;
@@ -135,6 +144,14 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
         None
     };
     let peer_nick = dm_peer.as_deref().map(nick_of);
+    let levels = room.power_levels_or_default().await;
+    let send_level: i64 = levels.for_message(MessageLikeEventType::RoomMessage).into();
+    let modes = RoomModes::from_levels(
+        false,
+        levels.users_default.into(),
+        levels.events_default.into(),
+        levels.for_state(StateEventType::RoomTopic).into(),
+    );
 
     RoomSnapshot {
         room_id: Some(room.room_id().to_owned()),
@@ -146,6 +163,10 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
         invite_only: room
             .join_rule()
             .is_some_and(|r| matches!(r.kind(), JoinRuleKind::Invite | JoinRuleKind::Knock)),
+        moderated: modes.moderated,
+        topic_lock: modes.topic_lock,
+        space: room.is_space(),
+        send_level,
         members,
     }
 }
@@ -466,6 +487,55 @@ fn room_of(client: &Client, room_id: &OwnedRoomId) -> anyhow::Result<Room> {
         .ok_or_else(|| anyhow::anyhow!("Unknown channel {room_id}"))
 }
 
+/// The `/create` request: alias `#alias:<our server>`, invite-only
+/// (`private_chat`) unless `public` (`public_chat` + listed in the room
+/// directory), megolm on unless `!encrypt` (`m.room.encryption` in the
+/// initial state, as the SDK's own `create_dm` does).
+fn create_request(alias: &str, public: bool, encrypt: bool) -> CreateRoomRequest {
+    let mut req = CreateRoomRequest::new();
+    req.room_alias_name = Some(alias.to_owned());
+    req.name = Some(alias.to_owned());
+    if public {
+        req.preset = Some(RoomPreset::PublicChat);
+        req.visibility = Visibility::Public;
+    } else {
+        req.preset = Some(RoomPreset::PrivateChat);
+        req.visibility = Visibility::Private;
+    }
+    if encrypt {
+        req.initial_state = vec![
+            InitialStateEvent::with_empty_state_key(
+                RoomEncryptionEventContent::with_recommended_defaults(),
+            )
+            .to_raw_any(),
+        ];
+    }
+    req
+}
+
+/// Create `#alias` on our own server, then show and focus its window.
+async fn create_room(
+    client: &Client,
+    me: &UserId,
+    alias: &str,
+    public: bool,
+    encrypt: bool,
+    tx: &Tx,
+) -> anyhow::Result<()> {
+    let room = client.create_room(create_request(alias, public, encrypt)).await?;
+    let full = format!("#{alias}:{}", me.server_name());
+    let mut what = vec![if public { "public" } else { "invite-only" }];
+    if encrypt {
+        what.push("encrypted");
+    }
+    let line = Line::Info(format!("Created channel {full} ({})", what.join(", ")));
+    let room_id = room.room_id().to_owned();
+    let _ = tx.send(MxEvent::Room(snapshot(&room, me).await));
+    let _ = tx.send(MxEvent::Focus(room_id.clone()));
+    let _ = tx.send(MxEvent::Info { room_id: Some(room_id), line });
+    Ok(())
+}
+
 /// The DM with `user`, created if needed. New DMs are end-to-end encrypted:
 /// `create_dm` puts `m.room.encryption` (megolm) in the initial state.
 async fn dm_room(client: &Client, user: &UserId) -> anyhow::Result<Room> {
@@ -718,6 +788,67 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let lines = backfill(&room, &me).await?;
             let _ = tx.send(MxEvent::Lines { room_id, lines, backfill: true });
         },
+        Effect::CreateRoom { alias, public, encrypt } => {
+            create_room(client, &me, &alias, public, encrypt, tx).await?;
+        },
+        Effect::AliasAdd { room_id, alias } => {
+            let alias = OwnedRoomAliasId::try_from(alias.as_str())
+                .map_err(|e| anyhow::anyhow!("Bad alias {alias}: {e}"))?;
+            client.create_room_alias(&alias, &room_id).await?;
+            let line = Line::Info(format!("Alias {alias} now points to this channel"));
+            let _ = tx.send(MxEvent::Info { room_id: Some(room_id), line });
+        },
+        Effect::AliasDel(alias) => {
+            let alias = OwnedRoomAliasId::try_from(alias.as_str())
+                .map_err(|e| anyhow::anyhow!("Bad alias {alias}: {e}"))?;
+            client.remove_room_alias(&alias).await?;
+            let line = Line::Info(format!("Alias {alias} removed"));
+            let _ = tx.send(MxEvent::Info { room_id: None, line });
+        },
+        Effect::Publish { room_id, on } => {
+            let visibility = if on {
+                Visibility::Public
+            } else {
+                Visibility::Private
+            };
+            room_of(client, &room_id)?
+                .privacy_settings()
+                .update_room_visibility(visibility)
+                .await?;
+            let line = Line::Info(if on {
+                "Channel is now listed in the public room directory".into()
+            } else {
+                "Channel removed from the public room directory".into()
+            });
+            let _ = tx.send(MxEvent::Info { room_id: Some(room_id), line });
+        },
+        Effect::Ban { room_id, user, reason } => {
+            room_of(client, &room_id)?.ban_user(&user, reason.as_deref()).await?;
+        },
+        Effect::Unban { room_id, user } => {
+            room_of(client, &room_id)?.unban_user(&user, None).await?;
+            let line = Line::Info(format!("{} is no longer banned", nick_of(&user)));
+            let _ = tx.send(MxEvent::Info { room_id: Some(room_id), line });
+        },
+        Effect::JoinRule { room_id, invite } => {
+            let rule = if invite {
+                JoinRule::Invite
+            } else {
+                JoinRule::Public
+            };
+            let room = room_of(client, &room_id)?;
+            room.privacy_settings().update_join_rule(rule).await?;
+        },
+        Effect::EventsDefault { room_id, level } => {
+            let mut changes = RoomPowerLevelChanges::new();
+            changes.events_default = Some(level);
+            room_of(client, &room_id)?.apply_power_level_changes(changes).await?;
+        },
+        Effect::TopicLevel { room_id, level } => {
+            let mut changes = RoomPowerLevelChanges::new();
+            changes.room_topic = Some(level);
+            room_of(client, &room_id)?.apply_power_level_changes(changes).await?;
+        },
         Effect::EnableEncryption(room_id) => {
             let room = room_of(client, &room_id)?;
             crate::e2ee::enable_encryption(&room, tx).await?;
@@ -740,6 +871,8 @@ pub fn spawn_effect(client: Client, effect: Effect, tx: Tx) {
         let what = format!("{effect:?}");
         let what = what.split([' ', '(', '{']).next().unwrap_or("").to_lowercase();
         if let Err(e) = run(&client, effect, &tx).await {
+            // The server's error text is remote input: one line, no escapes.
+            let e = crate::bitchx::text::terminal_text(&e.to_string());
             let line = Line::Error(format!("{what}: {e}"));
             let _ = tx.send(MxEvent::Info { room_id: None, line });
         }
@@ -753,6 +886,29 @@ mod tests {
     use super::*;
     use crate::bitchx::app::App;
     use crate::bitchx::app::tests::{app, typed};
+
+    #[test]
+    fn test_create_request_presets() {
+        let enc = |r: &CreateRoomRequest| {
+            r.initial_state
+                .iter()
+                .any(|e| e.json().get().contains("\"m.room.encryption\""))
+        };
+        // /join 404 -> y, and plain /create: invite-only, unlisted, megolm
+        let r = create_request("x", false, true);
+        assert_eq!(r.room_alias_name.as_deref(), Some("x"));
+        assert_eq!(r.preset, Some(RoomPreset::PrivateChat));
+        assert_eq!(r.visibility, Visibility::Private);
+        assert!(enc(&r));
+        // /create -public: public preset, in the directory, still encrypted
+        let r = create_request("x", true, true);
+        assert_eq!(r.preset, Some(RoomPreset::PublicChat));
+        assert_eq!(r.visibility, Visibility::Public);
+        assert!(enc(&r));
+        // -noencrypt: no m.room.encryption state at all
+        assert!(!enc(&create_request("x", true, false)));
+        assert!(!enc(&create_request("x", false, false)));
+    }
 
     #[test]
     fn test_m04_dm_needs_at_most_two_members() {

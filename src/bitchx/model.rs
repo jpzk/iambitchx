@@ -386,6 +386,14 @@ pub(crate) struct RoomSnapshot {
     pub topic: Option<String>,
     pub encrypted: bool,
     pub invite_only: bool,
+    /// `+m`: a default user cannot talk (`events_default` above `users_default`).
+    pub moderated: bool,
+    /// `+t`: a default user cannot set the topic.
+    pub topic_lock: bool,
+    /// The room is a space (`m.space`), not a chat room.
+    pub space: bool,
+    /// The power level a plain message needs here.
+    pub send_level: i64,
     pub members: Vec<Member>,
 }
 
@@ -471,6 +479,49 @@ pub(crate) enum Effect {
     Away(Option<String>),
     Whois(OwnedUserId),
     Backfill(OwnedRoomId),
+    /// `/create`, or `y` to the create prompt after a `/join` 404: a new room
+    /// with alias `#alias:<our server>`.
+    CreateRoom {
+        alias: String,
+        public: bool,
+        encrypt: bool,
+    },
+    /// `/alias add`: point `alias` (a full `#x:server`) at the room.
+    AliasAdd {
+        room_id: OwnedRoomId,
+        alias: String,
+    },
+    /// `/alias del`: remove `alias` from the directory.
+    AliasDel(String),
+    /// `/publish on|off`: list the room in the public room directory.
+    Publish {
+        room_id: OwnedRoomId,
+        on: bool,
+    },
+    Ban {
+        room_id: OwnedRoomId,
+        user: OwnedUserId,
+        reason: Option<String>,
+    },
+    Unban {
+        room_id: OwnedRoomId,
+        user: OwnedUserId,
+    },
+    /// `+i`/`-i`: join rule `invite` or `public`.
+    JoinRule {
+        room_id: OwnedRoomId,
+        invite: bool,
+    },
+    /// `+m`/`-m`: `events_default`.
+    EventsDefault {
+        room_id: OwnedRoomId,
+        level: i64,
+    },
+    /// `+t`/`-t`: the power `m.room.topic` needs.
+    TopicLevel {
+        room_id: OwnedRoomId,
+        level: i64,
+    },
     /// Enable megolm in a room (after the user confirmed: irreversible).
     EnableEncryption(OwnedRoomId),
     /// Drive a SAS verification with `user`. `flow_id` is the pending
