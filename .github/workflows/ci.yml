@@ -2,10 +2,12 @@ on:
   push:
     branches:
       - main
+      - develop
       - 'feat/**'
   pull_request:
     branches:
       - main
+      - develop
   schedule:
     # weekly: the macOS leg runs here, off the push path
     - cron: '17 5 * * 1'
