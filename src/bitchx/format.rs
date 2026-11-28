@@ -96,7 +96,6 @@ fn body_lines(prefix: &[Span<'static>], text: &str, style: Style) -> Vec<TLine<'
 
 /// Format one line for the window whose channel name is `chan`.
 /// Formats and colours follow the BitchX recon captures 22-32.
-#[cfg(test)]
 pub(crate) fn format_line(line: &Line, chan: &str) -> Vec<TLine<'static>> {
     format_line_hl(line, chan, false)
 }
@@ -153,7 +152,7 @@ fn format_ar(line: &Line) -> Option<Vec<TLine<'static>>> {
     })
 }
 
-/// `format_line` (test-only), with `hl` (a mention, see [`crate::bitchx::mention`])
+/// [`format_line`], with `hl` (a mention, see [`crate::bitchx::mention`])
 /// rendering the AR form.
 pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'static>> {
     if hl && let Some(out) = format_ar(line) {
@@ -324,7 +323,9 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         // One entry, one row (F-FMT-1): an embedded LF is never a row break,
         // `sp()` turns it into a space, so text that skipped the ingest
         // cleaner still cannot forge a client-looking row.
-        Line::Info(text) => vec![g_line(vec![sp(text.clone(), n())])],
+        Line::Info(text) | Line::LastlogInfo(text) => vec![g_line(vec![sp(text.clone(), n())])],
+        // The stamp of a `/lastlog` hit is added by the renderer (ui.rs).
+        Line::Lastlog { line, .. } => format_line_hl(line, chan, hl),
         // ` iamBitchX: text` ("iamBitchX" bold), as for client errors.
         Line::Error(text) => vec![g_line(vec![
             sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
@@ -543,7 +544,6 @@ pub(crate) fn wrap(lines: Vec<TLine<'static>>, width: usize) -> Vec<TLine<'stati
 }
 
 /// The plain text of rendered lines.
-#[cfg(test)]
 pub(crate) fn plain(lines: &[TLine<'_>]) -> Vec<String> {
     lines
         .iter()

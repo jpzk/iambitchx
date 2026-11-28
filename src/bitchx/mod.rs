@@ -11,6 +11,8 @@ pub(crate) mod format;
 #[cfg(test)]
 mod golden;
 pub(crate) mod input;
+pub(crate) mod lastlog;
+pub(crate) mod logfile;
 pub(crate) mod mention;
 pub(crate) mod model;
 pub(crate) mod modes;

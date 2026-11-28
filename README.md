@@ -54,7 +54,7 @@ Type `/help` inside the client.
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/unignore` `/encrypt` `/verify`
 `/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
-`/alias` `/publish` `/ban` `/unban` `/kickban` `/power`
+`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog`
 
 Channel admin (Matrix state behind IRC words):
 
@@ -85,6 +85,20 @@ your other clients):
 - `/ignore` — list the ignored users.
 - Messages from ignored users are also hidden client-side, in case the
   server still delivers them; joins/parts stay visible.
+
+Lastlog and logging:
+
+- `/lastlog [-i] TEXT` — print the lines of the current window that contain
+  `TEXT` (case-sensitive; `-i` ignores case), each with the time it
+  happened, between `Lastlog:` and `End of Lastlog`. `/lastlog -clear`
+  removes that output again.
+- `/set LOG ON` — irssi-style logs (default `OFF`): every window appends
+  plain `HH:MM` stamped lines to `LOG_DIR/<server>/<window>.log`, e.g.
+  `logs/example.org/#chan.log`; DMs use the peer's nick, the status window
+  `status.log`. Names are sanitised (lowercase, only `[a-z0-9#&+-_.@!=,]`).
+  `/set LOG_DIR path` (absolute; default `$XDG_DATA_HOME/iambitchx/logs`).
+  Debug output and `/lastlog` views are never logged; files are `0600`,
+  directories `0700`, symlinked log files are refused.
 
 Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
 and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),

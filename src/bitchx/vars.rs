@@ -24,6 +24,10 @@
 //! [`DEBUG_CATEGORIES`], default `all`) and `DEBUG_RAW` (bool, default OFF):
 //! the protocol debug mode, see [`crate::debug_tap`].
 //!
+//! `LOG` (bool, default OFF) and `LOG_DIR` (default empty =
+//! `$XDG_DATA_HOME/iambitchx/logs`): irssi-style window logs, see
+//! [`crate::bitchx::logfile`].
+//!
 //! Values persist in `config.toml` under `[settings.bitchx]`, except `DEBUG`
 //! and `DEBUG_RAW`: those are session-scoped and never written or read.
 use std::fmt::Write as _;
@@ -48,6 +52,8 @@ pub(crate) const NAMES: &[&str] = &[
     "DEBUG",
     "DEBUG_FILTER",
     "DEBUG_RAW",
+    "LOG",
+    "LOG_DIR",
     "TIMESTAMP",
     "TIMESTAMP_STRING",
 ];
@@ -112,6 +118,8 @@ pub(crate) struct BitchxConfig {
     pub debug: Option<bool>,
     pub debug_filter: Option<String>,
     pub debug_raw: Option<bool>,
+    pub log: Option<bool>,
+    pub log_dir: Option<String>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
     /// `/theme`: the theme name.
@@ -132,6 +140,8 @@ impl BitchxConfig {
             debug: self.debug.or(other.debug),
             debug_filter: self.debug_filter.or(other.debug_filter),
             debug_raw: self.debug_raw.or(other.debug_raw),
+            log: self.log.or(other.log),
+            log_dir: self.log_dir.or(other.log_dir),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
             theme: self.theme.or(other.theme),
@@ -162,6 +172,10 @@ pub(crate) struct Vars {
     pub debug_filter: String,
     /// Also print the (redacted, truncated) raw event JSON.
     pub debug_raw: bool,
+    /// Log every window to a file (see [`crate::bitchx::logfile`]).
+    pub log: bool,
+    /// Where the logs go; empty = `$XDG_DATA_HOME/iambitchx/logs`.
+    pub log_dir: String,
     pub timestamp: bool,
     pub timestamp_string: String,
     /// The `/theme` in use (see [`crate::bitchx::theme`]).
@@ -182,6 +196,8 @@ impl Default for Vars {
             debug: false,
             debug_filter: DEBUG_ALL.to_string(),
             debug_raw: false,
+            log: false,
+            log_dir: String::new(),
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
             theme: crate::bitchx::theme::DEFAULT_THEME.to_string(),
@@ -235,6 +251,19 @@ pub(crate) fn parse_debug_filter(value: &str) -> Result<String, String> {
         .map(|(c, _)| *c)
         .collect();
     Ok(cats.join(","))
+}
+
+/// `LOG_DIR`: empty (the default dir), or a path that is absolute once
+/// `~` and `$VARS` are expanded, so logs never land relative to the CWD.
+pub(crate) fn valid_log_dir(value: &str) -> bool {
+    value.is_empty() || expand_log_dir(value).is_some()
+}
+
+/// `LOG_DIR` with `~` and `$VARS` expanded; `None` if empty, unexpandable or
+/// not absolute.
+pub(crate) fn expand_log_dir(value: &str) -> Option<std::path::PathBuf> {
+    let p = std::path::PathBuf::from(shellexpand::full(value).ok()?.as_ref());
+    p.is_absolute().then_some(p)
 }
 
 /// `do_boolean`: ON, OFF or TOGGLE, any case.
@@ -292,6 +321,8 @@ impl Vars {
                 .and_then(|s| parse_debug_filter(s).ok())
                 .unwrap_or(d.debug_filter),
             debug_raw: d.debug_raw,
+            log: c.log.unwrap_or(d.log),
+            log_dir: c.log_dir.clone().filter(|s| valid_log_dir(s)).unwrap_or(d.log_dir),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
             theme: c.theme.clone().filter(|s| !s.is_empty()).unwrap_or(d.theme),
@@ -311,6 +342,8 @@ impl Vars {
             "DEBUG" => Some(if self.debug { "ON" } else { "OFF" }.to_string()),
             "DEBUG_FILTER" => Some(self.debug_filter.clone()),
             "DEBUG_RAW" => Some(if self.debug_raw { "ON" } else { "OFF" }.to_string()),
+            "LOG" => Some(if self.log { "ON" } else { "OFF" }.to_string()),
+            "LOG_DIR" => Some(self.log_dir.clone()).filter(|s| !s.is_empty()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -352,6 +385,17 @@ impl Vars {
                 self.debug_raw = boolean(value, self.debug_raw)
                     .ok_or("Value must be either ON, OFF, or TOGGLE")?;
             },
+            "LOG" => {
+                self.log =
+                    boolean(value, self.log).ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
+            "LOG_DIR" => {
+                let v = value.trim();
+                if !valid_log_dir(v) {
+                    return Err("LOG_DIR must be an absolute path (or ~/..., $VAR/...)".into());
+                }
+                self.log_dir = v.to_string();
+            },
             "AWAY_MSG" => self.away_msg = value.to_string(),
             "AWAY_NICK" => {
                 if value.matches("%n").count() > 1 {
@@ -384,6 +428,18 @@ impl Vars {
         strftime(&self.timestamp_string, &dt)
     }
 
+    /// The stamp for a `/lastlog` hit: `TIMESTAMP_STRING` even when
+    /// `TIMESTAMP` is off (the default format when it is empty).
+    pub(crate) fn stamp_any(&self, ts_ms: i64) -> Option<String> {
+        let dt = Local.timestamp_millis_opt(ts_ms).single()?;
+        let fmt = if self.timestamp_string.is_empty() {
+            DEFAULT_TIMESTAMP_STR
+        } else {
+            &self.timestamp_string
+        };
+        strftime(fmt, &dt)
+    }
+
     /// Write the values into `[settings.bitchx]` of the TOML file at `path`,
     /// creating file and tables when missing and keeping every other key.
     /// (Comments are not preserved: the file is re-serialized.)
@@ -414,6 +470,8 @@ impl Vars {
         bx.insert("away_nick".into(), Value::String(self.away_nick.clone()));
         bx.insert("auto_reply".into(), Value::String(self.auto_reply.clone()));
         bx.insert("beep".into(), Value::Boolean(self.beep));
+        bx.insert("log".into(), Value::Boolean(self.log));
+        bx.insert("log_dir".into(), Value::String(self.log_dir.clone()));
         // F-07: never persist the debug switches; drop stale ones
         bx.remove("debug");
         bx.insert("debug_filter".into(), Value::String(self.debug_filter.clone()));
@@ -535,6 +593,8 @@ mod tests {
             debug: true,
             debug_filter: "http,sync".into(),
             debug_raw: true,
+            log: true,
+            log_dir: "~/irclogs".into(),
             theme: "gruvbox-dark".into(),
         };
         v.persist(&path).unwrap();

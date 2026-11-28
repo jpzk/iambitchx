@@ -34,6 +34,9 @@ pub(crate) struct Window {
     /// real aliases never show), or (M-03) is a room name, not an alias, so
     /// it reads like one of our own aliases: the room ID is shown instead.
     pub spoof: bool,
+    /// Lines pushed since the last [`super::App::flush_log`], for the log
+    /// file: (time, line). Only [`crate::bitchx::logfile::loggable`] lines.
+    pub(super) log_queue: Vec<(i64, Line)>,
 }
 
 impl Window {
@@ -75,6 +78,12 @@ impl Window {
             && !self.ids.insert(id)
         {
             return false;
+        }
+        if crate::bitchx::logfile::loggable(&line) {
+            if self.log_queue.len() >= MAX_LINES {
+                self.log_queue.remove(0);
+            }
+            self.log_queue.push((ts, line.clone()));
         }
         self.lines.push(line);
         self.times.push(ts);

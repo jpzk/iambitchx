@@ -111,6 +111,12 @@ pub(crate) enum Line {
     /// Protocol debug line (`/set debug on`): ` DBG cat text`, magenta tag;
     /// `cat` empty for the flood guard's `DBG (suppressed N)`.
     Debug { cat: String, text: String },
+    /// `/lastlog` hit: a copy of the matched line, shown with its own time
+    /// `ts` (unix millis) whatever `TIMESTAMP` says. Never logged to file.
+    Lastlog { ts: i64, line: Box<Line> },
+    /// `/lastlog` frame (` Lastlog:` / ` End of Lastlog`): an info line that
+    /// `/lastlog -clear` removes with the hits.
+    LastlogInfo(String),
 }
 
 /// IRC-style nick for a Matrix user: the mxid localpart (`@carla:x` ->

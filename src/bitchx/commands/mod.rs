@@ -153,6 +153,13 @@ pub(crate) enum BitchxCommand {
         name: Option<String>,
         value: Option<String>,
     },
+    /// `/lastlog [-i] TEXT`: search the current window (`-i`: any case).
+    Lastlog {
+        pattern: String,
+        ignore_case: bool,
+    },
+    /// `/lastlog -clear`: remove the `/lastlog` output from the window.
+    LastlogClear,
     /// `/theme`: open the theme picker; `/theme name`: switch to a theme.
     Theme {
         name: Option<String>,
@@ -236,6 +243,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "join",
     "kick",
     "kickban",
+    "lastlog",
     "leave",
     "list",
     "me",
@@ -351,6 +359,12 @@ impl<'a> Args<'a> {
     fn none(self, cmd: BitchxCommand) -> Result<BitchxCommand, BitchxError> {
         self.finish().map(|()| cmd)
     }
+
+    /// [`Self::none`] through a borrow.
+    fn none_ref(&mut self, cmd: BitchxCommand) -> Result<BitchxCommand, BitchxError> {
+        let rest = std::mem::take(&mut self.rest);
+        Args { command: self.command, rest }.none(cmd)
+    }
 }
 
 /// `/verify` with no args lists; otherwise `<sub> <user> [device|flow]`.
@@ -408,6 +422,30 @@ fn parse_create(args: &mut Args<'_>) -> Result<BitchxCommand, BitchxError> {
     let room =
         room.ok_or(BitchxError::MissingArgument { command: "create", argument: "#channel" })?;
     Ok(BitchxCommand::Create { room, public, encrypt })
+}
+
+/// `/lastlog [-i] TEXT` or `/lastlog -clear`. Flags come first (any case);
+/// `--` ends them, so `/lastlog -- -i` searches for `-i`. The text keeps its
+/// inner spaces.
+fn parse_lastlog(args: &mut Args<'_>) -> Result<BitchxCommand, BitchxError> {
+    let mut ignore_case = false;
+    while let Some(w) = args.peek_word() {
+        match w.to_lowercase().as_str() {
+            "-i" => ignore_case = true,
+            "-clear" => {
+                args.word();
+                return args.none_ref(BitchxCommand::LastlogClear);
+            },
+            "--" => {
+                args.word();
+                break;
+            },
+            _ => break,
+        }
+        args.word();
+    }
+    let pattern = args.required_rest("text")?.trim().to_string();
+    Ok(BitchxCommand::Lastlog { pattern, ignore_case })
 }
 
 /// Parse the text typed after the leading `/`.
@@ -602,6 +640,7 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             let value = args.rest();
             BitchxCommand::Set { name, value }
         },
+        "lastlog" => parse_lastlog(&mut args)?,
         "theme" => {
             let name = args.word();
             args.finish()?;

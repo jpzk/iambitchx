@@ -26,6 +26,7 @@ mod debug;
 mod events;
 mod ignore;
 mod keys;
+mod logging;
 mod logo;
 mod state;
 mod theme;
@@ -115,6 +116,11 @@ pub(crate) struct App {
     pub themes: crate::bitchx::theme::Themes,
     /// The open `/theme` picker, if any.
     pub picker: Option<Picker>,
+    /// `/set LOG`: the open log files.
+    pub(crate) logger: crate::bitchx::logfile::Logger,
+    /// `LOG_DIR` when empty: `$XDG_DATA_HOME/iambitchx/logs`; `None`
+    /// (no data dir known): logging needs an explicit `LOG_DIR`.
+    pub log_default_dir: Option<PathBuf>,
     logo: Logo,
     logo_start: usize,
     logo_len: usize,
@@ -210,6 +216,8 @@ impl App {
             pending_joins: HashMap::new(),
             themes: crate::bitchx::theme::Themes::load(None).0,
             picker: None,
+            logger: crate::bitchx::logfile::Logger::default(),
+            log_default_dir: None,
             logo,
             logo_start,
             logo_len,
@@ -604,6 +612,9 @@ impl App {
             return self.info(e);
         }
         self.apply_debug();
+        if name.starts_with("LOG") {
+            self.log_settings_changed();
+        }
         let shown = self.vars.get(name).unwrap_or_else(|| "<EMPTY>".into());
         self.info(format!("Value of {name} set to {shown}"));
         match self.config_toml.clone() {
@@ -802,6 +813,12 @@ impl App {
                      (m.ignored_user_list); bare /ignore lists it",
                 );
                 self.info(
+                    "/lastlog [-i] TEXT: search this window (-i any case), /lastlog -clear: drop it",
+                );
+                self.info(
+                    "/set LOG ON|OFF, /set LOG_DIR path: log windows to LOG_DIR/server/window.log",
+                );
+                self.info(
                     "/mode [+-imtob] [NICK]: i invite-only, m moderated, t topic lock, \
                      o op, b ban; bare /mode shows the modes",
                 );
@@ -829,6 +846,14 @@ impl App {
             BitchxCommand::Trust => vec![Effect::Trust],
             BitchxCommand::Set { name, value } => {
                 self.set(name, value);
+                vec![]
+            },
+            BitchxCommand::Lastlog { pattern, ignore_case } => {
+                self.lastlog(&pattern, ignore_case);
+                vec![]
+            },
+            BitchxCommand::LastlogClear => {
+                self.lastlog_clear();
                 vec![]
             },
             BitchxCommand::Recover { key } => {

@@ -110,6 +110,7 @@ mod admin;
 mod away;
 mod commands;
 mod ignore;
+mod logging;
 mod logo;
 mod presence;
 mod security;

@@ -139,6 +139,8 @@ pub(crate) fn clean_line(line: Line) -> Line {
             runs.iter().map(|r| Run { text: o(r.text.clone()), ..r.clone() }).collect(),
         ),
         Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
+        Line::Lastlog { ts, line } => Line::Lastlog { ts, line: Box::new(clean_line(*line)) },
+        Line::LastlogInfo(t) => Line::LastlogInfo(o(t)),
         l @ Line::WhoisRule => l,
     }
 }

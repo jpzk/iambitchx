@@ -523,6 +523,67 @@ Stop ignoring a user.
 The nick may also name an ignored user who is in no window.
 .El
 
+.Sh "LASTLOG AND LOGGING"
+.Bl -tag -width Ds
+.It Sy "/lastlog [-i] TEXT"
+Print every line of the current window that contains
+.Sy TEXT ,
+between
+.Dq Lastlog:
+and
+.Dq End of Lastlog ,
+each with the time it happened (the
+.Sy TIMESTAMP_STRING
+format, even when
+.Sy TIMESTAMP
+is off).
+The search is case-sensitive;
+.Fl i
+ignores case.
+Use
+.Fl -
+to search for text that starts with a dash.
+.It Sy "/lastlog -clear"
+Remove all
+.Sy /lastlog
+output from the current window.
+.It Sy "/set LOG ON|OFF"
+Log every window to a file, in the style of irssi (default
+.Sy OFF ) .
+Each window appends to
+.Pa LOG_DIR/<server>/<window>.log ,
+for example
+.Pa logs/example.org/#chan.log ;
+query (DM) windows use the peer's nick and the status window
+.Pa status.log .
+File names are lowercased and every character other than ASCII letters, digits and
+.Sy #&+-_.@!=,
+becomes
+.Sy _ .
+Lines are plain text prefixed with
+.Sy HH:MM ,
+framed by
+.Dq --- Log opened ,
+.Dq --- Day changed
+and
+.Dq --- Log closed
+markers.
+Debug output
+.Pq Sy /set DEBUG
+and
+.Sy /lastlog
+output are never logged.
+Files are created with mode 0600, directories with mode 0700, and a symlinked log file is refused.
+.It Sy "/set LOG_DIR PATH"
+Where the logs go.
+Empty (the default) means
+.Pa $XDG_DATA_HOME/iambitchx/logs .
+.Pa ~
+and
+.Ev $VARS
+are expanded; the path must be absolute.
+.El
+
 .Sh "ENVIRONMENT"
 The behaviour of
 .Nm
