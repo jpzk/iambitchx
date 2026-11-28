@@ -1,6 +1,7 @@
 //! Media numbering, `/get` and `/upload`.
 
 use super::*;
+
 use crate::bitchx::media::{GetArgs, Media, Pick};
 
 fn media(name: &str) -> Media {
