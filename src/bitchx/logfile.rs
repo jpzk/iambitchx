@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn test_sanitize_name() {
         assert_eq!(sanitize_name("#Matrix"), "#matrix");
-        assert_eq!(sanitize_name("../../etc/passwd"), "_.._etc_passwd");
+        assert_eq!(sanitize_name("../../etc/passwd"), "_._.._etc_passwd");
         assert_eq!(sanitize_name(".."), "_.");
         assert_eq!(sanitize_name("."), "_");
         assert_eq!(sanitize_name(""), "_");

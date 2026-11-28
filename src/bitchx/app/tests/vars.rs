@@ -123,6 +123,8 @@ fn test_set_list_show_errors() {
                 name: "DEBUG_RAW".into(),
                 value: Some("OFF".into())
             },
+            Line::SetVar { name: "LOG".into(), value: Some("OFF".into()) },
+            Line::SetVar { name: "LOG_DIR".into(), value: None },
             Line::SetVar {
                 name: "TIMESTAMP".into(),
                 value: Some("OFF".into())
