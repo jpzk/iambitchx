@@ -13,6 +13,7 @@ mod golden;
 pub(crate) mod input;
 pub(crate) mod mention;
 pub(crate) mod model;
+pub(crate) mod modes;
 pub(crate) mod palette;
 pub(crate) mod status;
 pub(crate) mod text;
