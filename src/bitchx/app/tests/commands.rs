@@ -161,6 +161,73 @@ fn test_join_synched() {
 }
 
 #[test]
+fn test_join_prints_joining() {
+    let mut app = app();
+    let fx = typed(&mut app, "/join #new:example.org");
+    assert!(matches!(fx.as_slice(), [Effect::Join(_)]));
+    assert_eq!(last(&app), Line::Info("Joining #new:example.org...".into()));
+}
+
+#[test]
+fn test_join_synched_waits_for_members() {
+    // The server confirmed the join, but the room has no members yet: no
+    // `[Users(#x:0/0)]` and no synched line until a snapshot has members.
+    let mut app = app();
+    app.fake_now = Some(10_000);
+    let mut empty = room("!n:example.org", "#new");
+    empty.members.clear();
+    app.handle_mx(MxEvent::Room(empty));
+    app.handle_mx(MxEvent::Synched {
+        room_id: owned_room_id!("!n:example.org"),
+        millis: 200,
+    });
+    let win = |app: &App| app.windows.iter().find(|w| w.room.name == "#new").unwrap().clone();
+    assert!(!win(&app).lines.iter().any(|l| matches!(l, Line::Users { .. })));
+    assert!(!win(&app).lines.iter().any(|l| matches!(l, Line::Error(_))));
+    // still empty: keep waiting
+    let mut empty = room("!n:example.org", "#new");
+    empty.members.clear();
+    app.handle_mx(MxEvent::Room(empty));
+    assert!(!win(&app).lines.iter().any(|l| matches!(l, Line::Users { .. })));
+    // members arrive 1.3s after the join started
+    app.fake_now = Some(11_100);
+    app.handle_mx(MxEvent::Room(room("!n:example.org", "#new")));
+    assert_eq!(app.cur().room.name, "#new");
+    let lines = &app.cur().lines;
+    let n = lines.len();
+    assert!(matches!(&lines[n - 3], Line::Users { shown: 3, .. }));
+    assert_eq!(lines[n - 1], Line::Error("Join to #new was synched in 1.300 secs!!".into()));
+    // printed once only
+    app.handle_mx(MxEvent::Room(room("!n:example.org", "#new")));
+    assert_eq!(app.cur().lines.len(), n);
+}
+
+#[test]
+fn test_space_tagged_in_channels_and_window() {
+    let mut app = app();
+    let mut hub = room("!s:example.org", "#hub");
+    hub.space = true;
+    app.handle_mx(MxEvent::Room(hub));
+    let w = app.windows.iter().find(|w| w.room.name == "#hub").unwrap();
+    assert!(
+        w.lines
+            .iter()
+            .any(|l| matches!(l, Line::Info(t) if t.starts_with("[space] #hub")))
+    );
+    typed(&mut app, "/channels");
+    let lines = &app.cur().lines;
+    assert!(
+        lines
+            .iter()
+            .any(|l| matches!(l, Line::Info(t) if t == "5: #hub [3 users] [space]"))
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| matches!(l, Line::Info(t) if t == "2: #room [3 users]"))
+    );
+}
+#[test]
 fn test_local_commands() {
     let mut app = app();
     app.handle_key(alt('2'));
