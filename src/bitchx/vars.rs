@@ -182,11 +182,11 @@ pub(crate) struct Vars {
     pub debug_filter: String,
     /// Also print the (redacted, truncated) raw event JSON.
     pub debug_raw: bool,
-    /// More highlight words, comma separated (merged with `auto_reply`).
     /// Log every window to a file (see [`crate::bitchx::logfile`]).
     pub log: bool,
     /// Where the logs go; empty = `$XDG_DATA_HOME/iambitchx/logs`.
     pub log_dir: String,
+    /// More highlight words, comma separated (merged with `auto_reply`).
     pub hilight: String,
     /// Send a desktop (OSC 777/9) notification on a mention.
     pub notify: bool,
@@ -406,6 +406,8 @@ impl Vars {
                     .ok_or("Value must be either ON, OFF, or TOGGLE")?;
             },
             "HILIGHT" => {
+                self.hilight = crate::bitchx::mention::split_words(value).join(",");
+            },
             "LOG" => {
                 self.log =
                     boolean(value, self.log).ok_or("Value must be either ON, OFF, or TOGGLE")?;
@@ -416,7 +418,6 @@ impl Vars {
                     return Err("LOG_DIR must be an absolute path (or ~/..., $VAR/...)".into());
                 }
                 self.log_dir = v.to_string();
-                self.hilight = crate::bitchx::mention::split_words(value).join(",");
             },
             "NOTIFY" => {
                 self.notify =
