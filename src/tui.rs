@@ -74,6 +74,7 @@ pub(crate) async fn run(
     let size = term.size()?;
     app.fit_logo(crate::bitchx::app::utf8_terminal(), size.width, size.height);
     let res = event_loop(&mut term, &client, &mut app, &mut rx, &tx).await;
+    app.close_logs();
     restore();
     res
 }
@@ -89,6 +90,8 @@ async fn event_loop(
     let mut tick = tokio::time::interval(std::time::Duration::from_secs(15));
 
     loop {
+        // `/set LOG`: write what the last turn printed.
+        app.flush_log();
         term.draw(|f| draw(f, app))?;
 
         let effects: Vec<Effect> = tokio::select! {

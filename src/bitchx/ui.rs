@@ -31,10 +31,15 @@ pub(crate) fn scrollback(app: &mut App, width: usize, rows: usize) -> Vec<TLine<
         .iter()
         .zip(&win.times)
         .flat_map(|(l, ts)| {
+            // A `/lastlog` hit always shows the time of the line it copies.
+            let (l, stamp) = match l {
+                Line::Lastlog { ts, line } => (&**line, vars.stamp_any(*ts)),
+                l => (l, vars.stamp(*ts)),
+            };
             let mut out = format_line_hl(l, &chan, matcher.is_mention(l));
             // `%@`: the stamp leads the first row, in the timestamp colour.
             let stamped = !matches!(l, Line::Raw(_) | Line::Logo(_) | Line::LogoRuns(_));
-            if let Some(stamp) = vars.stamp(*ts).filter(|_| stamped)
+            if let Some(stamp) = stamp.filter(|_| stamped)
                 && let Some(first) = out.first_mut()
             {
                 first.spans.insert(0, sp(stamp, opt_fg(pal().timestamp)));

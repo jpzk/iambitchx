@@ -27,6 +27,19 @@ for that.
 
 ### Added
 
+- **`/lastlog [-i] TEXT`.** Searches the current window's scrollback
+  (case-sensitive, `-i` ignores case) and prints the hits BitchX style
+  between `Lastlog:` and `End of Lastlog`, each with its own timestamp (the
+  `TIMESTAMP_STRING` format, even with `TIMESTAMP` off). `/lastlog -clear`
+  removes the output. Earlier lastlog output is not searched again.
+- **Logging to file, irssi style.** `/set LOG ON|OFF` (default `OFF`) and
+  `/set LOG_DIR` (default `$XDG_DATA_HOME/iambitchx/logs`, must be
+  absolute): each window appends plain text to
+  `LOG_DIR/<server>/<window>.log` (DMs by peer nick, `status.log`), `HH:MM`
+  stamps and `--- Log opened` / `--- Day changed` / `--- Log closed`
+  markers. File names are sanitised; files are `0600`, directories `0700`,
+  symlinks refused (`O_NOFOLLOW`). Debug-tap output and `/lastlog` views are
+  never logged; both settings persist in `[settings.bitchx]`.
 - **Channel creation.** `/create #x [-public] [-noencrypt]` creates `#x` on
   your own homeserver: invite-only and encrypted by default. `-public` uses
   the public preset and lists the room in the directory (still encrypted;
