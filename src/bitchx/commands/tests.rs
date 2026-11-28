@@ -423,12 +423,29 @@ fn test_bitchx_create_parse() {
 }
 
 #[test]
+fn test_bitchx_user_alias_bind_parse() {
+    let ua = |n: Option<&str>, b: Option<&str>| BitchxCommand::UserAlias {
+        name: n.map(s),
+        body: b.map(s),
+    };
+    assert_eq!(ok("alias"), ua(None, None));
+    assert_eq!(ok("alias hi"), ua(Some("hi"), None));
+    assert_eq!(ok("alias -hi"), ua(Some("-hi"), None));
+    assert_eq!(ok("alias hi  msg $1  hello $*  "), ua(Some("hi"), Some("msg $1  hello $*")));
+    assert_eq!(ok("alias put #x:a"), ua(Some("put"), Some("#x:a")));
+    let bind =
+        |k: Option<&str>, c: Option<&str>| BitchxCommand::Bind { key: k.map(s), command: c.map(s) };
+    assert_eq!(ok("bind"), bind(None, None));
+    assert_eq!(ok("bind ^T"), bind(Some("^T"), None));
+    assert_eq!(ok("bind -F1"), bind(Some("-F1"), None));
+    assert_eq!(ok("bind M-j /join #rust"), bind(Some("M-j"), Some("/join #rust")));
+}
+
+#[test]
 fn test_bitchx_alias_publish_parse() {
     assert_eq!(ok("alias add #x:a.org"), BitchxCommand::Alias { add: true, alias: s("#x:a.org") });
     assert_eq!(ok("alias DEL #x:a.org"), BitchxCommand::Alias { add: false, alias: s("#x:a.org") });
-    assert_eq!(parse("alias"), Err(missing("alias", "add|del")));
     assert_eq!(parse("alias add"), Err(missing("alias", "#alias:server")));
-    assert_eq!(parse("alias put #x:a"), Err(invalid("alias", "put")));
     assert_eq!(parse("alias add x:a"), Err(invalid("alias", "x:a")));
     assert_eq!(parse("alias add #x:a #y"), Err(invalid("alias", "#y")));
     assert_eq!(ok("publish on"), BitchxCommand::Publish(true));

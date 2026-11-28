@@ -10,7 +10,7 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 use crate::bitchx::app::logo::header_line;
 use crate::bitchx::channels::normalize_join;
-use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, parse};
+use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES};
 use crate::bitchx::format::names_cell_width;
 use crate::bitchx::input::Input;
 use crate::bitchx::mention::Matcher;
@@ -21,6 +21,7 @@ use crate::bitchx::status::{BxStatus, UserCounts};
 use crate::bitchx::vars::{Vars, lookup};
 
 mod admin;
+mod aliases;
 mod away;
 mod debug;
 mod events;
@@ -124,6 +125,10 @@ pub(crate) struct App {
     /// `LOG_DIR` when empty: `$XDG_DATA_HOME/iambitchx/logs`; `None`
     /// (no data dir known): logging needs an explicit `LOG_DIR`.
     pub log_default_dir: Option<PathBuf>,
+    /// `/alias`: user aliases.
+    pub aliases: crate::bitchx::aliases::Aliases,
+    /// `/bind`: key binds.
+    pub binds: crate::bitchx::aliases::Binds,
     logo: Logo,
     logo_start: usize,
     logo_len: usize,
@@ -222,6 +227,8 @@ impl App {
             picker: None,
             logger: crate::bitchx::logfile::Logger::default(),
             log_default_dir: None,
+            aliases: crate::bitchx::aliases::Aliases::default(),
+            binds: crate::bitchx::aliases::Binds::default(),
             logo,
             logo_start,
             logo_len,
@@ -425,22 +432,7 @@ impl App {
             return self.answer(confirm, line);
         }
 
-        if let Some(rest) = line.strip_prefix('/')
-            && !rest.starts_with('/')
-        {
-            return match parse(rest) {
-                Ok(Some(cmd)) => self.command(cmd),
-                Ok(None) => vec![],
-                Err(e) => {
-                    self.error(e.to_string());
-                    vec![]
-                },
-            };
-        }
-
-        // `//text` sends `/text` literally.
-        let text = line.strip_prefix('/').filter(|r| r.starts_with('/')).unwrap_or(line);
-        self.say(text.to_string(), false)
+        self.run_line(line, 0)
     }
 
     fn current_room(&mut self) -> Option<OwnedRoomId> {
@@ -816,6 +808,8 @@ impl App {
                 self.info(
                     "/alias add|del #x[:server], /publish on|off: channel aliases, channel list",
                 );
+                self.info("/alias [-]NAME [body]: user alias, $1..$9 $* = args; bare /alias lists");
+                self.info("/bind [-]KEY [/command]: bind ^X, M-x or F1..F12; bare /bind lists");
                 self.info("/ban NICK [reason], /unban NICK, /kickban NICK [reason]");
                 self.info("/power NICK 0..100: raw power level (not above your own)");
                 self.info(
@@ -882,6 +876,14 @@ impl App {
             BitchxCommand::Mode { target, modes } => self.mode(target, modes),
             BitchxCommand::Create { room, public, encrypt } => self.create(&room, public, encrypt),
             BitchxCommand::Alias { add, alias } => self.alias(add, &alias),
+            BitchxCommand::UserAlias { name, body } => {
+                self.user_alias(name, body);
+                vec![]
+            },
+            BitchxCommand::Bind { key, command } => {
+                self.bind(key, command);
+                vec![]
+            },
             BitchxCommand::Publish(on) => self.publish(on),
             // On Matrix a ban also removes the member: /kickban is /ban.
             BitchxCommand::Ban { target, reason } | BitchxCommand::Kickban { target, reason } => {

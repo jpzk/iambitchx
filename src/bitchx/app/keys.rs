@@ -25,6 +25,11 @@ impl App {
             return vec![];
         }
 
+        // `/bind`: a bound key runs its command instead of its default.
+        if let Some(fx) = self.bound_key(&key) {
+            return fx;
+        }
+
         if key.code != KeyCode::Tab {
             self.input.reset_tab();
         }

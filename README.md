@@ -54,7 +54,7 @@ Type `/help` inside the client.
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/unignore` `/encrypt` `/verify`
 `/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
-`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog`
+`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog` `/bind`
 
 Channel admin (Matrix state behind IRC words):
 
@@ -85,6 +85,16 @@ your other clients):
 - `/ignore` — list the ignored users.
 - Messages from ignored users are also hidden client-side, in case the
   server still delivers them; joins/parts stay visible.
+Aliases and key binds (BitchX style, saved in `config.toml` under
+`[settings.bitchx.aliases]` / `[settings.bitchx.binds]`):
+
+- `/alias NAME body` defines `/NAME`; `$1`..`$9` are its words, `$*` all of
+  them, `$$` a literal `$` (no reference: args are appended). Example:
+  `/alias hi /msg $1 hello $2` then `/hi bob`. Built-in command names are
+  refused; aliases calling aliases stop at depth 8. `/alias -NAME` removes,
+  bare `/alias` lists.
+- `/bind KEY /command` binds `^X`, `M-x` or `F1`..`F12` (replacing the key's
+  default). `/bind -KEY` removes, bare `/bind` lists.
 
 Lastlog and logging:
 

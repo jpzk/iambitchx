@@ -123,7 +123,7 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     /join /part /names /who /whois /msg /query /me /topic /invite
     /kick /op /deop /mode /away /nick /set /window /encrypt /verify
     /trust /devices /recover /create /alias /publish /ban /unban
-    /kickban /power /ignore /unignore
+    /kickban /power /ignore /unignore /bind
 
   ▌ Matrix, properly
     end-to-end encryption, SAS emoji verification, device keys,
@@ -154,6 +154,8 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     server, invite-only and encrypted by default; /join of a
     missing #x on your server offers to create it [y/n]
   * /alias add|del, /publish on|off (room directory)
+  * /alias NAME body with $1..$9 and $*, /bind ^X M-x F1..F12
+    to a command; saved in config.toml, no built-in shadowing
   * /ban, /unban, /kickban; /power NICK 0..100 (not above yours)
   * /ignore NICK|@user:server, /unignore: the Matrix account
     ignore list; bare /ignore lists it, ignored senders are hidden

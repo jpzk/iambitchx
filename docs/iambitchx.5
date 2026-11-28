@@ -372,6 +372,29 @@ Defaults to
 .Dq Sy bitchx .
 See
 .Sx THEMES .
+.It Sy bitchx.aliases
+The
+.Sy [settings.bitchx.aliases]
+table: user aliases, alias name to command body
+(for example
+.Ql hi = \(dqmsg $1 hello $*\(dq ) .
+Written by
+.Ic /alias .
+Names of built-in commands are skipped with a warning.
+.It Sy bitchx.binds
+The
+.Sy [settings.bitchx.binds]
+table: key binds, key
+.Pf ( Sy ^X ,
+.Sy M-x
+or
+.Sy F1
+to
+.Sy F12 )
+to command (for example
+.Ql F2 = \(dq/join #rust\(dq ) .
+Written by
+.Ic /bind .
 .It Sy terminal
 Subsection for configuring how specific terminal features are used (or not used).
 See

@@ -550,6 +550,55 @@ Inside tmux it is wrapped for passthrough, which needs
 Nick, room and text are sanitised and cut to 120 characters.
 .El
 
+.Sh "ALIASES AND KEY BINDS"
+BitchX-style user aliases and key binds.
+Both are saved in
+.Pa config.toml
+under
+.Sy [settings.bitchx.aliases]
+and
+.Sy [settings.bitchx.binds] .
+.Bl -tag -width Ds
+.It Sy "/alias NAME body"
+Define
+.Sy /NAME .
+In the body,
+.Sy $1
+to
+.Sy $9
+are the words typed after
+.Sy /NAME
+(empty when missing),
+.Sy $*
+is all of them and
+.Sy $$
+is a literal dollar sign.
+A body with no argument reference gets the arguments appended.
+Built-in command names cannot be used, and aliases may call aliases at most 8 deep.
+.It Sy "/alias -NAME"
+Remove an alias.
+.It Sy "/alias" , Sy "/alias NAME"
+List all aliases, or show one.
+.It Sy "/bind KEY /command"
+Run
+.Sy /command
+when
+.Sy KEY
+is pressed:
+.Sy ^X
+(Ctrl and a letter, not ^I ^J ^M),
+.Sy M-x
+(Alt/Meta and a character) or
+.Sy F1
+to
+.Sy F12 .
+A bound key replaces its default action.
+.It Sy "/bind -KEY"
+Remove a bind.
+.It Sy "/bind" , Sy "/bind KEY"
+List all binds, or show one.
+.El
+
 .Sh "LASTLOG AND LOGGING"
 .Bl -tag -width Ds
 .It Sy "/lastlog [-i] TEXT"
