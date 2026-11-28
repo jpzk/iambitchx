@@ -14,8 +14,12 @@
 - Cross-signing and key backup enabled at login; /trust shows status; /recover KEY imports secrets from secure backup
 - /devices [USER] lists devices and keys
 - Rooms as #channels; DMs via /msg and /query
-- /list searches the public room directory; spaces are tagged
+- /list searches the public room directory; spaces are tagged [space] in /list, /channels and their window
 - /join (alias or room id), /part, /topic, /invite, /kick, /op, /deop (power levels), /names, /who, /whois
+- /create #x [-public] [-noencrypt]: new channel on your own homeserver, invite-only and encrypted by default; /join of a missing #x on your own server offers to create it [y/n]
+- /alias add|del, /publish on|off (room directory), /ban, /unban, /kickban, /power NICK 0..100 (refused above your own level)
+- /mode maps IRC modes to Matrix room state: +i invite-only (join rule), +m moderated (events_default 50), +t topic lock, +o op, +b ban; bare /mode and the status bar show the modes (e.g. +it)
+- Read-only channels: a refused send says which power level is needed
 - Presence: away/online sent and shown
 - History backfill when a window opens
 - Not supported (yet): threads, reactions, edits, read receipts, typing notifications, media upload/download
@@ -35,7 +39,7 @@
 - /me (/action), /channels, /window next|prev, /clear, /close, /quit, /version, /help
 - /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY, BEEP
 - /theme with live preview: 62 iamb themes plus 'terminal'
-- /ctcp, /mode, /ignore are recognised but report "Not supported on Matrix"
+- /ctcp and /ignore are recognised but report "Not supported on Matrix"
 
 ## Links
 - [Source repository](https://github.com/jpzk/iambitchx)

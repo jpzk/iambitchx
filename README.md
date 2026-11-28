@@ -53,7 +53,27 @@ Type `/help` inside the client.
 `/join` `/part` `/list` `/names` `/who` `/whois` `/msg` `/query` `/me`
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/encrypt` `/verify`
-`/trust` `/devices` `/recover` `/theme` `/version` `/quit`
+`/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
+`/alias` `/publish` `/ban` `/unban` `/kickban` `/power`
+
+Channel admin (Matrix state behind IRC words):
+
+- `/create #x [-public] [-noencrypt]` — new room `#x` on your own server.
+  Default: invite-only (`private_chat`) and end-to-end encrypted. `-public`
+  uses `public_chat` and lists it in the room directory; it stays encrypted,
+  so late joiners can't read history from before they joined.
+- `/join #x:your.server` that does not exist offers to create it (`[y/n]`).
+  Other servers keep the "no such channel" error.
+- `/alias add|del #x[:server]`, `/publish on|off` for the current room.
+- `/ban NICK [reason]`, `/unban NICK`, `/kickban NICK [reason]` (a Matrix
+  ban also removes the user).
+- `/power NICK 0..100` — raw power level, refused above your own.
+- `/mode` — `+i/-i` join rule invite/public, `+m/-m` moderated
+  (`events_default` 50/0), `+t/-t` topic lock (`m.room.topic` 50/0),
+  `+o/-o NICK` op/deop, `+b/-b NICK` ban/unban. Bare `/mode` prints e.g.
+  `+it`; the status bar shows it too.
+- Posting in a channel where your power is too low prints
+  `read-only channel (power N needed, you have M)`.
 
 Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
 and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),
