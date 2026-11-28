@@ -2,6 +2,7 @@
 //! `/set SEND_TYPING` / `SEND_RECEIPTS` switches.
 
 use super::*;
+
 use crate::bitchx::format::{format_line, plain};
 use crate::bitchx::status::typing_text;
 

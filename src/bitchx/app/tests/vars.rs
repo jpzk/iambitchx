@@ -126,6 +126,14 @@ fn test_set_list_show_errors() {
             Line::SetVar { name: "LOG".into(), value: Some("OFF".into()) },
             Line::SetVar { name: "LOG_DIR".into(), value: None },
             Line::SetVar {
+                name: "SEND_RECEIPTS".into(),
+                value: Some("ON".into())
+            },
+            Line::SetVar {
+                name: "SEND_TYPING".into(),
+                value: Some("ON".into())
+            },
+            Line::SetVar {
                 name: "TIMESTAMP".into(),
                 value: Some("OFF".into())
             },
