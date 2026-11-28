@@ -52,10 +52,10 @@ fn test_lastlog_prints_matches_with_their_time() {
     assert_eq!(
         out[n - 4..],
         [
-            "Lastlog:".to_string(),
+            " Lastlog:".to_string(),
             format!("{stamp}<armin> the Needle is here"),
             format!("{stamp3}<bob> needle again"),
-            "End of Lastlog".to_string(),
+            " End of Lastlog".to_string(),
         ],
         "{out:#?}"
     );
