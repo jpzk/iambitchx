@@ -45,6 +45,7 @@ pre{font-size:16px;font-family:ui-monospace,Menlo,Consolas,monospace}
     "Channel creation and admin: /create, /ban, /power, IRC /mode mapped to room state",
     "/ignore and /unignore via the Matrix account ignore list",
     "Presence and /away",
+    "Reactions (/react), typing notices in the status bar, read receipts",
     "Password login",
     "SSO login",
     "OAuth 2.0 (next-gen auth, MSC3861) login",
@@ -164,8 +165,11 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
   * presence: away/online sent and shown, /whois shows away
   * /nick sets your display name
   * history backfill when a channel window opens
-  * not (yet): threads, reactions, edits, read receipts,
-    typing notifications, media upload/download
+  * reactions: * nick reacted 👍 to "quote"; /react KEY [N]
+  * [typing: nick] in the status bar, typing notices sent
+  * read receipts + fully-read marker for the active window
+  * /set SEND_TYPING, SEND_RECEIPTS ON|OFF
+  * not (yet): threads, edits, media upload/download
 
   ▌ login
   * password (prompted, or password_file in the config)

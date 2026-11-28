@@ -441,6 +441,31 @@ Produces no effect in
 but will display aliens from Space Invaders in Matrix clients that support doing so.
 .El
 
+.Sh "REACTIONS, TYPING AND RECEIPTS"
+.Bl -tag -width Ds
+.It Sy "/react KEY [N]"
+React to the last message of the current window, or to the
+.Sy N Ns th-last one, with
+.Sy KEY
+(an emoji or free text).
+Incoming reactions are shown as
+.Sy "* nick reacted KEY to \(dqshort quote\(dq" ;
+key and quote are sanitised and clipped.
+.It Sy "/set SEND_TYPING ON|OFF"
+Send typing notices while the input line holds text (not a command).
+Notices are refreshed every few seconds and stopped on send, clear or window switch.
+Others typing in the active window are shown in the status bar as
+.Sy "[typing: nick, nick]" .
+Default ON.
+.It Sy "/set SEND_RECEIPTS ON|OFF"
+When a window is opened or active, send a read receipt
+.Pq Sy m.read
+and the fully-read marker
+.Pq Sy m.fully_read
+for its newest event.
+Default ON.
+.El
+
 .Sh "CHANNEL ADMIN COMMANDS"
 IRC-style channel administration in the BitchX frontend, mapped onto Matrix room state.
 Server errors are printed after terminal sanitising.

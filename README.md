@@ -54,7 +54,19 @@ Type `/help` inside the client.
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/unignore` `/encrypt` `/verify`
 `/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
-`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog`
+`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog` `/react`
+
+Reactions, typing, read receipts:
+
+- Reactions show as `* nick reacted 👍 to "short quote"` (key and quote
+  sanitised and clipped). `/react <emoji|text> [N]` reacts to the last
+  message, or the Nth-last (`/react lol 3`).
+- The status bar shows `[typing: nick, nick]` for the active window. While
+  your input line has text, typing notices go out (throttled; stopped on
+  send or when the line is cleared).
+- Opening or switching to a window sends a read receipt (`m.read`) and the
+  fully-read marker (`m.fully_read`) for its newest event.
+- `/set SEND_TYPING ON|OFF`, `/set SEND_RECEIPTS ON|OFF` (default ON).
 
 Channel admin (Matrix state behind IRC words):
 

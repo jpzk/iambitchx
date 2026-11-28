@@ -40,6 +40,15 @@ for that.
   markers. File names are sanitised; files are `0600`, directories `0700`,
   symlinks refused (`O_NOFOLLOW`). Debug-tap output and `/lastlog` views are
   never logged; both settings persist in `[settings.bitchx]`.
+- **Reactions.** `m.reaction` shows as `* nick reacted <key> to "short quote"`
+  (key and quote sanitised and clipped). `/react <emoji|text> [N]` reacts to
+  the last message, or the Nth-last.
+- **Typing.** `[typing: nick, nick]` in the status bar for the active window;
+  typing notices go out while the input line has text (throttled, stopped on
+  send or clear). `/set SEND_TYPING ON|OFF` (default ON).
+- **Read receipts.** Opening or switching to a window sends `m.read` and the
+  `m.fully_read` marker for its newest event. `/set SEND_RECEIPTS ON|OFF`
+  (default ON).
 - **Channel creation.** `/create #x [-public] [-noencrypt]` creates `#x` on
   your own homeserver: invite-only and encrypted by default. `-public` uses
   the public preset and lists the room in the directory (still encrypted;

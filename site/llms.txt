@@ -23,7 +23,10 @@
 - Read-only channels: a refused send says which power level is needed
 - Presence: away/online sent and shown
 - History backfill when a window opens
-- Not supported (yet): threads, reactions, edits, read receipts, typing notifications, media upload/download
+- Reactions: shown as `* nick reacted KEY to "short quote"`; /react KEY [N] reacts to the last or Nth-last message
+- Typing: `[typing: nick, nick]` in the status bar; typing notices sent while the input has text (/set SEND_TYPING ON|OFF)
+- Read receipts: m.read + m.fully_read for the newest event of the active window (/set SEND_RECEIPTS ON|OFF)
+- Not supported (yet): threads, edits, media upload/download
 
 ### Login
 - Password (prompted, or password_file in the config)
