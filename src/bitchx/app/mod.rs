@@ -821,6 +821,8 @@ impl App {
                 self.info(
                     "/ignore [NICK|@user:server], /unignore NICK: account ignore list \
                      (m.ignored_user_list); bare /ignore lists it",
+                );
+                self.info(
                     "/set HILIGHT word,word: extra highlight words (also your nick, mxid, \
                      display name); hot windows show as [Act: 4*]; /set BEEP ON|OFF",
                 );
