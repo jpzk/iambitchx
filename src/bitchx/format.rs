@@ -159,6 +159,12 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
         return out;
     }
     match line {
+        // Windows number media lines into `Public` ones; unnumbered (never
+        // shown in practice) they read like the old `[m.image] name`.
+        Line::Media { nick, own, media } => {
+            let text = format!("[{}] {}", media.kind, media.name);
+            format_line_hl(&Line::Public { nick: nick.clone(), own: *own, text }, chan, hl)
+        },
         // `<nick> text`: only the brackets are coloured, bold magenta for
         // our own lines and bold blue for everyone else.
         Line::Public { nick, own, text } => {

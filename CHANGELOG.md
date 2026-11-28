@@ -69,6 +69,13 @@ for that.
   Bare `/mode` prints the modes (e.g. `+it`), and the status bar shows them.
   Unknown letters are an error that names the supported ones.
 - Spaces are tagged `[space]` in `/channels` and in their window.
+- **Media (DCC-ish).** Media messages are numbered per window
+  (`[m.image #3] cat.png`). `/get [-o] [N|#N]` downloads the Nth-last (or
+  `#N`) media via the SDK (encrypted attachments decrypted) to
+  `$XDG_DOWNLOAD_DIR` or `~/Downloads/iambitchx/` with a sanitised name that
+  never overwrites (`-1`, `-2`); `-o` opens it, except types that run code.
+  `/upload PATH [caption]` sends a file (mime from the extension; refuses
+  directories, missing files and files over 100 MB).
 
 ### Changed
 

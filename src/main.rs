@@ -38,6 +38,7 @@ mod login;
     reason = "backend module under a no-edit policy; pedantic findings listed in report.md"
 )]
 mod matrix;
+mod media_io;
 #[allow(
     clippy::pedantic,
     reason = "backend module under a no-edit policy; pedantic findings listed in report.md"

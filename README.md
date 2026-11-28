@@ -54,7 +54,7 @@ Type `/help` inside the client.
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
 `/set` `/window` `/next` `/prev` `/clear` `/ignore` `/unignore` `/encrypt` `/verify`
 `/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
-`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog`
+`/alias` `/publish` `/ban` `/unban` `/kickban` `/power` `/lastlog` `/get` `/upload`
 
 Channel admin (Matrix state behind IRC words):
 
@@ -106,6 +106,20 @@ hilight colour, its window turns hot in the status bar (`[Act: 3,4*]`) and
 the terminal beeps unless `/set BEEP OFF`. `/set NOTIFY ON` (default OFF)
 also sends a desktop notification as an OSC 777 / OSC 9 terminal escape
 (sanitised; in tmux it needs `set -g allow-passthrough on`).
+
+Media (DCC-ish):
+
+- Media messages are numbered per window: `<nick> [m.image #3] cat.png`.
+- `/get [N]` saves the Nth-last media of the window (default: the last);
+  `/get #N` the one shown as `#N`; `-o` also opens it (not for types that
+  run code: scripts, launchers, HTML, SVG, no extension). Files go to
+  `$XDG_DOWNLOAD_DIR` or `~/Downloads/iambitchx/`, the name cut to its last
+  path component and cleaned, never overwriting (`cat-1.png`, `cat-2.png`).
+  Encrypted attachments are decrypted by matrix-sdk.
+- `/upload PATH [caption]` sends a file (`"my file.png"` for spaces);
+  `image/*` goes as `m.image`, the rest as file/audio/video. Directories,
+  missing files and files over 100 MB are refused. Encrypted rooms get an
+  encrypted attachment.
 
 Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
 and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),

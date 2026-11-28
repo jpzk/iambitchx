@@ -8,6 +8,7 @@ use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId, UserId};
 
 use crate::bitchx::channels::{JoinTarget, ListArgs, ListEntry};
 pub(crate) use crate::bitchx::commands::Secret;
+pub(crate) use crate::bitchx::media::Media;
 
 /// A terminal colour, for the splash art.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -108,6 +109,9 @@ pub(crate) enum Line {
     /// WHOIS field row n (1-based): `{lead}{key:<8} : value`, the lead
     /// alternating ` `/`|` and fading green to grey, `:` on the last row.
     WhoisRow { row: u8, last: bool, key: String, value: String },
+    /// A media message (`m.image`, `m.file`, ...) from the Matrix side. The
+    /// window numbers it and shows it as `<nick> [m.image #n] name`.
+    Media { nick: String, own: bool, media: Media },
     /// Protocol debug line (`/set debug on`): ` DBG cat text`, magenta tag;
     /// `cat` empty for the flood guard's `DBG (suppressed N)`.
     Debug { cat: String, text: String },
@@ -551,6 +555,20 @@ pub(crate) enum Effect {
     Unignore(OwnedUserId),
     /// Import secrets from secure backup; bootstrap cross-signing if missing.
     Recover(Secret),
+    /// `/get`: download media `#n` of a room into the download directory,
+    /// then open it if `open`.
+    Get {
+        room_id: OwnedRoomId,
+        n: usize,
+        media: Media,
+        open: bool,
+    },
+    /// `/upload`: send the local file `path` (with `caption`) to a room.
+    Upload {
+        room_id: OwnedRoomId,
+        path: String,
+        caption: Option<String>,
+    },
     Quit,
 }
 
