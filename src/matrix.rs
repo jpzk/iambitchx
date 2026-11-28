@@ -10,8 +10,8 @@ use std::time::{Duration, Instant};
 
 use matrix_sdk::config::SyncSettings;
 use matrix_sdk::deserialized_responses::{TimelineEvent, TimelineEventKind};
-use matrix_sdk::room::MessagesOptions;
 use matrix_sdk::room::power_levels::RoomPowerLevelChanges;
+use matrix_sdk::room::{MessagesOptions, Receipts};
 use matrix_sdk::ruma::api::client::directory::get_public_rooms_filtered::v3::Request as PublicRoomsRequest;
 use matrix_sdk::ruma::api::client::presence::get_presence::v3::Request as GetPresenceRequest;
 use matrix_sdk::ruma::api::client::presence::set_presence::v3::Request as PresenceRequest;
@@ -22,22 +22,24 @@ use matrix_sdk::ruma::api::client::room::create_room::v3::{
 };
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::ignored_user_list::IgnoredUserListEventContent;
+use matrix_sdk::ruma::events::reaction::ReactionEventContent;
+use matrix_sdk::ruma::events::relation::Annotation;
 use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
 use matrix_sdk::ruma::events::room::join_rules::JoinRule;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
 use matrix_sdk::ruma::events::{
-    AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent, InitialStateEvent,
-    MessageLikeEventType, StateEventType, SyncMessageLikeEvent, SyncStateEvent,
+    AnySyncEphemeralRoomEvent, AnySyncMessageLikeEvent, AnySyncStateEvent, AnySyncTimelineEvent,
+    InitialStateEvent, MessageLikeEventType, StateEventType, SyncMessageLikeEvent, SyncStateEvent,
 };
 use matrix_sdk::ruma::presence::PresenceState;
 use matrix_sdk::ruma::room::JoinRuleKind;
 use matrix_sdk::ruma::room::RoomType;
 use matrix_sdk::ruma::serde::Raw;
 use matrix_sdk::ruma::{
-    Int, OwnedRoomAliasId, OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId, UserId,
-    uint,
+    EventId, Int, OwnedRoomAliasId, OwnedRoomId, OwnedRoomOrAliasId, OwnedServerName, OwnedUserId,
+    UserId, uint,
 };
 use matrix_sdk::{Client, LoopCtrl, Room, RoomMemberships};
 use tokio::sync::mpsc::UnboundedSender;
@@ -320,6 +322,18 @@ pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<Stamped>
             };
             vec![line]
         },
+        AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::Reaction(
+            SyncMessageLikeEvent::Original(r),
+        )) => {
+            let Annotation { event_id, key, .. } = r.content.relates_to;
+            vec![Line::Reaction {
+                nick,
+                own,
+                key,
+                target: event_id.to_string(),
+                quote: None,
+            }]
+        },
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomEncrypted(_)) => {
             vec![Line::Undecryptable { nick, reason: "not decrypted yet".into() }]
         },
@@ -487,6 +501,12 @@ async fn sync_run(
                         continue;
                     };
                     let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
+                    for raw in &update.ephemeral {
+                        if let Ok(AnySyncEphemeralRoomEvent::Typing(t)) = raw.deserialize() {
+                            let users = t.content.user_ids;
+                            let _ = tx.send(MxEvent::Typing { room_id: room_id.clone(), users });
+                        }
+                    }
                     let mut lines = vec![];
                     for ev in &update.timeline.events {
                         if from_ignored(&ignored, ev.raw()) {
@@ -977,6 +997,27 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
         Effect::Devices(user) => crate::e2ee::devices(client, user, tx).await?,
         Effect::Trust => crate::e2ee::trust(client, tx).await?,
         Effect::Recover(key) => crate::e2ee::recover(client, key, tx).await?,
+        Effect::React { room_id, event_id, key } => {
+            let room = room_of(client, &room_id)?;
+            let event_id = EventId::parse(&event_id)?;
+            room.send(ReactionEventContent::new(Annotation::new(event_id, key)))
+                .await?;
+        },
+        // Typing notices and receipts are background chatter: a failure is
+        // logged, never printed.
+        Effect::Typing { room_id, typing } => {
+            if let Err(e) = room_of(client, &room_id)?.typing_notice(typing).await {
+                tracing::debug!("typing notice: {e}");
+            }
+        },
+        Effect::Receipt { room_id, event_id } => {
+            let room = room_of(client, &room_id)?;
+            let id = EventId::parse(&event_id)?;
+            let receipts = Receipts::new().fully_read_marker(id.clone()).public_read_receipt(id);
+            if let Err(e) = room.send_multiple_receipts(receipts).await {
+                tracing::debug!("read receipt: {e}");
+            }
+        },
         Effect::Quit => {},
     }
     Ok(())

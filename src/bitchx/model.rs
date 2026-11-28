@@ -108,6 +108,16 @@ pub(crate) enum Line {
     /// WHOIS field row n (1-based): `{lead}{key:<8} : value`, the lead
     /// alternating ` `/`|` and fading green to grey, `:` on the last row.
     WhoisRow { row: u8, last: bool, key: String, value: String },
+    /// `m.reaction`: `* nick reacted key to "short quote"`. `target` is the
+    /// reacted-to event; `quote` its short text, filled in by the window
+    /// that has it (`None`: not in the scrollback).
+    Reaction {
+        nick: String,
+        own: bool,
+        key: String,
+        target: String,
+        quote: Option<String>,
+    },
     /// Protocol debug line (`/set debug on`): ` DBG cat text`, magenta tag;
     /// `cat` empty for the flood guard's `DBG (suppressed N)`.
     Debug { cat: String, text: String },
@@ -443,6 +453,9 @@ pub(crate) enum MxEvent {
         search: Option<String>,
         entries: Vec<ListEntry>,
     },
+    /// `m.typing` for a room: everyone typing right now (ourselves included;
+    /// the UI drops us).
+    Typing { room_id: OwnedRoomId, users: Vec<OwnedUserId> },
     /// A protocol debug line from [`crate::debug_tap`] (`/set debug on`).
     Debug(crate::debug_tap::DbgLine),
 }
@@ -551,6 +564,23 @@ pub(crate) enum Effect {
     Unignore(OwnedUserId),
     /// Import secrets from secure backup; bootstrap cross-signing if missing.
     Recover(Secret),
+    /// `/react`: annotate `event_id` with `key` (`m.reaction`).
+    React {
+        room_id: OwnedRoomId,
+        event_id: String,
+        key: String,
+    },
+    /// Typing notice on/off (`SEND_TYPING`).
+    Typing {
+        room_id: OwnedRoomId,
+        typing: bool,
+    },
+    /// Read receipt (`m.read`) plus fully-read marker for `event_id`
+    /// (`SEND_RECEIPTS`).
+    Receipt {
+        room_id: OwnedRoomId,
+        event_id: String,
+    },
     Quit,
 }
 

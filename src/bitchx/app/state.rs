@@ -37,6 +37,16 @@ pub(crate) struct Window {
     /// Lines pushed since the last [`super::App::flush_log`], for the log
     /// file: (time, line). Only [`crate::bitchx::logfile::loggable`] lines.
     pub(super) log_queue: Vec<(i64, Line)>,
+    /// Message events in the scrollback, oldest first: (event id, body).
+    /// `/react` picks from the end; reactions quote from it.
+    pub msgs: Vec<(String, String)>,
+    /// The newest event seen live (or the newest of the first backfill):
+    /// what a read receipt points at.
+    pub last_event: Option<String>,
+    /// The event our last read receipt went to (never sent twice).
+    pub receipt_sent: Option<String>,
+    /// Nicks typing right now (`m.typing`, ourselves left out).
+    pub typing: Vec<String>,
 }
 
 impl Window {
@@ -74,10 +84,17 @@ impl Window {
 
     /// Append a line stamped `ts` (unix millis).
     pub(super) fn push_at(&mut self, id: Option<String>, ts: i64, line: Line) -> bool {
-        if let Some(id) = id
-            && !self.ids.insert(id)
-        {
-            return false;
+        if let Some(id) = id {
+            if !self.ids.insert(id.clone()) {
+                return false;
+            }
+            if let Some(text) = msg_text(&line) {
+                self.msgs.push((id.clone(), text.to_string()));
+                if self.msgs.len() > MAX_LINES {
+                    self.msgs.remove(0);
+                }
+            }
+            self.last_event = Some(id);
         }
         if crate::bitchx::logfile::loggable(&line) {
             if self.log_queue.len() >= MAX_LINES {
@@ -98,11 +115,17 @@ impl Window {
     pub(super) fn prepend(&mut self, lines: Vec<(Option<String>, i64, Line)>) {
         let mut fresh = vec![];
         let mut times = vec![];
+        let mut msgs = vec![];
+        let mut last = None;
         for (id, ts, line) in lines {
-            if let Some(id) = id
-                && !self.ids.insert(id)
-            {
-                continue;
+            if let Some(id) = id {
+                if !self.ids.insert(id.clone()) {
+                    continue;
+                }
+                if let Some(text) = msg_text(&line) {
+                    msgs.push((id.clone(), text.to_string()));
+                }
+                last = Some(id);
             }
             fresh.push(line);
             times.push(ts);
@@ -111,6 +134,13 @@ impl Window {
         times.append(&mut self.times);
         self.lines = fresh;
         self.times = times;
+        msgs.append(&mut self.msgs);
+        let over = msgs.len().saturating_sub(MAX_LINES);
+        msgs.drain(..over);
+        self.msgs = msgs;
+        if self.last_event.is_none() {
+            self.last_event = last;
+        }
     }
 
     /// Drop all scrollback (`/clear`).
@@ -142,6 +172,26 @@ impl Window {
         // qualified) matches all of them.
         if exact.is_empty() { local } else { exact }
     }
+}
+
+/// The body of a message line (what `/react` can react to and a reaction
+/// quotes); `None` for every other line.
+pub(crate) fn msg_text(line: &Line) -> Option<&str> {
+    match line {
+        Line::Public { text, .. }
+        | Line::Action { text, .. }
+        | Line::Private { text, .. }
+        | Line::Notice { text, .. } => Some(text),
+        _ => None,
+    }
+}
+
+/// The short quote of event `id` if it is a message in `msgs`.
+pub(crate) fn quote_of(msgs: &[(String, String)], id: &str) -> Option<String> {
+    msgs.iter()
+        .rev()
+        .find(|(e, _)| e == id)
+        .map(|(_, t)| crate::bitchx::text::short_quote(t))
 }
 
 /// A y/n question waiting for the next input line.

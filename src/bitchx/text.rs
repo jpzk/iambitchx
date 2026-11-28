@@ -78,6 +78,29 @@ pub(crate) fn body(s: &str) -> String {
         .collect()
 }
 
+/// Longest reaction key shown (keys are free text; emoji are a few chars).
+pub(crate) const REACTION_KEY_MAX: usize = 16;
+
+/// Longest quote of the reacted-to message.
+pub(crate) const QUOTE_MAX: usize = 30;
+
+/// The first `max` chars of `s`, `...` appended when cut.
+pub(crate) fn clip(s: &str, max: usize) -> String {
+    if s.chars().count() <= max {
+        return s.to_string();
+    }
+    let mut out: String = s.chars().take(max.saturating_sub(3)).collect();
+    out.push_str("...");
+    out
+}
+
+/// The short quote of a reacted-to message: its first non-empty line,
+/// sanitised to one line and clipped to [`QUOTE_MAX`].
+pub(crate) fn short_quote(text: &str) -> String {
+    let first = text.lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
+    clip(one_line(first).trim(), QUOTE_MAX)
+}
+
 fn opt(s: Option<String>) -> Option<String> {
     s.map(|s| one_line(&s))
 }
@@ -141,6 +164,13 @@ pub(crate) fn clean_line(line: Line) -> Line {
         Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
         Line::Lastlog { ts, line } => Line::Lastlog { ts, line: Box::new(clean_line(*line)) },
         Line::LastlogInfo(t) => Line::LastlogInfo(o(t)),
+        Line::Reaction { nick, own, key, target, quote } => Line::Reaction {
+            nick: o(nick),
+            own,
+            key: clip(&one_line(&key), REACTION_KEY_MAX),
+            target: o(target),
+            quote: quote.map(|q| short_quote(&q)),
+        },
         l @ Line::WhoisRule => l,
     }
 }

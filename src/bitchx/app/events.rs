@@ -3,6 +3,7 @@
 
 use matrix_sdk::ruma::OwnedRoomId;
 
+use crate::bitchx::app::state::{msg_text, quote_of};
 use crate::bitchx::app::{App, Probe, Window, now_ms};
 use crate::bitchx::channels::list_lines;
 use crate::bitchx::model::{Effect, Line, MxEvent, RoomSnapshot, VerifyUpdate, nick_of};
@@ -35,10 +36,11 @@ impl App {
                 let matcher = self.matcher();
                 let win = &mut self.windows[idx];
                 let now = now_ms();
-                let lines = lines
+                let mut lines: Vec<_> = lines
                     .into_iter()
                     .map(|(id, ts, l)| (id, ts.unwrap_or(now), win.query_line(l)))
                     .collect();
+                quote_reactions(&mut lines, &win.msgs);
                 if backfill {
                     win.prepend(lines);
                 } else {
@@ -65,6 +67,14 @@ impl App {
                         win.hilite |= idx != self.current;
                         self.bell |= self.vars.beep;
                     }
+                }
+                return self.read_receipt(idx);
+            },
+            MxEvent::Typing { room_id, users } => {
+                if let Some(idx) = self.window_of(&room_id) {
+                    let me = self.me.clone();
+                    self.windows[idx].typing =
+                        users.iter().filter(|u| **u != me).map(|u| nick_of(u)).collect();
                 }
             },
             MxEvent::Left(room_id) => {
@@ -265,6 +275,19 @@ fn clean_event(ev: MxEvent) -> MxEvent {
             entries: entries.into_iter().map(clean_list_entry).collect(),
         },
         ev => ev,
+    }
+}
+
+/// Fill in the quote of every reaction whose target is a message in this
+/// batch (earlier in it) or already in the window.
+fn quote_reactions(lines: &mut [(Option<String>, i64, Line)], known: &[(String, String)]) {
+    let mut batch: Vec<(String, String)> = vec![];
+    for (id, _, line) in lines.iter_mut() {
+        if let Line::Reaction { target, quote: quote @ None, .. } = line {
+            *quote = quote_of(&batch, target).or_else(|| quote_of(known, target));
+        } else if let (Some(id), Some(text)) = (id.as_ref(), msg_text(line)) {
+            batch.push((id.clone(), text.to_string()));
+        }
     }
 }
 

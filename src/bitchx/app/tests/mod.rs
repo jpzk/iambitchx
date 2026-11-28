@@ -45,6 +45,10 @@ pub(crate) fn room(id: &str, name: &str) -> RoomSnapshot {
 pub(crate) fn app() -> App {
     let mut app = App::new_with_logo(owned_user_id!("@carla:example.org"), Logo::None);
     app.clock = Some("09:24pm".into());
+    // Typing notices and receipts (default ON) would add effects to every
+    // keypress and window switch; their own tests turn them back on.
+    app.vars.send_typing = false;
+    app.vars.send_receipts = false;
     app.handle_mx(MxEvent::Room(room("!a:example.org", "#room")));
     app.handle_mx(MxEvent::Room(room("!b:example.org", "#other")));
     let mut dm = room("!c:example.org", "armin");
@@ -113,6 +117,7 @@ mod ignore;
 mod logging;
 mod logo;
 mod presence;
+mod react;
 mod security;
 mod vars;
 mod verify;

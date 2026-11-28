@@ -28,6 +28,7 @@ mod ignore;
 mod keys;
 mod logging;
 mod logo;
+mod react;
 mod state;
 mod theme;
 mod verify;
@@ -39,6 +40,10 @@ pub(crate) use theme::{PICKER_ITEMS, PICKER_ROWS, Picker};
 /// The status window's name, shown where a channel window shows its
 /// channel: prompt `[status]`, status bar `[status]`.
 pub(crate) const STATUS_NAME: &str = "status";
+
+/// Re-send the typing notice this often while typing (the SDK sends a 4 s
+/// timeout and throttles to 3 s itself).
+pub(crate) const TYPING_RESEND_MS: i64 = 3_000;
 
 /// Refnum of the status window.
 pub(crate) const STATUS_REFNUM: usize = 1;
@@ -121,6 +126,9 @@ pub(crate) struct App {
     /// `LOG_DIR` when empty: `$XDG_DATA_HOME/iambitchx/logs`; `None`
     /// (no data dir known): logging needs an explicit `LOG_DIR`.
     pub log_default_dir: Option<PathBuf>,
+    /// The room we last told we are typing in, and when (unix millis):
+    /// re-sent every [`TYPING_RESEND_MS`] while the input has text.
+    pub typing_room: Option<(OwnedRoomId, i64)>,
     logo: Logo,
     logo_start: usize,
     logo_len: usize,
@@ -218,6 +226,7 @@ impl App {
             picker: None,
             logger: crate::bitchx::logfile::Logger::default(),
             log_default_dir: None,
+            typing_room: None,
             logo,
             logo_start,
             logo_len,
@@ -276,7 +285,9 @@ impl App {
         win.unread = false;
         win.hilite = false;
         win.scroll = 0;
-        self.backfill_current()
+        let mut fx = self.backfill_current();
+        fx.extend(self.read_receipt(idx));
+        fx
     }
 
     pub(crate) fn backfill_current(&mut self) -> Vec<Effect> {
@@ -380,6 +391,7 @@ impl App {
             users,
             lag: self.lag,
             sync_lost: self.sync_lost,
+            typing: win.typing.clone(),
         }
     }
 
@@ -819,6 +831,10 @@ impl App {
                     "/set LOG ON|OFF, /set LOG_DIR path: log windows to LOG_DIR/server/window.log",
                 );
                 self.info(
+                    "/react <emoji|text> [N]: react to the last (or Nth-last) message; \
+                     /set SEND_TYPING, SEND_RECEIPTS ON|OFF",
+                );
+                self.info(
                     "/mode [+-imtob] [NICK]: i invite-only, m moderated, t topic lock, \
                      o op, b ban; bare /mode shows the modes",
                 );
@@ -873,6 +889,7 @@ impl App {
             BitchxCommand::Power { target, level } => self.raw_power(&target, level),
             BitchxCommand::Ignore { pattern } => self.ignore(pattern),
             BitchxCommand::Unignore { pattern } => self.unignore(&pattern),
+            BitchxCommand::React { key, nth } => self.react(key, nth),
             BitchxCommand::Ctcp { .. } => {
                 self.error("Not supported on Matrix");
                 vec![]

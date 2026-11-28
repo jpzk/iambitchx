@@ -160,6 +160,11 @@ pub(crate) enum BitchxCommand {
     },
     /// `/lastlog -clear`: remove the `/lastlog` output from the window.
     LastlogClear,
+    /// `/react <emoji|text> [N]`: react to the last (N = 1) or Nth-last message.
+    React {
+        key: String,
+        nth: usize,
+    },
     /// `/theme`: open the theme picker; `/theme name`: switch to a theme.
     Theme {
         name: Option<String>,
@@ -262,6 +267,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "publish",
     "query",
     "quit",
+    "react",
     "recover",
     "set",
     "slap",
@@ -446,6 +452,23 @@ fn parse_lastlog(args: &mut Args<'_>) -> Result<BitchxCommand, BitchxError> {
     }
     let pattern = args.required_rest("text")?.trim().to_string();
     Ok(BitchxCommand::Lastlog { pattern, ignore_case })
+}
+
+/// `/react <key> [N]`: a trailing positive number after the key picks the
+/// Nth-last message; the key may be text with spaces (`/react lol ok 2`).
+fn parse_react(args: &mut Args<'_>) -> Result<BitchxCommand, BitchxError> {
+    let rest = args.required_rest("emoji|text")?;
+    let rest = rest.trim();
+    let (key, nth) = match rest.rsplit_once(char::is_whitespace) {
+        Some((key, n)) if !key.trim().is_empty() && n.chars().all(|c| c.is_ascii_digit()) => {
+            let nth = n.parse::<usize>().ok().filter(|n| *n >= 1).ok_or_else(|| {
+                BitchxError::InvalidArgument { command: "react", argument: n.to_string() }
+            })?;
+            (key.trim(), nth)
+        },
+        _ => (rest, 1),
+    };
+    Ok(BitchxCommand::React { key: key.to_string(), nth })
 }
 
 /// Parse the text typed after the leading `/`.
@@ -704,6 +727,7 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             let key = args.required_rest("recovery key")?;
             BitchxCommand::Recover { key: Secret::new(key.trim()) }
         },
+        "react" => parse_react(&mut args)?,
         "verify" => BitchxCommand::Verify(parse_verify(&mut args)?),
         _ => return Err(BitchxError::UnknownCommand(word.to_string())),
     };

@@ -13,6 +13,7 @@ impl App {
         }
         let mut fx = self.activity();
         fx.extend(self.key(key));
+        fx.extend(self.typing_fx());
         fx
     }
 

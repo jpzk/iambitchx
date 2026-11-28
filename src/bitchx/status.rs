@@ -111,6 +111,29 @@ pub(crate) struct BxStatus {
     /// The sync loop died (F37): `[Lag ??]` is replaced by a persistent
     /// `[SYNC LOST]` until a restart, so a frozen client never looks live.
     pub sync_lost: bool,
+    /// Nicks typing in the active window (`m.typing`): `[typing: a, b]`.
+    pub typing: Vec<String>,
+}
+
+/// At most this many typing nicks are named; the rest read `+N`.
+pub(crate) const TYPING_SHOWN: usize = 3;
+
+/// The text inside the typing bracket: `typing: a, b` or `typing: a, b, c +2`;
+/// `None` when nobody types.
+pub(crate) fn typing_text(nicks: &[String]) -> Option<String> {
+    if nicks.is_empty() {
+        return None;
+    }
+    let shown: Vec<String> = nicks
+        .iter()
+        .take(TYPING_SHOWN)
+        .map(|n| truncate(&crate::bitchx::text::one_line(n), CHANNEL_WIDTH * 2))
+        .collect();
+    let mut s = format!("typing: {}", shown.join(", "));
+    if nicks.len() > TYPING_SHOWN {
+        s = format!("{s} +{}", nicks.len() - TYPING_SHOWN);
+    }
+    Some(s)
 }
 
 impl BxStatus {
@@ -254,6 +277,12 @@ impl BxStatus {
                 s.push(sp(count.to_string(), st_bright()));
             }
 
+            s.push(sp("]", st_punct()));
+        }
+
+        if let Some(t) = typing_text(&self.typing) {
+            s.push(sp(" [", st_punct()));
+            s.push(sp(t, st_text()));
             s.push(sp("]", st_punct()));
         }
 

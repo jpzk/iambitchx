@@ -331,6 +331,23 @@ pub(crate) fn format_line_hl(line: &Line, chan: &str, hl: bool) -> Vec<TLine<'st
             sp("iamBitchX", n().add_modifier(Modifier::BOLD)),
             sp(format!(": {text}"), n()),
         ])],
+        // `* nick reacted key to "quote"` (`m.reaction`): `*` dark grey,
+        // nick bold white for our own, cyan for others; an unknown target
+        // reads `to a message`.
+        Line::Reaction { nick, own, key, quote, .. } => {
+            let who = if *own { w() } else { c() };
+            let mut s = vec![
+                sp("* ", k()),
+                sp(nick.clone(), who),
+                sp(" reacted ", n()),
+                sp(key.clone(), w()),
+            ];
+            match quote {
+                Some(q) => s.extend([sp(" to ", n()), sp(format!("\"{q}\""), n())]),
+                None => s.push(sp(" to a message", n())),
+            }
+            vec![TLine::from(s)]
+        },
         Line::Debug { cat, text } => {
             let mut spans = vec![sp("DBG", fg(pal().debug).add_modifier(Modifier::BOLD))];
             if !cat.is_empty() {

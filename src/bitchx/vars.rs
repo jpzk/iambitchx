@@ -28,6 +28,10 @@
 //! `$XDG_DATA_HOME/iambitchx/logs`): irssi-style window logs, see
 //! [`crate::bitchx::logfile`].
 //!
+//! `SEND_TYPING` and `SEND_RECEIPTS` (bool, default ON): iamBitchX extras,
+//! whether typing notices and read receipts (`m.read` + `m.fully_read`) go
+//! out to the homeserver.
+//!
 //! Values persist in `config.toml` under `[settings.bitchx]`, except `DEBUG`
 //! and `DEBUG_RAW`: those are session-scoped and never written or read.
 use std::fmt::Write as _;
@@ -54,6 +58,8 @@ pub(crate) const NAMES: &[&str] = &[
     "DEBUG_RAW",
     "LOG",
     "LOG_DIR",
+    "SEND_RECEIPTS",
+    "SEND_TYPING",
     "TIMESTAMP",
     "TIMESTAMP_STRING",
 ];
@@ -120,6 +126,8 @@ pub(crate) struct BitchxConfig {
     pub debug_raw: Option<bool>,
     pub log: Option<bool>,
     pub log_dir: Option<String>,
+    pub send_receipts: Option<bool>,
+    pub send_typing: Option<bool>,
     pub timestamp: Option<bool>,
     pub timestamp_string: Option<String>,
     /// `/theme`: the theme name.
@@ -142,6 +150,8 @@ impl BitchxConfig {
             debug_raw: self.debug_raw.or(other.debug_raw),
             log: self.log.or(other.log),
             log_dir: self.log_dir.or(other.log_dir),
+            send_receipts: self.send_receipts.or(other.send_receipts),
+            send_typing: self.send_typing.or(other.send_typing),
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
             theme: self.theme.or(other.theme),
@@ -176,6 +186,10 @@ pub(crate) struct Vars {
     pub log: bool,
     /// Where the logs go; empty = `$XDG_DATA_HOME/iambitchx/logs`.
     pub log_dir: String,
+    /// Send read receipts (`m.read` + `m.fully_read`) for the active window.
+    pub send_receipts: bool,
+    /// Send typing notices while the input line has text.
+    pub send_typing: bool,
     pub timestamp: bool,
     pub timestamp_string: String,
     /// The `/theme` in use (see [`crate::bitchx::theme`]).
@@ -198,6 +212,8 @@ impl Default for Vars {
             debug_raw: false,
             log: false,
             log_dir: String::new(),
+            send_receipts: true,
+            send_typing: true,
             timestamp: false,
             timestamp_string: DEFAULT_TIMESTAMP_STR.to_string(),
             theme: crate::bitchx::theme::DEFAULT_THEME.to_string(),
@@ -323,6 +339,8 @@ impl Vars {
             debug_raw: d.debug_raw,
             log: c.log.unwrap_or(d.log),
             log_dir: c.log_dir.clone().filter(|s| valid_log_dir(s)).unwrap_or(d.log_dir),
+            send_receipts: c.send_receipts.unwrap_or(d.send_receipts),
+            send_typing: c.send_typing.unwrap_or(d.send_typing),
             timestamp: c.timestamp.unwrap_or(d.timestamp),
             timestamp_string: c.timestamp_string.clone().unwrap_or(d.timestamp_string),
             theme: c.theme.clone().filter(|s| !s.is_empty()).unwrap_or(d.theme),
@@ -344,6 +362,8 @@ impl Vars {
             "DEBUG_RAW" => Some(if self.debug_raw { "ON" } else { "OFF" }.to_string()),
             "LOG" => Some(if self.log { "ON" } else { "OFF" }.to_string()),
             "LOG_DIR" => Some(self.log_dir.clone()).filter(|s| !s.is_empty()),
+            "SEND_RECEIPTS" => Some(if self.send_receipts { "ON" } else { "OFF" }.to_string()),
+            "SEND_TYPING" => Some(if self.send_typing { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP" => Some(if self.timestamp { "ON" } else { "OFF" }.to_string()),
             "TIMESTAMP_STRING" => Some(self.timestamp_string.clone()).filter(|s| !s.is_empty()),
             _ => None,
@@ -395,6 +415,14 @@ impl Vars {
                     return Err("LOG_DIR must be an absolute path (or ~/..., $VAR/...)".into());
                 }
                 self.log_dir = v.to_string();
+            },
+            "SEND_RECEIPTS" => {
+                self.send_receipts = boolean(value, self.send_receipts)
+                    .ok_or("Value must be either ON, OFF, or TOGGLE")?;
+            },
+            "SEND_TYPING" => {
+                self.send_typing = boolean(value, self.send_typing)
+                    .ok_or("Value must be either ON, OFF, or TOGGLE")?;
             },
             "AWAY_MSG" => self.away_msg = value.to_string(),
             "AWAY_NICK" => {
@@ -472,6 +500,8 @@ impl Vars {
         bx.insert("beep".into(), Value::Boolean(self.beep));
         bx.insert("log".into(), Value::Boolean(self.log));
         bx.insert("log_dir".into(), Value::String(self.log_dir.clone()));
+        bx.insert("send_receipts".into(), Value::Boolean(self.send_receipts));
+        bx.insert("send_typing".into(), Value::Boolean(self.send_typing));
         // F-07: never persist the debug switches; drop stale ones
         bx.remove("debug");
         bx.insert("debug_filter".into(), Value::String(self.debug_filter.clone()));
@@ -595,6 +625,8 @@ mod tests {
             debug_raw: true,
             log: true,
             log_dir: "~/irclogs".into(),
+            send_receipts: false,
+            send_typing: false,
             theme: "gruvbox-dark".into(),
         };
         v.persist(&path).unwrap();
@@ -689,6 +721,33 @@ mod tests {
         };
         assert_eq!(Vars::from_config(&c).away_nick_orig, None);
     }
+    #[test]
+    fn test_send_typing_and_receipts_vars() {
+        let v = Vars::default();
+        assert!(v.send_typing && v.send_receipts, "both default to ON");
+        assert_eq!(v.get("SEND_TYPING").as_deref(), Some("ON"));
+        assert_eq!(v.get("SEND_RECEIPTS").as_deref(), Some("ON"));
+        assert_eq!(lookup("send_t"), Ok("SEND_TYPING"));
+        assert_eq!(lookup("send_r"), Ok("SEND_RECEIPTS"));
+        assert_eq!(lookup("send"), Err("SEND is ambiguous".into()));
+        let mut v = Vars::default();
+        v.set("SEND_TYPING", "off").unwrap();
+        v.set("SEND_RECEIPTS", "OFF").unwrap();
+        assert_eq!(v.get("SEND_TYPING").as_deref(), Some("OFF"));
+        assert_eq!(v.get("SEND_RECEIPTS").as_deref(), Some("OFF"));
+        v.set("SEND_TYPING", "toggle").unwrap();
+        assert!(v.send_typing);
+        assert!(v.set("SEND_RECEIPTS", "maybe").is_err());
+        assert!(!v.send_receipts, "a bad value keeps the old one");
+        let c = BitchxConfig {
+            send_typing: Some(false),
+            send_receipts: Some(false),
+            ..Default::default()
+        };
+        let v = Vars::from_config(&c);
+        assert!(!v.send_typing && !v.send_receipts, "read from the file");
+    }
+
     #[test]
     fn test_debug_filter_parsing() {
         assert_eq!(parse_debug_filter(""), Ok("all".into()));

@@ -105,10 +105,11 @@ async fn event_loop(
                     }
                 },
                 Some(Ok(Event::Paste(text))) => {
-                    let fx = app.activity();
+                    let mut fx = app.activity();
                     for c in text.chars().filter(|c| !c.is_control()) {
                         app.input.insert(c);
                     }
+                    fx.extend(app.typing_fx());
                     fx
                 },
                 Some(Ok(Event::Resize(w, h))) => {
