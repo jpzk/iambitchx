@@ -38,9 +38,11 @@
 - /away [msg] and /back; AWAY_NICK swaps the display name (default %n^afk)
 - AUTO_AWAY: auto-away after AUTO_AWAY_TIME seconds idle (default 600) with AUTO_AWAY_MSG
 - /me (/action), /channels, /window next|prev, /clear, /close, /quit, /version, /help
-- /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY, BEEP
 - /lastlog [-i] TEXT: search the current window, hits shown with their timestamps; /lastlog -clear removes them
 - /set LOG ON|OFF, LOG_DIR: irssi-style logs, one plain-text file per window (LOG_DIR/server/#chan.log, DMs too), files 0600, dirs 0700, debug output never logged
+- /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY, BEEP, HILIGHT, NOTIFY
+- Highlights: nick, mxid, display name and HILIGHT words (whole words, any case) get the hilight colour and a hot [Act: 4*] window marker; beeps if BEEP is ON
+- /set NOTIFY ON: desktop notification on a highlight via OSC 777/9 terminal escape (sanitised), default OFF
 - /theme with live preview: 62 iamb themes plus 'terminal'
 - /ctcp is recognised but reports "Not supported on Matrix"
 

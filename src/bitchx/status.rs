@@ -200,12 +200,13 @@ impl BxStatus {
                 if i > 0 {
                     s.push(sp(",", st_bright()));
                 }
-                let style = if self.hilite.contains(n) {
-                    st_hilite()
+                // Hot activity (an unread mention): `4*`, bold yellow, so it
+                // still stands out on a monochrome terminal or theme.
+                if self.hilite.contains(n) {
+                    s.push(sp(format!("{n}*"), st_hilite()));
                 } else {
-                    st_bright()
-                };
-                s.push(sp(n.to_string(), style));
+                    s.push(sp(n.to_string(), st_bright()));
+                }
             }
             s.push(sp("]", st_punct()));
         }

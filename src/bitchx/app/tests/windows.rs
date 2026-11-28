@@ -239,3 +239,95 @@ fn test_dedupe_and_backfill_order() {
     let texts: Vec<_> = app.windows[1].lines.clone();
     assert_eq!(texts, vec![l("old"), l("new")]);
 }
+
+fn say_in(app: &mut App, room: &str, id: &str, text: &str) {
+    app.handle_mx(MxEvent::Lines {
+        room_id: OwnedRoomId::try_from(room).unwrap(),
+        lines: vec![(
+            Some(id.into()),
+            None,
+            Line::Public { nick: "bob".into(), own: false, text: text.into() },
+        )],
+        backfill: false,
+    });
+}
+
+fn act_text(app: &App) -> String {
+    app.status().line1().spans.iter().map(|s| s.content.to_string()).collect()
+}
+
+#[test]
+fn test_hilight_words_case_and_boundaries() {
+    let mut app = app();
+    app.handle_key(alt('2'));
+    typed(&mut app, "/set hilight Solana, BTC");
+    assert_eq!(app.vars.hilight, "Solana,BTC");
+    let m = app.matcher();
+    assert!(m.matches("solana pumps"), "case-insensitive");
+    assert!(m.matches("buy BTC."));
+    assert!(m.matches("(btc)"));
+    assert!(!m.matches("btcusd"), "word boundary after");
+    assert!(!m.matches("wbtc"), "word boundary before");
+    assert!(!m.matches("solanas"));
+    // AUTO_REPLY and HILIGHT both count; the nick still does.
+    typed(&mut app, "/set auto_reply creed");
+    assert!(app.matcher().matches("yo creed"));
+    assert!(app.matcher().matches("SOLANA"));
+    assert!(app.matcher().matches("Carla?"));
+    say_in(&mut app, "!b:example.org", "$1", "gm, sol and btc");
+    assert_eq!(app.hilite(), vec![3]);
+    assert!(app.take_bell());
+    typed(&mut app, "/set -hilight");
+    assert_eq!(app.vars.hilight, "");
+    assert!(!app.matcher().matches("btc"));
+}
+
+#[test]
+fn test_hot_activity_marker_in_status() {
+    let mut app = app();
+    app.handle_key(alt('2'));
+    say_in(&mut app, "!b:example.org", "$1", "plain chatter");
+    assert!(act_text(&app).contains("[Act: 3]"), "{}", act_text(&app));
+    say_in(&mut app, "!c:example.org", "$2", "carla: look");
+    assert!(act_text(&app).contains("[Act: 3,4*]"), "{}", act_text(&app));
+    // A later mention in window 3 makes it hot too.
+    say_in(&mut app, "!b:example.org", "$3", "hey CARLA");
+    assert!(act_text(&app).contains("[Act: 3*,4*]"), "{}", act_text(&app));
+    // Visiting the window clears both its activity and its marker.
+    app.handle_key(alt('4'));
+    assert!(act_text(&app).contains("[Act: 3*]"), "{}", act_text(&app));
+    app.handle_key(alt('3'));
+    assert!(!act_text(&app).contains("Act:"), "{}", act_text(&app));
+}
+
+#[test]
+fn test_notify_off_by_default_and_on_when_set() {
+    let mut app = app();
+    app.handle_key(alt('2'));
+    assert!(!app.vars.notify);
+    say_in(&mut app, "!b:example.org", "$1", "carla ping");
+    assert_eq!(app.take_notify(), None, "NOTIFY defaults to OFF");
+    typed(&mut app, "/set notify on");
+    assert!(app.vars.notify);
+    say_in(&mut app, "!b:example.org", "$2", "plain");
+    assert_eq!(app.take_notify(), None, "no mention, no notification");
+    say_in(&mut app, "!b:example.org", "$3", "carla \u{1b}]52;c;ZXZpbA==\u{7} look");
+    let (title, body) = app.take_notify().expect("mention notifies");
+    assert!(title.starts_with("iamBitchX: bob in "), "{title:?}");
+    assert!(body.starts_with("carla"), "{body:?}");
+    crate::bitchx::text::assert_inert(&title);
+    crate::bitchx::text::assert_inert(&body);
+    assert!(!body.contains(';'));
+    assert_eq!(app.take_notify(), None, "once");
+    // A duplicate event does not notify again.
+    say_in(&mut app, "!b:example.org", "$3", "carla again");
+    assert_eq!(app.take_notify(), None);
+    // Works with BEEP off.
+    typed(&mut app, "/set beep off");
+    say_in(&mut app, "!b:example.org", "$4", "carla!");
+    assert!(app.take_notify().is_some());
+    assert!(!app.take_bell());
+    typed(&mut app, "/set notify off");
+    say_in(&mut app, "!b:example.org", "$5", "carla?");
+    assert_eq!(app.take_notify(), None);
+}

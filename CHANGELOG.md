@@ -40,6 +40,17 @@ for that.
   markers. File names are sanitised; files are `0600`, directories `0700`,
   symlinks refused (`O_NOFOLLOW`). Debug-tap output and `/lastlog` views are
   never logged; both settings persist in `[settings.bitchx]`.
+- **Highlights and notifications.** `/set HILIGHT word,word` adds highlight
+  words to your nick, mxid and display name (case-insensitive, whole words
+  only). A highlighted line uses the BitchX hilight colour from the palette,
+  its window shows as hot activity (`[Act: 4*]`) in the status bar, and it
+  beeps if `BEEP` is ON. `/set NOTIFY ON` (default OFF) also raises a
+  desktop notification. No notification crate is in `Cargo.lock`, so this
+  is an OSC 777 (urxvt, foot, VTE, Ghostty, WezTerm) or OSC 9 (iTerm2,
+  kitty, ...) terminal escape, wrapped for tmux (`allow-passthrough on`).
+  Nick, room and text are sanitised, `;` is replaced and fields are cut to
+  120 characters.
+
 - **Channel creation.** `/create #x [-public] [-noencrypt]` creates `#x` on
   your own homeserver: invite-only and encrypted by default. `-public` uses
   the public preset and lists the room in the directory (still encrypted;

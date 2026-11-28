@@ -45,10 +45,15 @@ impl App {
                     let mut added = false;
                     let mut msgs = 0;
                     let mut mentioned = false;
+                    let mut first_mention = None;
                     for (id, ts, line) in lines {
                         let incoming = matches!(line, Line::Private { own: false, .. });
                         let mention = matcher.is_mention(&line);
+                        let summary = mention.then(|| line.clone());
                         if win.push_at(id, ts, line) {
+                            if first_mention.is_none() {
+                                first_mention = summary;
+                            }
                             added = true;
                             msgs += usize::from(incoming);
                             mentioned |= mention;
@@ -64,6 +69,12 @@ impl App {
                     if mentioned {
                         win.hilite |= idx != self.current;
                         self.bell |= self.vars.beep;
+                        if self.vars.notify {
+                            let name = win.channel().unwrap_or(&win.room.name).to_string();
+                            self.notify = first_mention
+                                .as_ref()
+                                .and_then(|l| crate::bitchx::notify::summary(l, &name));
+                        }
                     }
                 }
             },
