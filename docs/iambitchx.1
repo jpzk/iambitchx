@@ -504,6 +504,25 @@ the status bar shows them too.
 Unknown letters are an error that names the supported ones.
 .El
 
+.Sh "IGNORE COMMANDS"
+The BitchX frontend keeps the Matrix account ignore list, the
+.Sy m.ignored_user_list
+account data, shared with your other Matrix clients.
+Messages from ignored users are also hidden by
+.Nm
+itself, in case the server still delivers them; joins and parts stay visible.
+.Bl -tag -width Ds
+.It Sy "/ignore"
+List the ignored users (the ignorance list).
+.It Sy "/ignore NICK" , Sy "/ignore @user:server"
+Ignore a user.
+A bare nick is resolved against the members of the current window first,
+then of all windows; an ambiguous nick is refused and the matching user IDs are printed.
+.It Sy "/unignore NICK" , Sy "/unignore @user:server"
+Stop ignoring a user.
+The nick may also name an ignored user who is in no window.
+.El
+
 .Sh "ENVIRONMENT"
 The behaviour of
 .Nm

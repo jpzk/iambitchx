@@ -52,7 +52,7 @@ Type `/help` inside the client.
 
 `/join` `/part` `/list` `/names` `/who` `/whois` `/msg` `/query` `/me`
 `/topic` `/invite` `/kick` `/op` `/deop` `/mode` `/away` `/back` `/nick`
-`/set` `/window` `/next` `/prev` `/clear` `/ignore` `/encrypt` `/verify`
+`/set` `/window` `/next` `/prev` `/clear` `/ignore` `/unignore` `/encrypt` `/verify`
 `/trust` `/devices` `/recover` `/theme` `/version` `/quit` `/create`
 `/alias` `/publish` `/ban` `/unban` `/kickban` `/power`
 
@@ -74,6 +74,17 @@ Channel admin (Matrix state behind IRC words):
   `+it`; the status bar shows it too.
 - Posting in a channel where your power is too low prints
   `read-only channel (power N needed, you have M)`.
+
+Ignore (the Matrix account ignore list, `m.ignored_user_list`, shared with
+your other clients):
+
+- `/ignore NICK` or `/ignore @user:server` — ignore a user. A bare nick is
+  looked up in the current window's members first, then in all windows;
+  ambiguous nicks are refused.
+- `/unignore NICK` — stop ignoring (works for ignored users in no window).
+- `/ignore` — list the ignored users.
+- Messages from ignored users are also hidden client-side, in case the
+  server still delivers them; joins/parts stay visible.
 
 Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
 and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),

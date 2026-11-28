@@ -18,6 +18,7 @@
 - /join (alias or room id), /part, /topic, /invite, /kick, /op, /deop (power levels), /names, /who, /whois
 - /create #x [-public] [-noencrypt]: new channel on your own homeserver, invite-only and encrypted by default; /join of a missing #x on your own server offers to create it [y/n]
 - /alias add|del, /publish on|off (room directory), /ban, /unban, /kickban, /power NICK 0..100 (refused above your own level)
+- /ignore NICK|@user:server and /unignore NICK use the Matrix account ignore list (m.ignored_user_list); bare /ignore lists it; messages from ignored users are also hidden client-side
 - /mode maps IRC modes to Matrix room state: +i invite-only (join rule), +m moderated (events_default 50), +t topic lock, +o op, +b ban; bare /mode and the status bar show the modes (e.g. +it)
 - Read-only channels: a refused send says which power level is needed
 - Presence: away/online sent and shown
@@ -39,7 +40,7 @@
 - /me (/action), /channels, /window next|prev, /clear, /close, /quit, /version, /help
 - /set vars: TIMESTAMP, TIMESTAMP_STRING, AUTO_REPLY, BEEP
 - /theme with live preview: 62 iamb themes plus 'terminal'
-- /ctcp and /ignore are recognised but report "Not supported on Matrix"
+- /ctcp is recognised but reports "Not supported on Matrix"
 
 ## Links
 - [Source repository](https://github.com/jpzk/iambitchx)

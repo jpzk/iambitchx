@@ -35,6 +35,11 @@ for that.
   (`[y/n]`). Other servers still say "no such channel".
 - **Channel admin.** `/alias add|del`, `/publish on|off`, `/ban`, `/unban`,
   `/kickban`, `/power NICK 0..100` (refused above your own level).
+- **`/ignore` on Matrix.** `/ignore NICK|@user:server` and `/unignore` use
+  the account ignore list (`m.ignored_user_list`, via matrix-sdk
+  `ignore_user`/`unignore_user`); bare `/ignore` lists it. A nick is
+  resolved against the window members. Messages from ignored users are
+  hidden client-side too. `/ignore` is no longer "Not supported on Matrix".
 - **`/mode` on Matrix.** `+i/-i` join rule, `+m/-m` moderated
   (`events_default` 50/0), `+t/-t` topic lock, `+o/-o` op, `+b/-b` ban.
   Bare `/mode` prints the modes (e.g. `+it`), and the status bar shows them.
