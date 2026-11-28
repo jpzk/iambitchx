@@ -1,5 +1,5 @@
 //! `/lastlog` and `/set LOG`.
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use super::*;
 use chrono::{Local, TimeZone as _};
@@ -89,7 +89,8 @@ fn test_lastlog_parse_errors() {
     assert!(parse("lastlog -clear x").is_err());
 }
 
-fn mode(p: &Path) -> u32 {
+#[cfg(unix)]
+fn mode(p: &std::path::Path) -> u32 {
     use std::os::unix::fs::PermissionsExt as _;
     std::fs::metadata(p).unwrap().permissions().mode() & 0o777
 }
