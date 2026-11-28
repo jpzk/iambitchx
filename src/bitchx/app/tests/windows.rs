@@ -322,7 +322,8 @@ fn test_notify_off_by_default_and_on_when_set() {
     // A duplicate event does not notify again.
     say_in(&mut app, "!b:example.org", "$3", "carla again");
     assert_eq!(app.take_notify(), None);
-    // Works with BEEP off.
+    // Works with BEEP off (drain the bell earlier mentions rang).
+    app.take_bell();
     typed(&mut app, "/set beep off");
     say_in(&mut app, "!b:example.org", "$4", "carla!");
     assert!(app.take_notify().is_some());
