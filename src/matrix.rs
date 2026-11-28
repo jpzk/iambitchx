@@ -5,7 +5,7 @@
 //! executor for the [`Effect`]s the UI asks for. Everything it learns goes
 //! to the UI as [`MxEvent`]s over a channel.
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use matrix_sdk::config::SyncSettings;
@@ -21,6 +21,7 @@ use matrix_sdk::ruma::api::client::room::create_room::v3::{
     Request as CreateRoomRequest, RoomPreset,
 };
 use matrix_sdk::ruma::api::error::ErrorKind;
+use matrix_sdk::ruma::events::ignored_user_list::IgnoredUserListEventContent;
 use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
 use matrix_sdk::ruma::events::room::join_rules::JoinRule;
 use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
@@ -336,13 +337,52 @@ pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<Stamped>
     lines.into_iter().map(|l| (id.clone(), ts, l)).collect()
 }
 
+/// A message from a user on the account ignore list: hidden client-side
+/// too, in case the server still delivers it. State events (joins, parts,
+/// topic) stay so the member list remains right.
+pub fn from_ignored(ignored: &[OwnedUserId], raw: &Raw<AnySyncTimelineEvent>) -> bool {
+    if ignored.is_empty()
+        || raw.get_field::<serde_json::Value>("state_key").ok().flatten().is_some()
+    {
+        return false;
+    }
+    raw.get_field::<OwnedUserId>("sender")
+        .ok()
+        .flatten()
+        .is_some_and(|s| ignored.contains(&s))
+}
+
+/// The current account ignore list (`m.ignored_user_list`), sorted.
+fn ignored_now(client: &Client) -> Vec<OwnedUserId> {
+    let mut users = client.subscribe_to_ignore_user_list_changes().get();
+    users.sort();
+    users
+}
+
+/// The ignore list as the server has it now: the stored copy only catches
+/// up with the next `/sync`.
+async fn ignored_list(client: &Client) -> anyhow::Result<Vec<OwnedUserId>> {
+    let content = client
+        .account()
+        .fetch_account_data_static::<IgnoredUserListEventContent>()
+        .await?
+        .map(|c| c.deserialize())
+        .transpose()?
+        .unwrap_or_default();
+    Ok(content.ignored_users.into_keys().collect())
+}
+
 /// The last 50 events of a room, oldest first.
 pub async fn backfill(room: &Room, me: &UserId) -> anyhow::Result<Vec<Stamped>> {
     let mut opts = MessagesOptions::backward();
     opts.limit = uint!(50);
     let msgs = room.messages(opts).await?;
+    let ignored = ignored_now(&room.client());
     let mut out = vec![];
     for ev in msgs.chunk.iter().rev() {
+        if from_ignored(&ignored, ev.raw()) {
+            continue;
+        }
         out.extend(convert(me, ev));
     }
     Ok(out)
@@ -418,15 +458,30 @@ async fn sync_run(
     settings: SyncSettings,
     away_rx: &watch::Receiver<bool>,
 ) -> Result<(), matrix_sdk::Error> {
+    let last_ignored: Arc<Mutex<Option<Vec<OwnedUserId>>>> = Arc::default();
     client
         .sync_with_callback(settings, |resp| {
             let client = client.clone();
+            let last_ignored = last_ignored.clone();
             let tx = tx.clone();
             let me = me.clone();
             attempts.store(0, Ordering::SeqCst);
             crate::debug_tap::on_sync(&resp, &tx);
             let away_changed = away_rx.has_changed().unwrap_or(false);
             async move {
+                // the account ignore list first: it may hide lines below
+                let ignored = ignored_now(&client);
+                // only on change: our own /ignore already sent the server's
+                // list, the stored copy catches up a sync later
+                let changed = {
+                    let mut sent = last_ignored.lock().unwrap_or_else(PoisonError::into_inner);
+                    let changed = sent.as_ref() != Some(&ignored);
+                    *sent = Some(ignored.clone());
+                    changed
+                };
+                if changed {
+                    let _ = tx.send(MxEvent::Ignored(ignored.clone()));
+                }
                 for (room_id, update) in resp.rooms.joined {
                     let Some(room) = client.get_room(&room_id) else {
                         continue;
@@ -434,6 +489,9 @@ async fn sync_run(
                     let _ = tx.send(MxEvent::Room(snapshot(&room, &me).await));
                     let mut lines = vec![];
                     for ev in &update.timeline.events {
+                        if from_ignored(&ignored, ev.raw()) {
+                            continue;
+                        }
                         lines.extend(convert(&me, ev));
                     }
                     if !lines.is_empty() {
@@ -834,6 +892,14 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 });
             }
         },
+        Effect::Ignore(user) => {
+            client.account().ignore_user(&user).await?;
+            let _ = tx.send(MxEvent::Ignored(ignored_list(client).await?));
+        },
+        Effect::Unignore(user) => {
+            client.account().unignore_user(&user).await?;
+            let _ = tx.send(MxEvent::Ignored(ignored_list(client).await?));
+        },
         Effect::Backfill(room_id) => {
             let room = room_of(client, &room_id)?;
             let lines = backfill(&room, &me).await?;
@@ -1058,6 +1124,30 @@ mod tests {
 
     fn ev(json: &str) -> Raw<AnySyncTimelineEvent> {
         Raw::from_json_string(json.to_string()).unwrap()
+    }
+
+    #[test]
+    fn test_from_ignored_drops_messages_keeps_state() {
+        let spam = owned_user_id!("@spam:evil.tld");
+        let msg = |sender: &str| {
+            ev(&format!(
+                r#"{{"type":"m.room.message","event_id":"$x","sender":"{sender}","origin_server_ts":1,"content":{{"msgtype":"m.text","body":"buy"}}}}"#
+            ))
+        };
+        let ignored = vec![spam.clone()];
+        assert!(from_ignored(&ignored, &msg("@spam:evil.tld")));
+        assert!(!from_ignored(&ignored, &msg("@bob:example.org")));
+        // nothing ignored: nothing dropped
+        assert!(!from_ignored(&[], &msg("@spam:evil.tld")));
+        // the ignored user's membership stays (member list, NAMES)
+        let join =
+            member_ev(1, "@spam:evil.tld", "@spam:evil.tld", r#"{"membership":"join"}"#, None);
+        assert!(!from_ignored(&ignored, &ev(&join)));
+        // encrypted events are dropped by sender too
+        let enc = ev(
+            r#"{"type":"m.room.encrypted","event_id":"$e","sender":"@spam:evil.tld","origin_server_ts":1,"content":{"algorithm":"m.megolm.v1.aes-sha2"}}"#,
+        );
+        assert!(from_ignored(&ignored, &enc));
     }
 
     fn member_ev(id: u8, sender: &str, target: &str, content: &str, prev: Option<&str>) -> String {

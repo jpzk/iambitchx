@@ -24,6 +24,7 @@ mod admin;
 mod away;
 mod debug;
 mod events;
+mod ignore;
 mod keys;
 mod logo;
 mod state;
@@ -96,6 +97,10 @@ pub(crate) struct App {
     /// A live mention arrived and `BEEP` is on: ring the bell once at the
     /// next draw (see [`Self::take_bell`]).
     pub bell: bool,
+    /// `m.ignored_user_list`: users whose events are hidden.
+    pub ignored: Vec<OwnedUserId>,
+    /// The first ignore list arrived (later changes are announced).
+    pub ignore_known: bool,
     /// Debug tap settings last pushed to [`crate::debug_tap::configure`]
     /// (starts at the tap's own defaults: off, all, raw off).
     dbg_applied: (bool, String, bool),
@@ -198,6 +203,8 @@ impl App {
             display_name: None,
             probe: Probe::Start,
             bell: false,
+            ignored: vec![],
+            ignore_known: false,
             dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
             dbg_flood: HashMap::new(),
             pending_joins: HashMap::new(),
@@ -835,9 +842,9 @@ impl App {
             },
             BitchxCommand::Unban { target } => self.unban(&target),
             BitchxCommand::Power { target, level } => self.raw_power(&target, level),
-            BitchxCommand::Ctcp { .. }
-            | BitchxCommand::Ignore { .. }
-            | BitchxCommand::Unignore { .. } => {
+            BitchxCommand::Ignore { pattern } => self.ignore(pattern),
+            BitchxCommand::Unignore { pattern } => self.unignore(&pattern),
+            BitchxCommand::Ctcp { .. } => {
                 self.error("Not supported on Matrix");
                 vec![]
             },

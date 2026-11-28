@@ -255,9 +255,9 @@ fn test_bitchx_ctcp() {
 
 #[test]
 fn test_bitchx_ignore_unignore() {
-    assert_eq!(ok("ignore @spam:x"), BitchxCommand::Ignore { pattern: s("@spam:x") });
+    assert_eq!(ok("ignore @spam:x"), BitchxCommand::Ignore { pattern: Some(s("@spam:x")) });
+    assert_eq!(ok("ignore"), BitchxCommand::Ignore { pattern: None });
     assert_eq!(ok("unignore @spam:x"), BitchxCommand::Unignore { pattern: s("@spam:x") });
-    assert_eq!(parse("ignore"), Err(missing("ignore", "pattern")));
     assert_eq!(parse("unignore"), Err(missing("unignore", "pattern")));
     assert_eq!(parse("ignore a b"), Err(invalid("ignore", "b")));
 }

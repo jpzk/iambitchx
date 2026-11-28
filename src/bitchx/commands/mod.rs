@@ -118,8 +118,9 @@ pub(crate) enum BitchxCommand {
         target: String,
         text: String,
     },
+    /// `/ignore` lists; `/ignore NICK|@user:server` ignores.
     Ignore {
-        pattern: String,
+        pattern: Option<String>,
     },
     Unignore {
         pattern: String,
@@ -612,7 +613,7 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Ctcp { target, text }
         },
         "ignore" => {
-            let pattern = args.required_word("pattern")?;
+            let pattern = args.word();
             args.finish()?;
             BitchxCommand::Ignore { pattern }
         },

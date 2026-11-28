@@ -109,6 +109,7 @@ fn rows(app: &mut App) -> Vec<String> {
 mod admin;
 mod away;
 mod commands;
+mod ignore;
 mod logo;
 mod presence;
 mod security;
