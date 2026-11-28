@@ -85,6 +85,11 @@ pub(crate) fn draw(frame: &mut Frame<'_>, app: &mut App) {
         let mut out = std::io::stdout();
         let _ = out.write_all(b"\x07").and_then(|()| out.flush());
     }
+    // `/set NOTIFY ON`: an OSC 777/9 desktop notification (sanitised, see
+    // [`crate::bitchx::notify`]); like the BEL it moves no cursor.
+    if let Some((title, body)) = app.take_notify() {
+        crate::bitchx::notify::emit(&title, &body);
+    }
     // `/theme`: the picker docks between the scrollback and the status lines.
     let picker = if app.picker.is_some() && area.height > 4 + top + PICKER_ROWS as u16 {
         PICKER_ROWS as u16
@@ -273,13 +278,16 @@ mod tests {
         let buf = render(&mut app, 80, 8);
         let y = 5;
         let r = row(&buf, y);
-        let at = r.find("[Act: 3,4]").unwrap_or_else(|| panic!("{r:?}"));
+        let at = r.find("[Act: 3,4*]").unwrap_or_else(|| panic!("{r:?}"));
         let x3 = (r[..at].chars().count() + 6) as u16;
         assert_eq!(buf[(x3, y)].symbol(), "3");
         assert_eq!(buf[(x3, y)].fg, Color::White, "plain activity");
         assert_eq!(buf[(x3 + 2, y)].symbol(), "4");
         assert_eq!(buf[(x3 + 2, y)].fg, Color::Yellow, "mention");
         assert_eq!(buf[(x3 + 2, y)].bg, Color::Blue);
+        assert_eq!(buf[(x3 + 3, y)].symbol(), "*", "hot activity marker");
+        assert_eq!(buf[(x3 + 3, y)].fg, Color::Yellow);
+        assert_eq!(buf[(x3 + 4, y)].symbol(), "]");
     }
 
     fn room_app() -> App {

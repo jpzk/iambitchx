@@ -100,6 +100,13 @@ Lastlog and logging:
   Debug output and `/lastlog` views are never logged; files are `0600`,
   directories `0700`, symlinked log files are refused.
 
+Highlights: a line that names your nick, mxid, display name or a
+`/set HILIGHT word,word` word (whole words, any case) is shown in the BitchX
+hilight colour, its window turns hot in the status bar (`[Act: 3,4*]`) and
+the terminal beeps unless `/set BEEP OFF`. `/set NOTIFY ON` (default OFF)
+also sends a desktop notification as an OSC 777 / OSC 9 terminal escape
+(sanitised; in tmux it needs `set -g allow-passthrough on`).
+
 Themes: `/theme` opens a live-preview picker (Up/Down preview, Enter keeps
 and saves to `[settings.bitchx] theme`, Esc cancels) over `bitchx` (default),
 `terminal` (your terminal's own colours) and 62 bundled iamb themes; drop more

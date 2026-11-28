@@ -522,6 +522,33 @@ then of all windows; an ambiguous nick is refused and the matching user IDs are 
 Stop ignoring a user.
 The nick may also name an ignored user who is in no window.
 .El
+.Sh "HIGHLIGHTS AND NOTIFICATIONS"
+A message that names your nick (the mxid localpart, also as
+.Sy @nick ) ,
+your full mxid, your display name or one of the highlight words is a
+highlight: matching is case-insensitive and on word boundaries, and your
+own lines never match.
+A highlighted line is drawn in the BitchX hilight colour of the palette,
+its window is shown as hot activity in the status bar, for example
+.Sy [Act: 3,4*] ,
+and the terminal beeps.
+.Bl -tag -width Ds
+.It Sy "/set HILIGHT word,word"
+Extra highlight words, comma separated (the BitchX
+.Sy AUTO_REPLY
+words count too).
+.Sy "/set -HILIGHT"
+clears them.
+.It Sy "/set BEEP ON|OFF|TOGGLE"
+Ring the terminal bell on a highlight (default ON).
+.It Sy "/set NOTIFY ON|OFF|TOGGLE"
+Also raise a desktop notification on a highlight (default OFF).
+It is sent as a terminal escape: OSC 777 for urxvt, foot, VTE terminals,
+Ghostty and WezTerm, OSC 9 otherwise.
+Inside tmux it is wrapped for passthrough, which needs
+.Sy "set -g allow-passthrough on" .
+Nick, room and text are sanitised and cut to 120 characters.
+.El
 
 .Sh "LASTLOG AND LOGGING"
 .Bl -tag -width Ds

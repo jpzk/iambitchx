@@ -102,6 +102,9 @@ pub(crate) struct App {
     pub ignored: Vec<OwnedUserId>,
     /// The first ignore list arrived (later changes are announced).
     pub ignore_known: bool,
+    /// A live mention arrived and `NOTIFY` is on: the `(title, body)` of the
+    /// desktop notification for the next draw (see [`Self::take_notify`]).
+    pub notify: Option<(String, String)>,
     /// Debug tap settings last pushed to [`crate::debug_tap::configure`]
     /// (starts at the tap's own defaults: off, all, raw off).
     dbg_applied: (bool, String, bool),
@@ -211,6 +214,7 @@ impl App {
             bell: false,
             ignored: vec![],
             ignore_known: false,
+            notify: None,
             dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
             dbg_flood: HashMap::new(),
             pending_joins: HashMap::new(),
@@ -299,14 +303,20 @@ impl App {
         self.switch((self.current + n - 1) % n)
     }
 
-    /// The mention matcher: our mxid, display name and `AUTO_REPLY`.
+    /// The mention matcher: our mxid, display name, `AUTO_REPLY` and `HILIGHT`.
     pub(crate) fn matcher(&self) -> Matcher {
-        Matcher::new(&self.me, self.display_name.as_deref(), &self.vars.auto_reply)
+        let words = format!("{},{}", self.vars.auto_reply, self.vars.hilight);
+        Matcher::new(&self.me, self.display_name.as_deref(), &words)
     }
 
     /// Whether the bell is due; clears it.
     pub(crate) fn take_bell(&mut self) -> bool {
         std::mem::take(&mut self.bell)
+    }
+
+    /// The pending desktop notification, if any; clears it.
+    pub(crate) fn take_notify(&mut self) -> Option<(String, String)> {
+        self.notify.take()
     }
 
     /// Refnums of other windows with an unread mention (shown highlighted
@@ -811,6 +821,12 @@ impl App {
                 self.info(
                     "/ignore [NICK|@user:server], /unignore NICK: account ignore list \
                      (m.ignored_user_list); bare /ignore lists it",
+                    "/set HILIGHT word,word: extra highlight words (also your nick, mxid, \
+                     display name); hot windows show as [Act: 4*]; /set BEEP ON|OFF",
+                );
+                self.info(
+                    "/set NOTIFY ON|OFF: desktop notification on a highlight \
+                     (OSC 777/9 terminal escape, default OFF)",
                 );
                 self.info(
                     "/lastlog [-i] TEXT: search this window (-i any case), /lastlog -clear: drop it",
