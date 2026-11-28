@@ -125,7 +125,16 @@ fn test_bind_runs_command() {
     typed(&mut app, "/bind M-x /me meta");
     assert_eq!(sent(&app.handle_key(alt('x'))), vec![("meta".into(), true)]);
     typed(&mut app, "/bind");
-    assert_eq!(last(&app), Line::Info(format!("{:<6} /yo there", "^N")));
+    // listed in key order: ^X, then M-x, then F-keys
+    let tail: Vec<Line> = app.cur().lines.iter().rev().take(3).rev().cloned().collect();
+    assert_eq!(
+        tail,
+        vec![
+            Line::Info(format!("{:<6} /yo there", "^N")),
+            Line::Info(format!("{:<6} /me meta", "M-x")),
+            Line::Info(format!("{:<6} /me pressed f2", "F2")),
+        ]
+    );
     typed(&mut app, "/bind -^N");
     assert_eq!(last(&app), Line::Info("^N unbound".into()));
     app.handle_key(ctrl('n'));
