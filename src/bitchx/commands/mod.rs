@@ -60,9 +60,41 @@ pub(crate) enum BitchxCommand {
     },
     /// `/list [server] [-s text]`: the public channel directory.
     List(ListArgs),
+    /// `/mode [#chan] [+imt-imt] [+o|+b nick ...]`: room modes mapped onto Matrix
+    /// state; bare `/mode` prints them.
     Mode {
-        target: String,
+        target: Option<String>,
         modes: Option<String>,
+    },
+    /// `/create #x [-public] [-noencrypt]`: a new room with alias `#x` on our server.
+    Create {
+        room: String,
+        public: bool,
+        encrypt: bool,
+    },
+    /// `/alias add|del #x:server`: an alias for the current room.
+    Alias {
+        add: bool,
+        alias: String,
+    },
+    /// `/publish on|off`: list the current room in the room directory.
+    Publish(bool),
+    Ban {
+        target: String,
+        reason: Option<String>,
+    },
+    Unban {
+        target: String,
+    },
+    /// `/kickban nick [reason]`: on Matrix a ban also removes the user.
+    Kickban {
+        target: String,
+        reason: Option<String>,
+    },
+    /// `/power nick <0..100>`: a raw power level.
+    Power {
+        target: String,
+        level: i64,
     },
     Kick {
         target: String,
@@ -183,11 +215,14 @@ impl std::error::Error for BitchxError {}
 /// Every command word understood by [`parse`], including aliases, for `/help`.
 pub(crate) const COMMAND_NAMES: &[&str] = &[
     "action",
+    "alias",
     "away",
     "back",
+    "ban",
     "channels",
     "clear",
     "close",
+    "create",
     "ctcp",
     "deop",
     "devices",
@@ -199,6 +234,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "j",
     "join",
     "kick",
+    "kickban",
     "leave",
     "list",
     "me",
@@ -211,8 +247,10 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "nick",
     "op",
     "part",
+    "power",
     "prev",
     "previous",
+    "publish",
     "query",
     "quit",
     "recover",
@@ -222,6 +260,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "theme",
     "topic",
     "trust",
+    "unban",
     "unignore",
     "verify",
     "version",
@@ -351,6 +390,25 @@ fn parse_verify(args: &mut Args<'_>) -> Result<VerifyCmd, BitchxError> {
     }
 }
 
+/// `/create #x [-public] [-noencrypt]`, flags in any order. The channel is a
+/// bare `#x` (our own server) or `#x:our.server`; which server is ours is
+/// checked at dispatch.
+fn parse_create(args: &mut Args<'_>) -> Result<BitchxCommand, BitchxError> {
+    let mut room = None;
+    let (mut public, mut encrypt) = (false, true);
+    while let Some(w) = args.word() {
+        match w.to_lowercase().as_str() {
+            "-public" => public = true,
+            "-noencrypt" => encrypt = false,
+            _ if room.is_none() && w.starts_with('#') && w.len() > 1 => room = Some(w),
+            _ => return Err(BitchxError::InvalidArgument { command: "create", argument: w }),
+        }
+    }
+    let room =
+        room.ok_or(BitchxError::MissingArgument { command: "create", argument: "#channel" })?;
+    Ok(BitchxCommand::Create { room, public, encrypt })
+}
+
 /// Parse the text typed after the leading `/`.
 ///
 /// Returns `Ok(None)` for empty/whitespace-only input, which the caller
@@ -453,9 +511,63 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Whois { target }
         },
         "mode" => {
-            let target = args.required_word("target")?;
-            let modes = args.rest();
+            // IRC: `/mode #chan +i`; the channel may be left out.
+            let target = match args.peek_word() {
+                Some(w) if is_room_ref(w) => args.word(),
+                _ => None,
+            };
+            let modes = args.rest().map(|m| m.trim().to_string());
             BitchxCommand::Mode { target, modes }
+        },
+        "create" => parse_create(&mut args)?,
+        "alias" => {
+            let sub = args.required_word("add|del")?;
+            let add = match sub.to_lowercase().as_str() {
+                "add" => true,
+                "del" | "delete" | "rm" | "remove" => false,
+                _ => return Err(BitchxError::InvalidArgument { command: "alias", argument: sub }),
+            };
+            let alias = args.required_word("#alias:server")?;
+            if !alias.starts_with('#') {
+                return Err(BitchxError::InvalidArgument { command: "alias", argument: alias });
+            }
+            args.finish()?;
+            BitchxCommand::Alias { add, alias }
+        },
+        "publish" => {
+            let on = args.required_word("on|off")?;
+            args.finish()?;
+            match on.to_lowercase().as_str() {
+                "on" => BitchxCommand::Publish(true),
+                "off" => BitchxCommand::Publish(false),
+                _ => return Err(BitchxError::InvalidArgument { command: "publish", argument: on }),
+            }
+        },
+        "ban" => {
+            let target = args.required_word("nick")?;
+            let reason = args.rest();
+            BitchxCommand::Ban { target, reason }
+        },
+        "unban" => {
+            let target = args.required_word("nick")?;
+            args.finish()?;
+            BitchxCommand::Unban { target }
+        },
+        "kickban" => {
+            let target = args.required_word("nick")?;
+            let reason = args.rest();
+            BitchxCommand::Kickban { target, reason }
+        },
+        "power" => {
+            let target = args.required_word("nick")?;
+            let level = args.required_word("level")?;
+            args.finish()?;
+            match level.parse::<i64>() {
+                Ok(level) if (0..=100).contains(&level) => BitchxCommand::Power { target, level },
+                _ => {
+                    return Err(BitchxError::InvalidArgument { command: "power", argument: level });
+                },
+            }
         },
         "kick" => {
             let target = args.required_word("target")?;

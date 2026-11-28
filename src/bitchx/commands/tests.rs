@@ -202,12 +202,15 @@ fn test_bitchx_who_names() {
 
 #[test]
 fn test_bitchx_mode_kick() {
-    assert_eq!(ok("mode #a:b"), BitchxCommand::Mode { target: s("#a:b"), modes: None });
+    assert_eq!(ok("mode #a:b"), BitchxCommand::Mode { target: Some(s("#a:b")), modes: None });
     assert_eq!(
         ok("mode #a:b +o bob"),
-        BitchxCommand::Mode { target: s("#a:b"), modes: Some(s("+o bob")) }
+        BitchxCommand::Mode { target: Some(s("#a:b")), modes: Some(s("+o bob")) }
     );
-    assert_eq!(parse("mode"), Err(missing("mode", "target")));
+    // The channel is optional (current window); bare /mode prints the modes.
+    assert_eq!(ok("mode"), BitchxCommand::Mode { target: None, modes: None });
+    assert_eq!(ok("mode +im-t"), BitchxCommand::Mode { target: None, modes: Some(s("+im-t")) });
+    assert_eq!(ok("mode -b bob "), BitchxCommand::Mode { target: None, modes: Some(s("-b bob")) });
     assert_eq!(ok("kick @bob:x"), BitchxCommand::Kick { target: s("@bob:x"), reason: None });
     assert_eq!(
         ok("kick @bob:x be  nice"),
@@ -402,4 +405,59 @@ fn test_bitchx_theme_parse() {
     assert_eq!(ok("THEME gruvbox-dark"), BitchxCommand::Theme { name: Some(s("gruvbox-dark")) });
     assert_eq!(parse("theme a b"), Err(invalid("theme", "b")));
     assert!(COMMAND_NAMES.contains(&"theme"));
+}
+
+#[test]
+fn test_bitchx_create_parse() {
+    let c = |room: &str, public, encrypt| BitchxCommand::Create { room: s(room), public, encrypt };
+    assert_eq!(ok("create #x"), c("#x", false, true));
+    assert_eq!(ok("create #x:own.org"), c("#x:own.org", false, true));
+    assert_eq!(ok("create #x -public"), c("#x", true, true));
+    assert_eq!(ok("create -noencrypt #x -PUBLIC"), c("#x", true, false));
+    assert_eq!(parse("create"), Err(missing("create", "#channel")));
+    assert_eq!(parse("create -public"), Err(missing("create", "#channel")));
+    assert_eq!(parse("create x"), Err(invalid("create", "x")));
+    assert_eq!(parse("create #"), Err(invalid("create", "#")));
+    assert_eq!(parse("create #x #y"), Err(invalid("create", "#y")));
+    assert_eq!(parse("create #x -privat"), Err(invalid("create", "-privat")));
+}
+
+#[test]
+fn test_bitchx_alias_publish_parse() {
+    assert_eq!(ok("alias add #x:a.org"), BitchxCommand::Alias { add: true, alias: s("#x:a.org") });
+    assert_eq!(ok("alias DEL #x:a.org"), BitchxCommand::Alias { add: false, alias: s("#x:a.org") });
+    assert_eq!(parse("alias"), Err(missing("alias", "add|del")));
+    assert_eq!(parse("alias add"), Err(missing("alias", "#alias:server")));
+    assert_eq!(parse("alias put #x:a"), Err(invalid("alias", "put")));
+    assert_eq!(parse("alias add x:a"), Err(invalid("alias", "x:a")));
+    assert_eq!(parse("alias add #x:a #y"), Err(invalid("alias", "#y")));
+    assert_eq!(ok("publish on"), BitchxCommand::Publish(true));
+    assert_eq!(ok("publish OFF"), BitchxCommand::Publish(false));
+    assert_eq!(parse("publish"), Err(missing("publish", "on|off")));
+    assert_eq!(parse("publish maybe"), Err(invalid("publish", "maybe")));
+}
+
+#[test]
+fn test_bitchx_ban_power_parse() {
+    assert_eq!(ok("ban bob"), BitchxCommand::Ban { target: s("bob"), reason: None });
+    assert_eq!(
+        ok("ban bob go  away"),
+        BitchxCommand::Ban { target: s("bob"), reason: Some(s("go  away")) }
+    );
+    assert_eq!(ok("unban bob"), BitchxCommand::Unban { target: s("bob") });
+    assert_eq!(parse("unban bob x"), Err(invalid("unban", "x")));
+    assert_eq!(
+        ok("kickban bob spam"),
+        BitchxCommand::Kickban { target: s("bob"), reason: Some(s("spam")) }
+    );
+    assert_eq!(parse("ban"), Err(missing("ban", "nick")));
+    assert_eq!(parse("kickban"), Err(missing("kickban", "nick")));
+    assert_eq!(ok("power bob 75"), BitchxCommand::Power { target: s("bob"), level: 75 });
+    assert_eq!(ok("power bob 0"), BitchxCommand::Power { target: s("bob"), level: 0 });
+    assert_eq!(ok("power bob 100"), BitchxCommand::Power { target: s("bob"), level: 100 });
+    assert_eq!(parse("power bob 101"), Err(invalid("power", "101")));
+    assert_eq!(parse("power bob -1"), Err(invalid("power", "-1")));
+    assert_eq!(parse("power bob op"), Err(invalid("power", "op")));
+    assert_eq!(parse("power bob"), Err(missing("power", "level")));
+    assert_eq!(parse("power bob 5 6"), Err(invalid("power", "6")));
 }

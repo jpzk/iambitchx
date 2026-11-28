@@ -803,7 +803,15 @@ impl App {
                 self.info("Recovering secrets from secure backup with the given key (********)");
                 vec![Effect::Recover(key)]
             },
+            // dispatched in the chan-admin follow-up commits
             BitchxCommand::Mode { .. }
+            | BitchxCommand::Create { .. }
+            | BitchxCommand::Alias { .. }
+            | BitchxCommand::Publish(_)
+            | BitchxCommand::Ban { .. }
+            | BitchxCommand::Unban { .. }
+            | BitchxCommand::Kickban { .. }
+            | BitchxCommand::Power { .. }
             | BitchxCommand::Ctcp { .. }
             | BitchxCommand::Ignore { .. }
             | BitchxCommand::Unignore { .. } => {
