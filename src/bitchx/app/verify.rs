@@ -37,6 +37,14 @@ impl App {
                 self.info("Encryption not enabled");
                 vec![]
             },
+            Confirm::Create(alias) if yes => {
+                self.info(format!("Creating channel #{alias}:{}...", self.me.server_name()));
+                vec![Effect::CreateRoom { alias, public: false, encrypt: true }]
+            },
+            Confirm::Create(alias) => {
+                self.info(format!("Not creating #{alias}"));
+                vec![]
+            },
         }
     }
 

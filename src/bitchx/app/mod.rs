@@ -20,6 +20,7 @@ use crate::bitchx::model::{
 use crate::bitchx::status::{BxStatus, UserCounts};
 use crate::bitchx::vars::{Vars, lookup};
 
+mod admin;
 mod away;
 mod debug;
 mod events;
@@ -318,9 +319,12 @@ impl App {
         let win = self.cur();
         let me = win.room.members.iter().find(|m| m.user_id == self.me);
         let mut modes = String::new();
-        if win.room.invite_only {
-            modes.push('i');
-        }
+        let room_modes = crate::bitchx::modes::RoomModes {
+            invite_only: win.room.invite_only,
+            moderated: win.room.moderated,
+            topic_lock: win.room.topic_lock,
+        };
+        modes.push_str(&room_modes.letters());
         if win.room.encrypted {
             modes.push('e');
         }
@@ -803,16 +807,17 @@ impl App {
                 self.info("Recovering secrets from secure backup with the given key (********)");
                 vec![Effect::Recover(key)]
             },
-            // dispatched in the chan-admin follow-up commits
-            BitchxCommand::Mode { .. }
-            | BitchxCommand::Create { .. }
-            | BitchxCommand::Alias { .. }
-            | BitchxCommand::Publish(_)
-            | BitchxCommand::Ban { .. }
-            | BitchxCommand::Unban { .. }
-            | BitchxCommand::Kickban { .. }
-            | BitchxCommand::Power { .. }
-            | BitchxCommand::Ctcp { .. }
+            BitchxCommand::Mode { target, modes } => self.mode(target, modes),
+            BitchxCommand::Create { room, public, encrypt } => self.create(&room, public, encrypt),
+            BitchxCommand::Alias { add, alias } => self.alias(add, &alias),
+            BitchxCommand::Publish(on) => self.publish(on),
+            // On Matrix a ban also removes the member: /kickban is /ban.
+            BitchxCommand::Ban { target, reason } | BitchxCommand::Kickban { target, reason } => {
+                self.ban(&target, reason)
+            },
+            BitchxCommand::Unban { target } => self.unban(&target),
+            BitchxCommand::Power { target, level } => self.raw_power(&target, level),
+            BitchxCommand::Ctcp { .. }
             | BitchxCommand::Ignore { .. }
             | BitchxCommand::Unignore { .. } => {
                 self.error("Not supported on Matrix");

@@ -417,6 +417,8 @@ pub(crate) enum MxEvent {
     Synched { room_id: OwnedRoomId, millis: u64 },
     /// A `-:-` line for a room window, or the status window.
     Info { room_id: Option<OwnedRoomId>, line: Line },
+    /// `/join #x:<our server>` got 404: ask whether to create `#x`.
+    OfferCreate(String),
     /// Our own display name changed (`/nick`); the nick stays the localpart.
     OwnDisplayName(String),
     /// Away state changed.
