@@ -47,7 +47,7 @@ use crate::bitchx::channels::{LIST_MAX, ListArgs, ListEntry, not_found_hint};
 use crate::bitchx::e2ee::{utd_reason, verification_event_text};
 use crate::bitchx::format::sanitize;
 use crate::bitchx::model::{
-    Effect, Line, Member, MxEvent, RoomSnapshot, Stamped, away_of, nick_of,
+    Effect, Line, Media, Member, MxEvent, RoomSnapshot, Stamped, away_of, nick_of,
 };
 use crate::bitchx::modes::RoomModes;
 use crate::config::ApplicationSettings;
@@ -291,6 +291,29 @@ pub fn convert(me: &UserId, tev: &TimelineEvent) -> Vec<Stamped> {
     convert_raw(me, tev.raw())
 }
 
+/// The media in an `m.image` / `m.file` / `m.audio` / `m.video` message: its
+/// file name, caption (a body other than the file name) and source (as JSON:
+/// plain `mxc://` or an encrypted file, which the SDK decrypts on `/get`).
+fn media_of(msg: &MessageType) -> Option<Media> {
+    let (name, body, source) = match msg {
+        MessageType::Image(c) => (c.filename(), &c.body, &c.source),
+        MessageType::File(c) => (c.filename(), &c.body, &c.source),
+        MessageType::Audio(c) => (c.filename(), &c.body, &c.source),
+        MessageType::Video(c) => (c.filename(), &c.body, &c.source),
+        _ => return None,
+    };
+    let source = serde_json::to_string(source).ok()?;
+    let caption = Some(body.trim())
+        .filter(|b| !b.is_empty() && *b != name)
+        .map(str::to_string);
+    Some(Media {
+        kind: msg.msgtype().to_string(),
+        name: name.to_string(),
+        caption,
+        source,
+    })
+}
+
 /// Translate one (decrypted or plain) timeline event.
 pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<Stamped> {
     let Ok(ev) = raw.deserialize() else {
@@ -306,6 +329,9 @@ pub fn convert_raw(me: &UserId, raw: &Raw<AnySyncTimelineEvent>) -> Vec<Stamped>
         AnySyncTimelineEvent::MessageLike(AnySyncMessageLikeEvent::RoomMessage(
             SyncMessageLikeEvent::Original(m),
         )) => {
+            if let Some(media) = media_of(&m.content.msgtype) {
+                return vec![(id, ts, Line::Media { nick, own, media })];
+            }
             let line = match m.content.msgtype {
                 MessageType::Text(t) => Line::Public { nick, own, text: t.body },
                 MessageType::Emote(e) => Line::Action { nick, own, text: e.body },
@@ -977,6 +1003,12 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
         Effect::Devices(user) => crate::e2ee::devices(client, user, tx).await?,
         Effect::Trust => crate::e2ee::trust(client, tx).await?,
         Effect::Recover(key) => crate::e2ee::recover(client, key, tx).await?,
+        Effect::Get { room_id, n, media, open } => {
+            crate::media_io::get(client, room_id, n, media, open, tx).await?;
+        },
+        Effect::Upload { room_id, path, caption } => {
+            crate::media_io::upload(client, room_id, path, caption, tx).await?;
+        },
         Effect::Quit => {},
     }
     Ok(())

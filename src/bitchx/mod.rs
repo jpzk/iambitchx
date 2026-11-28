@@ -13,6 +13,7 @@ mod golden;
 pub(crate) mod input;
 pub(crate) mod lastlog;
 pub(crate) mod logfile;
+pub(crate) mod media;
 pub(crate) mod mention;
 pub(crate) mod model;
 pub(crate) mod modes;

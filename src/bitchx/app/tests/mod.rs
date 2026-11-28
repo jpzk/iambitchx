@@ -112,6 +112,7 @@ mod commands;
 mod ignore;
 mod logging;
 mod logo;
+mod media;
 mod presence;
 mod security;
 mod vars;

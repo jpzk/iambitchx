@@ -13,6 +13,7 @@
 //!   formatter indents their continuation rows under the text.
 
 use crate::bitchx::channels::ListEntry;
+use crate::bitchx::media::Media;
 use crate::bitchx::model::{Line, RoomSnapshot, Run};
 
 /// Unicode general category `Cf` (format characters, Unicode 15.1): bidi
@@ -141,6 +142,17 @@ pub(crate) fn clean_line(line: Line) -> Line {
         Line::Debug { cat, text } => Line::Debug { cat: o(cat), text: o(text) },
         Line::Lastlog { ts, line } => Line::Lastlog { ts, line: Box::new(clean_line(*line)) },
         Line::LastlogInfo(t) => Line::LastlogInfo(o(t)),
+        Line::Media { nick, own, media } => Line::Media {
+            nick: o(nick),
+            own,
+            media: Media {
+                kind: o(media.kind),
+                name: o(media.name),
+                caption: opt(media.caption),
+                // never shown: the JSON the SDK reads back on `/get`
+                source: media.source,
+            },
+        },
         l @ Line::WhoisRule => l,
     }
 }

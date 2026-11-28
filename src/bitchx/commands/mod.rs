@@ -5,6 +5,7 @@
 use std::fmt;
 
 use crate::bitchx::channels::{ListArgs, parse_list_args};
+use crate::bitchx::media::{GetArgs, parse_get, parse_upload};
 
 mod secret;
 
@@ -160,6 +161,14 @@ pub(crate) enum BitchxCommand {
     },
     /// `/lastlog -clear`: remove the `/lastlog` output from the window.
     LastlogClear,
+    /// `/get [-o] [N | #N]`: save the Nth-last (or shown `#N`) media of the
+    /// window; `-o` also opens it.
+    Get(GetArgs),
+    /// `/upload PATH [caption]`: send a local file.
+    Upload {
+        path: String,
+        caption: Option<String>,
+    },
     /// `/theme`: open the theme picker; `/theme name`: switch to a theme.
     Theme {
         name: Option<String>,
@@ -236,6 +245,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "devices",
     "encrypt",
     "exit",
+    "get",
     "help",
     "ignore",
     "invite",
@@ -271,6 +281,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "trust",
     "unban",
     "unignore",
+    "upload",
     "verify",
     "version",
     "who",
@@ -705,6 +716,27 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Recover { key: Secret::new(key.trim()) }
         },
         "verify" => BitchxCommand::Verify(parse_verify(&mut args)?),
+        "get" => {
+            let rest = args.rest().unwrap_or_default();
+            match parse_get(&rest) {
+                Ok(g) => BitchxCommand::Get(g),
+                Err(argument) => {
+                    return Err(BitchxError::InvalidArgument { command: "get", argument });
+                },
+            }
+        },
+        "upload" => {
+            let rest = args.required_rest("path")?;
+            match parse_upload(&rest) {
+                Some((path, caption)) => BitchxCommand::Upload { path, caption },
+                None => {
+                    return Err(BitchxError::InvalidArgument {
+                        command: "upload",
+                        argument: rest.trim().to_string(),
+                    });
+                },
+            }
+        },
         _ => return Err(BitchxError::UnknownCommand(word.to_string())),
     };
 

@@ -13,6 +13,7 @@ use crate::bitchx::channels::normalize_join;
 use crate::bitchx::commands::{BitchxCommand, COMMAND_NAMES, parse};
 use crate::bitchx::format::names_cell_width;
 use crate::bitchx::input::Input;
+use crate::bitchx::media::{self, GetArgs, Pick};
 use crate::bitchx::mention::Matcher;
 use crate::bitchx::model::{
     Effect, Line, Member, Presence, register_me, same_localpart, whois_idle,
@@ -841,6 +842,11 @@ impl App {
                      o op, b ban; bare /mode shows the modes",
                 );
                 self.info(
+                    "/get [-o] [N|#N]: save the Nth-last (or #N) media of the window to \
+                     ~/Downloads/iambitchx (-o opens it)",
+                );
+                self.info("/upload PATH [caption]: send a file (max 100 MB)");
+                self.info(
                     "Keys: Alt-1..9 window, Ctrl-N/Ctrl-P next/prev, PgUp/PgDn scroll, Tab nick",
                 );
                 vec![]
@@ -889,6 +895,12 @@ impl App {
             },
             BitchxCommand::Unban { target } => self.unban(&target),
             BitchxCommand::Power { target, level } => self.raw_power(&target, level),
+            BitchxCommand::Get(args) => self.get(args),
+            BitchxCommand::Upload { path, caption } => self
+                .current_room()
+                .map(|room_id| Effect::Upload { room_id, path, caption })
+                .into_iter()
+                .collect(),
             BitchxCommand::Ignore { pattern } => self.ignore(pattern),
             BitchxCommand::Unignore { pattern } => self.unignore(&pattern),
             BitchxCommand::Ctcp { .. } => {
@@ -896,6 +908,25 @@ impl App {
                 vec![]
             },
         }
+    }
+
+    /// `/get`: the picked media of the current window, or why there is none.
+    fn get(&mut self, args: GetArgs) -> Vec<Effect> {
+        let Some(room_id) = self.current_room() else {
+            return vec![];
+        };
+        let found = media::pick(&self.cur().media, args.pick).cloned();
+        let Some(r) = found else {
+            let what = match args.pick {
+                _ if self.cur().media.is_empty() => "No media in this window".to_string(),
+                Pick::Last(n) => format!("No media {n} back in this window"),
+                Pick::Number(n) => format!("No media #{n} in this window"),
+            };
+            self.error(what);
+            return vec![];
+        };
+        self.info(format!("Downloading [{} #{}] {}", r.media.kind, r.n, r.media.name));
+        vec![Effect::Get { room_id, n: r.n, media: r.media, open: args.open }]
     }
 
     fn power(&mut self, target: &str, level: i64) -> Vec<Effect> {

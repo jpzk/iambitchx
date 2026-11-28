@@ -20,10 +20,11 @@
 - /alias add|del, /publish on|off (room directory), /ban, /unban, /kickban, /power NICK 0..100 (refused above your own level)
 - /ignore NICK|@user:server and /unignore NICK use the Matrix account ignore list (m.ignored_user_list); bare /ignore lists it; messages from ignored users are also hidden client-side
 - /mode maps IRC modes to Matrix room state: +i invite-only (join rule), +m moderated (events_default 50), +t topic lock, +o op, +b ban; bare /mode and the status bar show the modes (e.g. +it)
+- Media: messages numbered per window ([m.image #3] cat.png); /get [-o] [N|#N] downloads the Nth-last media (encrypted attachments decrypted by the SDK) to $XDG_DOWNLOAD_DIR or ~/Downloads/iambitchx/ with a sanitised, never-overwriting name, -o opens it; /upload PATH [caption] sends a file (refuses directories, missing files, > 100 MB)
 - Read-only channels: a refused send says which power level is needed
 - Presence: away/online sent and shown
 - History backfill when a window opens
-- Not supported (yet): threads, reactions, edits, read receipts, typing notifications, media upload/download
+- Not supported (yet): threads, reactions, edits, read receipts, typing notifications
 
 ### Login
 - Password (prompted, or password_file in the config)

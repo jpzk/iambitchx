@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 use matrix_sdk::ruma::{OwnedRoomId, OwnedUserId};
 
+use crate::bitchx::media::{MEDIA_KEEP, MediaRef};
 use crate::bitchx::model::{Line, RoomSnapshot};
 
 pub(super) const MAX_LINES: usize = 2000;
@@ -37,6 +38,10 @@ pub(crate) struct Window {
     /// Lines pushed since the last [`super::App::flush_log`], for the log
     /// file: (time, line). Only [`crate::bitchx::logfile::loggable`] lines.
     pub(super) log_queue: Vec<(i64, Line)>,
+    /// Media messages seen in this window, oldest first, for `/get`.
+    pub media: Vec<MediaRef>,
+    /// The last media number handed out (`[m.image #n]`).
+    pub(super) media_seq: usize,
 }
 
 impl Window {
@@ -64,6 +69,45 @@ impl Window {
                 Line::Private { nick, mxid: peer.to_string(), own, text }
             },
             (_, line) => line,
+        }
+    }
+
+    /// A media line gets the next number of this window and becomes a
+    /// `<nick> [m.image #n] name` line; its reference goes to `out` (for
+    /// [`Window::add_media`]). An event already shown is not renumbered.
+    /// Other lines pass through.
+    pub(super) fn number_media(
+        &mut self,
+        id: Option<&str>,
+        line: Line,
+        out: &mut Vec<MediaRef>,
+    ) -> Line {
+        let Line::Media { nick, own, media } = line else {
+            return line;
+        };
+        if id.is_some_and(|id| self.ids.contains(id)) {
+            let text = format!("[{}] {}", media.kind, media.name);
+            return Line::Public { nick, own, text };
+        }
+        self.media_seq += 1;
+        let n = self.media_seq;
+        let text = media.text(n);
+        out.push(MediaRef { n, media });
+        Line::Public { nick, own, text }
+    }
+
+    /// Remember numbered media: in front for backfill (older history),
+    /// else at the end. At most [`MEDIA_KEEP`] are kept.
+    pub(super) fn add_media(&mut self, mut refs: Vec<MediaRef>, older: bool) {
+        if older {
+            refs.append(&mut self.media);
+            self.media = refs;
+        } else {
+            self.media.append(&mut refs);
+        }
+        if self.media.len() > MEDIA_KEEP {
+            let n = self.media.len() - MEDIA_KEEP;
+            self.media.drain(..n);
         }
     }
 

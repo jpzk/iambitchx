@@ -35,10 +35,15 @@ impl App {
                 let matcher = self.matcher();
                 let win = &mut self.windows[idx];
                 let now = now_ms();
-                let lines = lines
+                let mut media = vec![];
+                let lines: Vec<_> = lines
                     .into_iter()
-                    .map(|(id, ts, l)| (id, ts.unwrap_or(now), win.query_line(l)))
+                    .map(|(id, ts, l)| {
+                        let l = win.number_media(id.as_deref(), l, &mut media);
+                        (id, ts.unwrap_or(now), win.query_line(l))
+                    })
                     .collect();
+                win.add_media(media, backfill);
                 if backfill {
                     win.prepend(lines);
                 } else {
