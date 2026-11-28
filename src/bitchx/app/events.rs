@@ -29,6 +29,9 @@ impl App {
                 if let Some(name) = own_name.filter(|_| !backfill) {
                     self.own_name(name);
                 }
+                // Hidden client-side too, in case the server still delivers.
+                let lines: Vec<_> =
+                    lines.into_iter().filter(|(_, _, l)| !self.from_ignored(l)).collect();
                 let matcher = self.matcher();
                 let win = &mut self.windows[idx];
                 let now = now_ms();
@@ -115,6 +118,7 @@ impl App {
                 self.windows[0].push(None, line);
             },
             MxEvent::Away(away) => self.away_changed(away),
+            MxEvent::Ignored(users) => self.ignored_changed(users),
             MxEvent::Presence { user, presence } => {
                 self.presence.insert(user, presence);
             },

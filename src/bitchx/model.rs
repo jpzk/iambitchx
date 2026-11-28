@@ -423,6 +423,8 @@ pub(crate) enum MxEvent {
     OwnDisplayName(String),
     /// Away state changed.
     Away(Option<String>),
+    /// The account ignore list (`m.ignored_user_list`), sorted.
+    Ignored(Vec<OwnedUserId>),
     /// Presence of another user, stamped with when it arrived.
     Presence { user: OwnedUserId, presence: Presence },
     /// Round-trip time to the homeserver, in seconds.
@@ -537,6 +539,10 @@ pub(crate) enum Effect {
     Devices(OwnedUserId),
     /// Show our own cross-signing status.
     Trust,
+    /// Add a user to the account ignore list (`m.ignored_user_list`).
+    Ignore(OwnedUserId),
+    /// Remove a user from the account ignore list.
+    Unignore(OwnedUserId),
     /// Import secrets from secure backup; bootstrap cross-signing if missing.
     Recover(Secret),
     Quit,
