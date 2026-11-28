@@ -12,9 +12,21 @@ fn sent(fx: &[Effect]) -> Vec<(String, bool)> {
         .collect()
 }
 
+/// An app with a scratch `config.toml`, so `/alias` and `/bind` save quietly
+/// (without one they report `Not saved`, like `/set`).
+fn app_cfg(tag: &str) -> App {
+    let dir = std::env::temp_dir().join(format!("bx-alias-{tag}-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("config.toml");
+    std::fs::write(&path, "[settings]\n").unwrap();
+    let mut app = app();
+    app.config_toml = Some(path);
+    app
+}
+
 #[test]
 fn test_alias_expands_args() {
-    let mut app = app();
+    let mut app = app_cfg("expand");
     app.handle_key(alt('2'));
     typed(&mut app, "/alias greet /me waves at $1 and $2, says $*");
     assert_eq!(last(&app), Line::Info("Alias GREET added: /me waves at $1 and $2, says $*".into()));
@@ -79,7 +91,7 @@ fn test_alias_cannot_shadow_builtins() {
 
 #[test]
 fn test_alias_list_show_remove() {
-    let mut app = app();
+    let mut app = app_cfg("list");
     typed(&mut app, "/alias");
     assert_eq!(last(&app), Line::Info("No aliases".into()));
     typed(&mut app, "/alias hi me hi");
@@ -97,7 +109,7 @@ fn test_alias_list_show_remove() {
 
 #[test]
 fn test_bind_runs_command() {
-    let mut app = app();
+    let mut app = app_cfg("bind");
     app.handle_key(alt('2'));
     typed(&mut app, "/bind F2 /me pressed f2");
     assert_eq!(last(&app), Line::Info("F2 bound to /me pressed f2".into()));
@@ -155,4 +167,13 @@ fn test_alias_bind_persist() {
     let text = std::fs::read_to_string(&path).unwrap();
     assert!(!text.contains("aliases") && !text.contains("binds"), "{text}");
     std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn test_alias_without_config_toml_reports_not_saved() {
+    let mut app = app();
+    typed(&mut app, "/alias hi me hi");
+    assert_eq!(last(&app), Line::Error("Not saved: no config.toml (JSON config)".into()));
+    // the alias still works for this session
+    assert!(app.aliases.get("hi").is_some());
 }
