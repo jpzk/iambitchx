@@ -122,7 +122,7 @@ pub(crate) fn parse_upload(rest: &str) -> Option<(String, Option<String>)> {
 }
 
 /// Pick the media `pick` means out of a window's references (oldest first).
-pub(crate) fn pick<'a>(refs: &'a [MediaRef], pick: Pick) -> Option<&'a MediaRef> {
+pub(crate) fn pick(refs: &[MediaRef], pick: Pick) -> Option<&MediaRef> {
     match pick {
         Pick::Last(n) => refs.len().checked_sub(n).map(|i| &refs[i]),
         Pick::Number(n) => refs.iter().find(|r| r.n == n),
@@ -338,7 +338,7 @@ mod tests {
         let long = format!("{}.png", "é".repeat(200));
         let s = sanitize_filename(&long);
         assert!(s.len() <= NAME_MAX, "{}", s.len());
-        assert!(s.ends_with(".png"));
+        assert_eq!(std::path::Path::new(&s).extension().and_then(|e| e.to_str()), Some("png"));
     }
 
     #[test]
