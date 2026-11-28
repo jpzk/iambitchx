@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use super::{App, STATUS_NAME};
+
 use crate::bitchx::lastlog;
 use crate::bitchx::logfile::{line_rows, log_path};
 use crate::bitchx::model::Line;

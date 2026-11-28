@@ -1,9 +1,8 @@
 //! `/lastlog` and `/set LOG`.
 use std::path::{Path, PathBuf};
 
-use chrono::{Local, TimeZone as _};
-
 use super::*;
+use chrono::{Local, TimeZone as _};
 
 fn ts(h: u32, m: u32) -> i64 {
     Local.with_ymd_and_hms(2026, 11, 28, h, m, 0).unwrap().timestamp_millis()
