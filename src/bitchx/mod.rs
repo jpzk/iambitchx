@@ -3,6 +3,7 @@
 //! A from-scratch BitchX 1.x clone: numbered windows, two blue status lines,
 //! an IRC input line. See `docs/v2-design.md` and `docs/bitchx-formats.md`.
 
+pub(crate) mod aliases;
 pub(crate) mod app;
 pub(crate) mod channels;
 pub(crate) mod commands;

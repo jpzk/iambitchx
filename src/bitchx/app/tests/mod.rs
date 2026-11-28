@@ -107,6 +107,7 @@ fn rows(app: &mut App) -> Vec<String> {
 }
 
 mod admin;
+mod aliases;
 mod away;
 mod commands;
 mod ignore;

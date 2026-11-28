@@ -72,6 +72,17 @@ pub(crate) enum BitchxCommand {
         public: bool,
         encrypt: bool,
     },
+    /// `/alias [[-]NAME [body]]`: list, show, define or (`-NAME`) remove a
+    /// user alias.
+    UserAlias {
+        name: Option<String>,
+        body: Option<String>,
+    },
+    /// `/bind [[-]KEY [/command]]`: list, show, bind or (`-KEY`) unbind a key.
+    Bind {
+        key: Option<String>,
+        command: Option<String>,
+    },
     /// `/alias add|del #x:server`: an alias for the current room.
     Alias {
         add: bool,
@@ -227,6 +238,7 @@ pub(crate) const COMMAND_NAMES: &[&str] = &[
     "away",
     "back",
     "ban",
+    "bind",
     "channels",
     "clear",
     "close",
@@ -300,6 +312,11 @@ fn split_word(s: &str) -> Option<(&str, &str)> {
     let end = s.find(char::is_whitespace).unwrap_or(s.len());
 
     Some((&s[..end], s[end..].trim_start()))
+}
+
+/// Whether a word is a `/alias add|del #x` subcommand (room alias).
+fn is_room_alias_sub(w: &str) -> bool {
+    crate::bitchx::aliases::ROOM_ALIAS_SUBS.contains(&w.to_lowercase().as_str())
 }
 
 /// Whether a token looks like a Matrix room reference (alias or ID).
@@ -559,6 +576,17 @@ pub(crate) fn parse(input: &str) -> Result<Option<BitchxCommand>, BitchxError> {
             BitchxCommand::Mode { target, modes }
         },
         "create" => parse_create(&mut args)?,
+        // `/alias add|del #x` is a room alias; anything else a user alias.
+        "alias" if !args.peek_word().is_some_and(is_room_alias_sub) => {
+            let name = args.word();
+            let body = args.rest().map(|b| b.trim().to_string());
+            BitchxCommand::UserAlias { name, body }
+        },
+        "bind" => {
+            let key = args.word();
+            let command = args.rest().map(|b| b.trim().to_string());
+            BitchxCommand::Bind { key, command }
+        },
         "alias" => {
             let sub = args.required_word("add|del")?;
             let add = match sub.to_lowercase().as_str() {

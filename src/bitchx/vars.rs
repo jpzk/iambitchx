@@ -132,6 +132,10 @@ pub(crate) struct BitchxConfig {
     pub timestamp_string: Option<String>,
     /// `/theme`: the theme name.
     pub theme: Option<String>,
+    /// `/alias`: `[settings.bitchx.aliases]`, name -> body.
+    pub aliases: Option<std::collections::BTreeMap<String, String>>,
+    /// `/bind`: `[settings.bitchx.binds]`, key -> command.
+    pub binds: Option<std::collections::BTreeMap<String, String>>,
 }
 
 impl BitchxConfig {
@@ -155,6 +159,8 @@ impl BitchxConfig {
             timestamp: self.timestamp.or(other.timestamp),
             timestamp_string: self.timestamp_string.or(other.timestamp_string),
             theme: self.theme.or(other.theme),
+            aliases: self.aliases.or(other.aliases),
+            binds: self.binds.or(other.binds),
         }
     }
 }
