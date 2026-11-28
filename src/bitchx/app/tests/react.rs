@@ -45,7 +45,10 @@ fn test_reaction_line_format() {
         quote: Some("hello world".into()),
     };
     assert_eq!(shown(&l), "* armin reacted 👍 to \"hello world\"");
-    let unknown = Line::Reaction { quote: None, ..l };
+    let Line::Reaction { nick, own, key, target, .. } = l else {
+        unreachable!()
+    };
+    let unknown = Line::Reaction { nick, own, key, target, quote: None };
     assert_eq!(shown(&unknown), "* armin reacted 👍 to a message");
 }
 
