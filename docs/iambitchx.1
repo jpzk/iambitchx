@@ -441,6 +441,69 @@ Produces no effect in
 but will display aliens from Space Invaders in Matrix clients that support doing so.
 .El
 
+.Sh "CHANNEL ADMIN COMMANDS"
+IRC-style channel administration in the BitchX frontend, mapped onto Matrix room state.
+Server errors are printed after terminal sanitising.
+.Bl -tag -width Ds
+.It Sy "/create #x [-public] [-noencrypt]"
+Create the room
+.Sy #x
+on your own homeserver.
+By default it is invite-only (preset
+.Sy private_chat )
+and end-to-end encrypted.
+.Fl public
+uses the
+.Sy public_chat
+preset and publishes the room to the room directory.
+It stays encrypted unless
+.Fl noencrypt
+is given; late joiners cannot read history sent before they joined.
+.It Sy "/join #x:server"
+If
+.Sy server
+is your own homeserver and the alias does not exist,
+.Nm
+offers to create it (answer
+.Sy y
+or
+.Sy n ) .
+Other servers report the error "no such channel".
+.It Sy "/alias add|del #x[:server]"
+Add or remove a room alias for the current room.
+Without a server, your own homeserver is used.
+.It Sy "/publish on|off"
+List the current room in the public room directory, or remove it from the directory.
+.It Sy "/ban NICK [reason]" , Sy "/kickban NICK [reason]"
+Ban a user. On Matrix a ban also removes the user from the room.
+.It Sy "/unban NICK"
+Lift a ban.
+.It Sy "/power NICK LEVEL"
+Set a raw power level from 0 to 100.
+Levels above your own are refused.
+.It Sy "/mode [#chan] [+-imtob] [NICK ...]"
+.Sy +i/-i
+sets the join rule to invite/public,
+.Sy +m/-m
+sets
+.Sy events_default
+to 50/0 (moderated),
+.Sy +t/-t
+sets the power level for
+.Sy m.room.topic
+to 50/0,
+.Sy +o/-o NICK
+sets power 50/0 (like /op and /deop),
+.Sy +b/-b NICK
+bans/unbans.
+A bare
+.Sy /mode
+prints the current modes, for example
+.Sy +it ;
+the status bar shows them too.
+Unknown letters are an error that names the supported ones.
+.El
+
 .Sh "ENVIRONMENT"
 The behaviour of
 .Nm

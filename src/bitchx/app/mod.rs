@@ -782,6 +782,19 @@ impl App {
                 self.info("/theme [name]: colour themes, Up/Down preview, Enter keep, Esc cancel");
                 self.info("/theme terminal: use your terminal's own colours");
                 self.info(
+                    "/create #x [-public] [-noencrypt]: new channel on your server \
+                     (invite-only + encrypted by default)",
+                );
+                self.info(
+                    "/alias add|del #x[:server], /publish on|off: channel aliases, channel list",
+                );
+                self.info("/ban NICK [reason], /unban NICK, /kickban NICK [reason]");
+                self.info("/power NICK 0..100: raw power level (not above your own)");
+                self.info(
+                    "/mode [+-imtob] [NICK]: i invite-only, m moderated, t topic lock, \
+                     o op, b ban; bare /mode shows the modes",
+                );
+                self.info(
                     "Keys: Alt-1..9 window, Ctrl-N/Ctrl-P next/prev, PgUp/PgDn scroll, Tab nick",
                 );
                 vec![]

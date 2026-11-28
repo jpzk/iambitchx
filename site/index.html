@@ -42,6 +42,7 @@ pre{font-size:16px;font-family:ui-monospace,Menlo,Consolas,monospace}
     "Cross-signing and key backup, /recover from secure backup",
     "Rooms as channels, DMs via /msg and /query",
     "Public room directory via /list",
+    "Channel creation and admin: /create, /ban, /power, IRC /mode mapped to room state",
     "Presence and /away",
     "Password login",
     "SSO login",
@@ -120,7 +121,8 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
   ▌ IRC vocabulary
     /join /part /names /who /whois /msg /query /me /topic /invite
     /kick /op /deop /mode /away /nick /set /window /encrypt /verify
-    /trust /devices /recover
+    /trust /devices /recover /create /alias /publish /ban /unban
+    /kickban /power
 
   ▌ Matrix, properly
     end-to-end encryption, SAS emoji verification, device keys,
@@ -144,8 +146,18 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
   * /devices [USER] lists devices and their keys
   * rooms as #channels, DMs as /msg and /query windows
   * /list searches the public room directory; spaces are tagged
+    [space] in /list, /channels and their window
   * /join by alias or room id, /part, /topic, /invite, /kick
   * /op and /deop set power levels; /names, /who, /whois
+  * /create #x [-public] [-noencrypt]: new channel on your own
+    server, invite-only and encrypted by default; /join of a
+    missing #x on your server offers to create it [y/n]
+  * /alias add|del, /publish on|off (room directory)
+  * /ban, /unban, /kickban; /power NICK 0..100 (not above yours)
+  * /mode maps IRC modes to room state: +i invite-only,
+    +m moderated, +t topic lock, +o op, +b ban; bare /mode and
+    the status bar show e.g. +it
+  * read-only channels say which power level you need
   * presence: away/online sent and shown, /whois shows away
   * /nick sets your display name
   * history backfill when a channel window opens
@@ -175,7 +187,7 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     words, BEEP on highlight
   * /theme with live preview: 62 iamb themes plus 'terminal'
   * alt-0..9 switches windows, tab completes nicks
-  * /ctcp, /mode, /ignore parse but say "Not supported on Matrix"
+  * /ctcp, /ignore parse but say "Not supported on Matrix"
 
 ──[ install ]───────────────────────────────────────────────────────
 

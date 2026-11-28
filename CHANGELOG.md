@@ -16,6 +16,38 @@ for that.
 
 ## [Unreleased]
 
+### Security
+
+- **M-04: DM windows need the right peer.** A room only opens as a
+  `/query` window if it has at most two members and the query peer is
+  joined or invited. A two-member room with another user (or a peer that
+  left, was banned or only knocked) is shown as a normal channel, and
+  `/msg` refuses it and names the peer's state.
+- Server error text from admin commands is sanitised before it is printed.
+
+### Added
+
+- **Channel creation.** `/create #x [-public] [-noencrypt]` creates `#x` on
+  your own homeserver: invite-only and encrypted by default. `-public` uses
+  the public preset and lists the room in the directory (still encrypted;
+  you get a warning that late joiners can't read older history).
+  `/join #x:your.server` for a room that does not exist offers to create it
+  (`[y/n]`). Other servers still say "no such channel".
+- **Channel admin.** `/alias add|del`, `/publish on|off`, `/ban`, `/unban`,
+  `/kickban`, `/power NICK 0..100` (refused above your own level).
+- **`/mode` on Matrix.** `+i/-i` join rule, `+m/-m` moderated
+  (`events_default` 50/0), `+t/-t` topic lock, `+o/-o` op, `+b/-b` ban.
+  Bare `/mode` prints the modes (e.g. `+it`), and the status bar shows them.
+  Unknown letters are an error that names the supported ones.
+- Spaces are tagged `[space]` in `/channels` and in their window.
+
+### Changed
+
+- A send refused with `M_FORBIDDEN` prints
+  `iamBitchX: read-only channel (power N needed, you have M)`.
+- `/join` prints `Joining #x...`. The "synched" line and NAMES wait for
+  the first sync that has members, so there is no empty `[Users(0/0)]`.
+
 ## [0.1.2] — 2026-11-27
 
 First release after `v0.1.0`. `v0.1.1` was tagged but never released (its
