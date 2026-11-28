@@ -106,6 +106,7 @@ impl App {
                     self.windows[idx].push(None, line);
                 }
             },
+            MxEvent::OfferCreate(alias) => self.offer_create(&alias),
             MxEvent::OwnDisplayName(name) => {
                 self.own_name(name.clone());
                 // The nick is the localpart and never changes; /nick only
@@ -206,6 +207,7 @@ fn clean_event(ev: MxEvent) -> MxEvent {
         },
         MxEvent::Info { room_id, line } => MxEvent::Info { room_id, line: clean_line(line) },
         MxEvent::OwnDisplayName(n) => MxEvent::OwnDisplayName(one_line(&n)),
+        MxEvent::OfferCreate(a) => MxEvent::OfferCreate(one_line(&a)),
         MxEvent::Away(a) => MxEvent::Away(a.map(|a| one_line(&a))),
         MxEvent::Presence { user, mut presence } => {
             presence.status_msg = presence.status_msg.map(|m| one_line(&m));

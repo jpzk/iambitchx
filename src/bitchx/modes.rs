@@ -45,7 +45,7 @@ impl RoomModes {
     }
 
     /// The letters, in IRC order: `imt`.
-    pub(crate) fn letters(&self) -> String {
+    pub(crate) fn letters(self) -> String {
         let mut s = String::new();
         for (on, c) in [
             (self.invite_only, 'i'),
@@ -60,7 +60,7 @@ impl RoomModes {
     }
 
     /// `+imt` (bare `/mode`); `+` when none is set.
-    pub(crate) fn irc(&self) -> String {
+    pub(crate) fn irc(self) -> String {
         format!("+{}", self.letters())
     }
 }

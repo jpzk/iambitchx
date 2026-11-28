@@ -106,6 +106,7 @@ fn rows(app: &mut App) -> Vec<String> {
     crate::bitchx::format::plain(&lines)
 }
 
+mod admin;
 mod away;
 mod commands;
 mod logo;

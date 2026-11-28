@@ -140,6 +140,8 @@ impl Window {
 pub(crate) enum Confirm {
     /// `/encrypt` in this room.
     Encrypt(OwnedRoomId),
+    /// Create `#localpart` on our server after a `/join` 404.
+    Create(String),
 }
 
 /// A key verification in progress with another user (or own device).

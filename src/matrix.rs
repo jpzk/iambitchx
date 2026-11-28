@@ -513,6 +513,14 @@ fn create_request(alias: &str, public: bool, encrypt: bool) -> CreateRoomRequest
     req
 }
 
+/// `id` is an alias `#x:server` on `server` (so `/join` 404 may offer to
+/// create it); room IDs and other servers are not.
+fn alias_on(id: &str, server: &str) -> bool {
+    id.strip_prefix('#')
+        .and_then(|a| a.split_once(':'))
+        .is_some_and(|(local, s)| !local.is_empty() && s.eq_ignore_ascii_case(server))
+}
+
 /// Create `#alias` on our own server, then show and focus its window.
 async fn create_room(
     client: &Client,
@@ -655,6 +663,11 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             let room = match client.join_room_by_id_or_alias(&id, &via).await {
                 Ok(room) => room,
                 Err(e) if is_not_found(&e) => {
+                    // An alias on our own server can be created: ask.
+                    if alias_on(&target.id, me.server_name().as_str()) {
+                        let _ = tx.send(MxEvent::OfferCreate(target.id.clone()));
+                        return Ok(());
+                    }
                     let msg = if target.implicit_server {
                         not_found_hint(&target.id)
                     } else {
@@ -755,9 +768,11 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
                 Ok(Some(_)) => "unverified",
                 _ => "unknown",
             };
-            let send = |line: Line| tx.send(MxEvent::Info { room_id: None, line });
-            let _ = send(Line::WhoisRule);
-            let _ = send(Line::WhoisNick {
+            let send = |line: Line| {
+                let _ = tx.send(MxEvent::Info { room_id: None, line });
+            };
+            send(Line::WhoisRule);
+            send(Line::WhoisNick {
                 nick: nick_of(&user),
                 mxid: user.to_string(),
                 info: ident.to_string(),
@@ -775,7 +790,7 @@ async fn run(client: &Client, effect: Effect, tx: &Tx) -> anyhow::Result<()> {
             rows.push(("devices", devices.to_string()));
             let len = rows.len();
             for (i, (key, value)) in rows.into_iter().enumerate() {
-                let _ = send(Line::WhoisRow {
+                send(Line::WhoisRow {
                     row: (i + 1) as u8,
                     last: i + 1 == len,
                     key: key.to_string(),
@@ -908,6 +923,15 @@ mod tests {
         // -noencrypt: no m.room.encryption state at all
         assert!(!enc(&create_request("x", true, false)));
         assert!(!enc(&create_request("x", false, false)));
+    }
+
+    #[test]
+    fn test_join_404_offers_create_only_on_own_server() {
+        assert!(alias_on("#x:example.org", "example.org"));
+        assert!(alias_on("#x:Example.ORG", "example.org"));
+        assert!(!alias_on("#x:matrix.org", "example.org"));
+        assert!(!alias_on("!x:example.org", "example.org"));
+        assert!(!alias_on("#:example.org", "example.org"));
     }
 
     #[test]
