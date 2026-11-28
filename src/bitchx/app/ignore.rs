@@ -102,7 +102,7 @@ impl App {
     }
 
     /// The line was sent by an ignored user and must not be shown.
-    pub(super) fn from_ignored(&self, line: &Line) -> bool {
+    pub(super) fn is_ignored_line(&self, line: &Line) -> bool {
         if self.ignored.is_empty() {
             return false;
         }

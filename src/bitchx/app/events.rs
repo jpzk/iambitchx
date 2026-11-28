@@ -31,7 +31,7 @@ impl App {
                 }
                 // Hidden client-side too, in case the server still delivers.
                 let lines: Vec<_> =
-                    lines.into_iter().filter(|(_, _, l)| !self.from_ignored(l)).collect();
+                    lines.into_iter().filter(|(_, _, l)| !self.is_ignored_line(l)).collect();
                 let matcher = self.matcher();
                 let win = &mut self.windows[idx];
                 let now = now_ms();

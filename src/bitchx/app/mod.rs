@@ -798,6 +798,10 @@ impl App {
                 self.info("/ban NICK [reason], /unban NICK, /kickban NICK [reason]");
                 self.info("/power NICK 0..100: raw power level (not above your own)");
                 self.info(
+                    "/ignore [NICK|@user:server], /unignore NICK: account ignore list \
+                     (m.ignored_user_list); bare /ignore lists it",
+                );
+                self.info(
                     "/mode [+-imtob] [NICK]: i invite-only, m moderated, t topic lock, \
                      o op, b ban; bare /mode shows the modes",
                 );

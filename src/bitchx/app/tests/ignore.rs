@@ -172,7 +172,7 @@ fn test_ignored_sender_lines_hidden() {
         lines,
         backfill: false,
     });
-    let shown: Vec<Line> = app.cur().lines[n..].iter().cloned().collect();
+    let shown: Vec<Line> = app.cur().lines[n..].to_vec();
     assert_eq!(shown.len(), 2, "{shown:?}");
     assert!(matches!(&shown[0], Line::Public { nick, .. } if nick == "bob"));
     assert!(matches!(&shown[1], Line::Join { .. }));

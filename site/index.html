@@ -43,6 +43,7 @@ pre{font-size:16px;font-family:ui-monospace,Menlo,Consolas,monospace}
     "Rooms as channels, DMs via /msg and /query",
     "Public room directory via /list",
     "Channel creation and admin: /create, /ban, /power, IRC /mode mapped to room state",
+    "/ignore and /unignore via the Matrix account ignore list",
     "Presence and /away",
     "Password login",
     "SSO login",
@@ -122,7 +123,7 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     /join /part /names /who /whois /msg /query /me /topic /invite
     /kick /op /deop /mode /away /nick /set /window /encrypt /verify
     /trust /devices /recover /create /alias /publish /ban /unban
-    /kickban /power
+    /kickban /power /ignore /unignore
 
   ▌ Matrix, properly
     end-to-end encryption, SAS emoji verification, device keys,
@@ -154,6 +155,8 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     missing #x on your server offers to create it [y/n]
   * /alias add|del, /publish on|off (room directory)
   * /ban, /unban, /kickban; /power NICK 0..100 (not above yours)
+  * /ignore NICK|@user:server, /unignore: the Matrix account
+    ignore list; bare /ignore lists it, ignored senders are hidden
   * /mode maps IRC modes to room state: +i invite-only,
     +m moderated, +t topic lock, +o op, +b ban; bare /mode and
     the status bar show e.g. +it
@@ -187,7 +190,7 @@ Using terminal type [vt100] (original bitchx logo, acidjazz)
     words, BEEP on highlight
   * /theme with live preview: 62 iamb themes plus 'terminal'
   * alt-0..9 switches windows, tab completes nicks
-  * /ctcp, /ignore parse but say "Not supported on Matrix"
+  * /ctcp parses but says "Not supported on Matrix"
 
 ──[ install ]───────────────────────────────────────────────────────
 
