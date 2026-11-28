@@ -69,6 +69,11 @@ for that.
   Bare `/mode` prints the modes (e.g. `+it`), and the status bar shows them.
   Unknown letters are an error that names the supported ones.
 - Spaces are tagged `[space]` in `/channels` and in their window.
+- **User aliases and key binds.** `/alias NAME body` with `$1`..`$9` and
+  `$*`, `/alias -NAME`, bare `/alias` lists; `/bind KEY /command` for `^X`,
+  `M-x` and `F1`..`F12`, `/bind -KEY`, bare `/bind` lists. Saved in
+  `config.toml` under `[settings.bitchx.aliases]` / `[settings.bitchx.binds]`.
+  Aliases cannot shadow built-in commands and nest at most 8 deep.
 
 ### Changed
 
