@@ -1,6 +1,8 @@
 //! Matrix-side input: sync events, room snapshots, and the sync loop
 //! dying. Everything remote is cleaned before it touches a window.
 
+use matrix_sdk::ruma::OwnedRoomId;
+
 use crate::bitchx::app::{App, Probe, Window, now_ms};
 use crate::bitchx::channels::list_lines;
 use crate::bitchx::model::{Effect, Line, MxEvent, RoomSnapshot, VerifyUpdate, nick_of};
@@ -79,18 +81,16 @@ impl App {
                 }
             },
             MxEvent::Synched { room_id, millis } => {
-                if let Some(idx) = self.window_of(&room_id) {
-                    self.names_in(idx);
-                    let chan = self.windows[idx].room.name.clone();
-                    #[allow(
-                        clippy::cast_precision_loss,
-                        reason = "join latency in ms is far below 2^52; display-only"
-                    )]
-                    let secs = millis as f64 / 1000.0;
-                    let line =
-                        Line::Error(format!("Join to {chan} was synched in {secs:.3} secs!!"));
-                    self.windows[idx].push(None, line);
-                    return self.switch(idx);
+                match self.window_of(&room_id) {
+                    Some(idx) if !self.windows[idx].room.members.is_empty() => {
+                        return self.synched(idx, millis);
+                    },
+                    // Joined, but the room has not synced its members yet:
+                    // no `[Users(#x:0/0)]`, wait for the first full snapshot.
+                    _ => {
+                        let start = self.now() - i64::try_from(millis).unwrap_or(0);
+                        self.pending_joins.insert(room_id, start);
+                    },
                 }
             },
             MxEvent::Info { room_id, line } => {
@@ -152,7 +152,7 @@ impl App {
         if let Some(idx) = self.window_of(&room_id) {
             self.windows[idx].room = snap;
             self.mark_spoofs();
-            return vec![];
+            return self.join_completed(idx, &room_id);
         }
 
         let refnum = self.windows.len() + 1;
@@ -160,9 +160,14 @@ impl App {
             Some(peer) => format!("query with {peer}"),
             None => format!("{} users, {room_id}", snap.members.len()),
         };
-        self.status_info(format!("{refnum:>6}) {} [{what}]", snap.name));
+        let space = if snap.space { " [space]" } else { "" };
+        self.status_info(format!("{refnum:>6}) {} [{what}]{space}", snap.name));
 
         let mut win = Window { room: snap, ..Default::default() };
+        if win.room.space {
+            let line = format!("[space] {} is a Matrix space (a group of rooms)", win.room.name);
+            win.push(None, Line::Info(line));
+        }
         if win.room.dm_peer.is_some() {
             let peer = win.room.name.clone();
             win.push(None, Line::Info(format!("Starting conversation with {peer}")));
@@ -172,7 +177,35 @@ impl App {
         }
         self.windows.push(win);
         self.mark_spoofs();
-        vec![]
+        self.join_completed(self.windows.len() - 1, &room_id)
+    }
+
+    /// A pending `/join` whose room now has members: print the synched line
+    /// and NAMES (once).
+    fn join_completed(&mut self, idx: usize, room_id: &OwnedRoomId) -> Vec<Effect> {
+        if self.windows[idx].room.members.is_empty() {
+            return vec![];
+        }
+        let Some(start) = self.pending_joins.remove(room_id) else {
+            return vec![];
+        };
+        let millis = u64::try_from(self.now() - start).unwrap_or(0);
+        self.synched(idx, millis)
+    }
+
+    /// NAMES plus ` iamBitchX: Join to #chan was synched in X secs!!`, then
+    /// switch to the window.
+    fn synched(&mut self, idx: usize, millis: u64) -> Vec<Effect> {
+        self.names_in(idx);
+        let chan = self.windows[idx].room.name.clone();
+        #[allow(
+            clippy::cast_precision_loss,
+            reason = "join latency in ms is far below 2^52; display-only"
+        )]
+        let secs = millis as f64 / 1000.0;
+        let line = Line::Error(format!("Join to {chan} was synched in {secs:.3} secs!!"));
+        self.windows[idx].push(None, line);
+        self.switch(idx)
     }
 
     /// F37: the Matrix sync loop broke (`sync: <err>`, it is not restarted).

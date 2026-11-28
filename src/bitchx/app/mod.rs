@@ -101,6 +101,10 @@ pub(crate) struct App {
     dbg_applied: (bool, String, bool),
     /// DBG flood guard per window: (second, lines this second, suppressed).
     dbg_flood: HashMap<usize, (i64, u32, u32)>,
+    /// Joins the server confirmed before the room synced with members: room
+    /// -> when the join started (unix millis). The synched line and NAMES
+    /// wait for the first snapshot that has members.
+    pending_joins: HashMap<OwnedRoomId, i64>,
     /// The splash logo currently drawn, and where its lines sit in window 0.
     /// `/theme`: every theme that can be picked.
     pub themes: crate::bitchx::theme::Themes,
@@ -196,6 +200,7 @@ impl App {
             bell: false,
             dbg_applied: (false, crate::bitchx::vars::DEBUG_ALL.to_string(), false),
             dbg_flood: HashMap::new(),
+            pending_joins: HashMap::new(),
             themes: crate::bitchx::theme::Themes::load(None).0,
             picker: None,
             logo,
@@ -973,6 +978,7 @@ impl App {
         if let Some(idx) = idx.filter(|i| *i > 0) {
             return self.switch(idx);
         }
+        self.info(format!("Joining {}...", t.id));
         vec![Effect::Join(t)]
     }
 
@@ -987,7 +993,8 @@ impl App {
                     Some(p) => format!("query {p}"),
                     None => format!("{} users", w.room.members.len()),
                 };
-                format!("{}: {} [{what}]", i + 1, w.room.name)
+                let space = if w.room.space { " [space]" } else { "" };
+                format!("{}: {} [{what}]{space}", i + 1, w.room.name)
             })
             .collect();
         if rows.is_empty() {

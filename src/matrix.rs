@@ -23,7 +23,7 @@ use matrix_sdk::ruma::api::client::room::create_room::v3::{
 use matrix_sdk::ruma::api::error::ErrorKind;
 use matrix_sdk::ruma::events::room::encryption::RoomEncryptionEventContent;
 use matrix_sdk::ruma::events::room::join_rules::JoinRule;
-use matrix_sdk::ruma::events::room::member::MembershipChange;
+use matrix_sdk::ruma::events::room::member::{MembershipChange, MembershipState};
 use matrix_sdk::ruma::events::room::message::{MessageType, RoomMessageEventContent};
 use matrix_sdk::ruma::events::room::power_levels::UserPowerLevel;
 use matrix_sdk::ruma::events::{
@@ -131,10 +131,9 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
         .collect();
 
     // M-04: `m.direct` is the server's word; a "DM" with more than two
-    // members is a group room and is never shown as a private query.
-    let is_direct =
-        room.is_direct().await.unwrap_or(false) && dm_members_ok(room.active_members_count());
-    let dm_peer = if is_direct {
+    // members, or whose peer is not joined/invited, is never shown as a
+    // private query.
+    let candidate = if room.is_direct().await.unwrap_or(false) {
         room.direct_targets()
             .iter()
             .filter_map(|t| t.as_user_id().map(ToOwned::to_owned))
@@ -142,6 +141,13 @@ pub async fn snapshot(room: &Room, me: &UserId) -> RoomSnapshot {
             .or_else(|| members.iter().map(|m| m.user_id.clone()).find(|u| u != me))
     } else {
         None
+    };
+    let dm_peer = match candidate {
+        Some(peer) => {
+            let state = membership_no_sync(room, &peer).await;
+            dm_members_ok(room.active_members_count(), state.as_ref()).then_some(peer)
+        },
+        None => None,
     };
     let peer_nick = dm_peer.as_deref().map(nick_of);
     let levels = room.power_levels_or_default().await;
@@ -547,24 +553,39 @@ async fn create_room(
 /// The DM with `user`, created if needed. New DMs are end-to-end encrypted:
 /// `create_dm` puts `m.room.encryption` (megolm) in the initial state.
 async fn dm_room(client: &Client, user: &UserId) -> anyhow::Result<Room> {
-    match client.get_dm_room(user) {
-        // M-04: the server's `m.direct` map alone does not make a room
-        // private; refuse one that has more than us and the peer in it.
-        Some(room) if !dm_members_ok(room.active_members_count()) => anyhow::bail!(
-            "{} is listed as your private chat with {user} but has {} members; \
-             not sending there",
+    let Some(room) = client.get_dm_room(user) else {
+        return Ok(client.create_dm(user).await?);
+    };
+    // M-04: the server's `m.direct` map alone does not make a room private;
+    // refuse one that has more than us and the peer in it, or where `user`
+    // is not a joined/invited member at all.
+    let peer = room.get_member(user).await.ok().flatten();
+    let state = peer.as_ref().map(|m| m.membership());
+    if !dm_members_ok(room.active_members_count(), state) {
+        anyhow::bail!(
+            "{} is listed as your private chat with {user} but has {} members \
+             and {user} is {}; not sending there",
             room.room_id(),
-            room.active_members_count()
-        ),
-        Some(room) => Ok(room),
-        None => Ok(client.create_dm(user).await?),
+            room.active_members_count(),
+            state.map_or("not a member", MembershipState::as_str),
+        );
     }
+    Ok(room)
 }
 
-/// M-04: a direct message room holds at most us and the peer (joined or
-/// invited).
-fn dm_members_ok(active_members: u64) -> bool {
-    active_members <= 2
+/// M-04: a direct message room holds at most us and the peer, and the peer
+/// (the query target) is itself joined or invited.
+fn dm_members_ok(active_members: u64, peer: Option<&MembershipState>) -> bool {
+    active_members <= 2 && matches!(peer, Some(MembershipState::Join | MembershipState::Invite))
+}
+
+/// The membership of `user` in `room` from the local store (no request).
+async fn membership_no_sync(room: &Room, user: &UserId) -> Option<MembershipState> {
+    room.get_member_no_sync(user)
+        .await
+        .ok()
+        .flatten()
+        .map(|m| m.membership().clone())
 }
 
 async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> anyhow::Result<()> {
@@ -573,7 +594,17 @@ async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> a
     } else {
         RoomMessageEventContent::text_plain(text.clone())
     };
-    let resp = room.send(content).await?;
+    let resp = match room.send(content).await {
+        Ok(resp) => resp,
+        Err(e) if e.client_api_error_kind() == Some(&ErrorKind::Forbidden) => {
+            let levels = room.power_levels_or_default().await;
+            let needed: i64 = levels.for_message(MessageLikeEventType::RoomMessage).into();
+            let line = Line::Error(read_only_msg(needed, power(levels.for_user(me))));
+            let _ = tx.send(MxEvent::Info { room_id: Some(room.room_id().to_owned()), line });
+            return Ok(());
+        },
+        Err(e) => return Err(e.into()),
+    };
     let nick = nick_of(me);
     let line = if emote {
         Line::Action { nick, own: true, text }
@@ -591,6 +622,11 @@ async fn send(room: &Room, me: &UserId, text: String, emote: bool, tx: &Tx) -> a
 /// The homeserver answered M_NOT_FOUND (unknown alias).
 fn is_not_found(e: &matrix_sdk::Error) -> bool {
     e.client_api_error_kind() == Some(&ErrorKind::NotFound)
+}
+
+/// 403 M_FORBIDDEN on send: the room needs more power to talk than we have.
+fn read_only_msg(needed: i64, have: i64) -> String {
+    format!("read-only channel (power {needed} needed, you have {have})")
 }
 
 /// Fetch up to [`LIST_MAX`] public channels from the directory of `server`
@@ -938,10 +974,29 @@ mod tests {
     fn test_m04_dm_needs_at_most_two_members() {
         // A room the server lists in `m.direct` is only private while it
         // holds us and the peer.
-        assert!(dm_members_ok(1));
-        assert!(dm_members_ok(2));
-        assert!(!dm_members_ok(3));
-        assert!(!dm_members_ok(50));
+        let join = Some(&MembershipState::Join);
+        assert!(dm_members_ok(1, join));
+        assert!(dm_members_ok(2, join));
+        assert!(dm_members_ok(2, Some(&MembershipState::Invite)));
+        assert!(!dm_members_ok(3, join));
+        assert!(!dm_members_ok(50, join));
+    }
+
+    #[test]
+    fn test_m04_two_members_wrong_peer_refused() {
+        // Two members, but the query target is not one of them (the other
+        // member is someone else): no membership event for the peer at all,
+        // or one that is not join/invite. Never a private chat.
+        assert!(!dm_members_ok(2, None));
+        assert!(!dm_members_ok(2, Some(&MembershipState::Leave)));
+        assert!(!dm_members_ok(2, Some(&MembershipState::Ban)));
+        assert!(!dm_members_ok(2, Some(&MembershipState::Knock)));
+        assert!(!dm_members_ok(1, None));
+    }
+
+    #[test]
+    fn test_send_forbidden_is_read_only_msg() {
+        assert_eq!(read_only_msg(50, 0), "read-only channel (power 50 needed, you have 0)");
     }
 
     /// What the sync loop's `set_presence` becomes after these effects ran
